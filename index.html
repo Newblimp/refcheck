@@ -1,0 +1,989 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Reference Sign Checker</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --font-ui:'Space Grotesk',sans-serif; --font-mono:'JetBrains Mono',monospace;
+}
+/* DARK THEME — Gruvbox Dark */
+:root[data-theme="dark"]{
+  --bg:#282828; --surface:#32302f; --surface2:#3c3836;
+  --border:#504945; --border2:#665c54;
+  --text:#ebdbb2; --text-muted:#a89984; --text-dim:#7c6f64;
+  --accent:#f18934; --accent-glow:rgba(241,137,52,.15);
+  --warn:#fabd2f; --warn-bg:rgba(250,189,47,.13); --warn-u:rgba(250,189,47,.75);
+  --art:#8ec07c; --art-bg:rgba(142,192,124,.12); --art-u:rgba(142,192,124,.75);
+  --ok:#b8bb26; --ok-bg:rgba(184,187,38,.10);
+  --warn-border:rgba(250,189,47,.5); --ok-border:rgba(184,187,38,.4);
+  --warn-wt-bg:rgba(250,189,47,.07); --warn-wt:rgba(250,189,47,.85); --warn-wt-bd:rgba(250,189,47,.5);
+  --bare:#fb4934; --bare-bg:rgba(251,73,52,.13); --bare-u:rgba(251,73,52,.75);
+}
+/* LIGHT THEME — Gruvbox Light */
+:root[data-theme="light"]{
+  --bg:#fbf1c7; --surface:#f2e5bc; --surface2:#ebdbb2;
+  --border:#d5c4a1; --border2:#bdae93;
+  --text:#3c3836; --text-muted:#504945; --text-dim:#7c6f64;
+  --accent:#f18934; --accent-glow:rgba(241,137,52,.15);
+  --warn:#b57614; --warn-bg:rgba(181,118,20,.15); --warn-u:#b57614;
+  --art:#427b58; --art-bg:rgba(66,123,88,.15); --art-u:#427b58;
+  --ok:#79740e; --ok-bg:rgba(121,116,14,.12);
+  --warn-border:rgba(181,118,20,.5); --ok-border:rgba(121,116,14,.4);
+  --warn-wt-bg:rgba(181,118,20,.07); --warn-wt:rgba(181,118,20,.85); --warn-wt-bd:rgba(181,118,20,.5);
+  --bare:#9d0006; --bare-bg:rgba(157,0,6,.12); --bare-u:#9d0006;
+}
+html,body,#root{height:100%;background:var(--bg);color:var(--text);font-family:var(--font-ui);font-size:14px;line-height:1.5}
+#root{display:flex;flex-direction:column;overflow:hidden}
+
+/* TOP BAR */
+.topbar{display:flex;align-items:center;gap:14px;padding:0 18px;height:52px;background:var(--surface);border-bottom:1px solid var(--border);flex-shrink:0}
+.logo{display:flex;align-items:center;gap:9px;font-weight:700;font-size:15px;letter-spacing:-.3px}
+.logo em{color:var(--accent);font-style:normal}
+.spacer{flex:1}
+.pill-toggle{display:flex;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:3px;gap:2px}
+.pill-toggle button{background:none;border:none;cursor:pointer;font-family:var(--font-ui);font-size:12.5px;font-weight:500;color:var(--text-muted);padding:5px 13px;border-radius:6px;transition:all .15s;white-space:nowrap}
+.pill-toggle button.active{background:var(--surface2);color:var(--text);box-shadow:0 1px 3px rgba(0,0,0,.4)}
+.pill-toggle button:hover:not(.active){color:var(--text)}
+.lang-toggle{display:flex;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:3px;gap:2px}
+.lang-toggle button{background:none;border:none;cursor:pointer;font-family:var(--font-ui);font-size:12px;font-weight:600;color:var(--text-muted);padding:5px 10px;border-radius:6px;transition:all .15s}
+.lang-toggle button.active{background:var(--accent);color:#fff}
+.theme-toggle{display:flex;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:3px;gap:2px}
+.theme-toggle button{background:none;border:none;cursor:pointer;font-family:var(--font-ui);font-size:11px;font-weight:500;color:var(--text-muted);padding:5px 9px;border-radius:6px;transition:all .15s;white-space:nowrap}
+.theme-toggle button.active{background:var(--surface2);color:var(--text);box-shadow:0 1px 3px rgba(0,0,0,.2)}
+.theme-toggle button:hover:not(.active){color:var(--text)}
+
+/* LAYOUT */
+.main{display:grid;grid-template-columns:1fr 360px;flex:1;overflow:hidden}
+
+/* EDITOR */
+.editor-pane{display:flex;flex-direction:column;border-right:1px solid var(--border);overflow:hidden}
+.pane-hdr{display:flex;align-items:center;justify-content:space-between;padding:9px 16px;border-bottom:1px solid var(--border);flex-shrink:0;background:var(--surface)}
+.pane-title{font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--text-muted)}
+.editor-wrap{position:relative;flex:1;overflow:hidden}
+.backdrop,.editor-ta{position:absolute;inset:0;padding:16px 18px;font-family:var(--font-mono);font-size:13.5px;line-height:1.75;white-space:pre-wrap;word-break:break-word;overflow-y:auto;overflow-x:hidden;tab-size:2}
+.backdrop{pointer-events:none;color:transparent}
+.editor-ta{border:none;outline:none;resize:none;background:transparent;color:var(--text);caret-color:var(--accent);z-index:1}
+.editor-ta::placeholder{color:var(--text-dim)}
+.editor-ta::-webkit-scrollbar,.backdrop::-webkit-scrollbar{width:6px}
+.editor-ta::-webkit-scrollbar-track,.backdrop::-webkit-scrollbar-track{background:transparent}
+.editor-ta::-webkit-scrollbar-thumb,.backdrop::-webkit-scrollbar-thumb{background:var(--border2);border-radius:3px}
+
+/* MARKS */
+mark.h-warn{background:var(--warn-bg);color:var(--warn)!important;border-radius:3px;border-bottom:2px solid var(--warn-u)}
+mark.h-wt{background:var(--warn-wt-bg);color:var(--warn-wt)!important;border-radius:2px;border-bottom:1px dashed var(--warn-wt-bd)}
+mark.h-art{background:var(--art-bg);color:var(--art)!important;border-radius:3px;border-bottom:2px solid var(--art-u)}
+mark.h-bare{background:var(--bare-bg);color:var(--bare)!important;border-radius:3px;border-bottom:2px solid var(--bare-u)}
+mark.h-ok{background:transparent;color:var(--text)!important}
+mark.h-dis{background:transparent;color:var(--text-dim)!important;border-bottom:1px dotted var(--text-dim)}
+mark.h-focus{outline:1.5px solid var(--accent);border-radius:3px}
+
+/* STATUS BAR */
+.statusbar{display:flex;align-items:center;gap:10px;padding:6px 16px;border-top:1px solid var(--border);background:var(--surface);flex-shrink:0;min-height:36px;flex-wrap:wrap}
+.s-chip{display:flex;align-items:center;gap:5px;font-size:12px;font-weight:500}
+.s-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0}
+.err-nav{display:flex;align-items:center;gap:5px;margin-left:auto}
+.nav-lbl{font-size:11.5px;color:var(--text-muted);font-family:var(--font-mono);min-width:36px;text-align:center}
+.nav-btn{display:flex;align-items:center;justify-content:center;width:24px;height:24px;background:var(--surface2);border:1px solid var(--border2);border-radius:5px;cursor:pointer;color:var(--text-muted);transition:all .12s}
+.nav-btn:hover{background:var(--border2);color:var(--text)}
+.restore-btn{font-size:11px;font-family:var(--font-ui);background:none;border:1px solid var(--border2);border-radius:5px;color:var(--text-dim);cursor:pointer;padding:3px 8px;transition:all .12s;white-space:nowrap}
+.restore-btn:hover{border-color:var(--warn);color:var(--warn)}
+
+/* OVERVIEW */
+.ov-pane{display:flex;flex-direction:column;overflow:hidden;background:var(--surface)}
+.ov-scroll{flex:1;overflow-y:auto;padding:8px}
+.ov-scroll::-webkit-scrollbar{width:5px}
+.ov-scroll::-webkit-scrollbar-track{background:transparent}
+.ov-scroll::-webkit-scrollbar-thumb{background:var(--border2);border-radius:3px}
+.ov-empty{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;gap:12px;color:var(--text-dim);text-align:center;padding:40px}
+.ov-empty svg{opacity:.25}
+.ov-empty p{font-size:13px;line-height:1.6}
+
+/* STATS */
+.stats-row{display:grid;grid-template-columns:repeat(3,1fr);gap:7px;padding:9px;border-bottom:1px solid var(--border);flex-shrink:0}
+.stat-cell{display:flex;flex-direction:column;align-items:center;gap:2px;padding:7px 4px;background:var(--bg);border-radius:7px;border:1px solid var(--border)}
+.stat-n{font-size:19px;font-weight:700;font-family:var(--font-mono);line-height:1}
+.stat-l{font-size:10px;font-weight:500;letter-spacing:.05em;color:var(--text-muted);text-transform:uppercase}
+
+/* SEARCH */
+.search-row{padding:7px 9px;border-bottom:1px solid var(--border);flex-shrink:0}
+.search-in{width:100%;background:var(--bg);border:1px solid var(--border);border-radius:7px;padding:6px 10px 6px 30px;font-family:var(--font-ui);font-size:12.5px;color:var(--text);outline:none;transition:border-color .15s;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%234a5568' stroke-width='2'%3E%3Ccircle cx='11' cy='11' r='8'/%3E%3Cpath d='m21 21-4.35-4.35'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:9px center}
+.search-in:focus{border-color:var(--accent)}
+.search-in::placeholder{color:var(--text-dim)}
+
+/* SECTION LABELS */
+.sec-lbl{font-size:10.5px;font-weight:600;letter-spacing:.09em;text-transform:uppercase;padding:10px 4px 4px}
+.sec-lbl:first-child{padding-top:4px}
+
+/* SIGN CARD */
+.sign-card{border-radius:8px;border:1px solid transparent;cursor:pointer;transition:all .12s;margin-bottom:3px;overflow:hidden}
+.sign-card:hover{background:var(--surface2);border-color:var(--border)}
+.sign-card.focused{background:var(--surface2);border-color:var(--accent)}
+.sc-row{display:flex;align-items:center;gap:9px;padding:7px 9px}
+.badge{font-family:var(--font-mono);font-size:13px;font-weight:500;min-width:44px;text-align:center;padding:3px 6px;border-radius:5px;flex-shrink:0}
+.badge.warn{background:var(--warn-bg);color:var(--warn)}
+.badge.art{background:var(--art-bg);color:var(--art)}
+.badge.ok{background:var(--ok-bg);color:var(--ok)}
+.badge.dim{background:var(--surface2);color:var(--text-dim)}
+.sc-main{flex:1;min-width:0}
+.term-chips{display:flex;flex-wrap:wrap;gap:3px;margin-top:3px}
+.tc{font-size:11px;font-family:var(--font-mono);padding:1px 6px;border-radius:4px;border:1px solid var(--border2);color:var(--text-muted);background:var(--bg);max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tc.err{border-color:var(--warn-border);color:var(--warn);background:var(--warn-bg)}
+.tc.ok{border-color:var(--ok-border);color:var(--ok);background:var(--ok-bg)}
+.mw-badge{font-size:10px;background:var(--accent-glow);color:var(--accent);border-radius:3px;padding:1px 5px;font-family:var(--font-mono);margin-left:4px}
+.sc-note{font-size:11px;color:var(--text-muted);padding:0 9px 6px 62px;line-height:1.4}
+.sc-note strong{color:var(--warn)}
+.sc-cnt{font-family:var(--font-mono);font-size:11px;color:var(--text-dim);background:var(--bg);border-radius:4px;padding:2px 5px;flex-shrink:0}
+.dis-btn{background:none;border:none;cursor:pointer;color:var(--text-dim);padding:2px 5px;border-radius:3px;font-size:13px;transition:color .12s;flex-shrink:0}
+.dis-btn:hover{color:var(--warn)}
+
+/* ARTICLE CARD */
+.art-card{border-radius:8px;border:1px solid transparent;cursor:pointer;transition:all .12s;margin-bottom:3px}
+.art-card:hover{background:var(--surface2);border-color:var(--border)}
+.art-card.focused{background:var(--surface2);border-color:var(--art)}
+/* BARE-TERM CARD */
+.bare-card{border-radius:8px;border:1px solid transparent;cursor:pointer;transition:all .12s;margin-bottom:3px}
+.bare-card:hover{background:var(--surface2);border-color:var(--border)}
+.bare-card.focused{background:var(--surface2);border-color:var(--bare)}
+
+/* DISMISSED */
+.dis-section{margin-top:8px;padding:7px 10px;background:var(--bg);border-radius:8px;border:1px solid var(--border)}
+.dis-hdr{display:flex;align-items:center;justify-content:space-between;font-size:11px;color:var(--text-dim)}
+.ra-btn{font-size:11px;background:none;border:none;cursor:pointer;color:var(--text-muted);text-decoration:underline;padding:0}
+.ra-btn:hover{color:var(--warn)}
+
+/* CONTEXT MENU */
+.ctx{position:fixed;z-index:999;background:var(--surface2);border:1px solid var(--border2);border-radius:9px;padding:5px;min-width:220px;box-shadow:0 8px 30px rgba(0,0,0,.6)}
+.ctx-lbl{font-size:10.5px;color:var(--text-dim);padding:5px 10px 2px;letter-spacing:.05em;text-transform:uppercase}
+.ctx-item{display:block;width:100%;background:none;border:none;cursor:pointer;text-align:left;font-family:var(--font-ui);font-size:13px;color:var(--text-muted);padding:7px 10px;border-radius:6px;transition:all .1s;white-space:nowrap}
+.ctx-item:hover{background:var(--border);color:var(--text)}
+.ctx-item.warn:hover{background:var(--warn-bg);color:var(--warn)}
+.ctx-sep{height:1px;background:var(--border);margin:4px 0}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const {useState,useEffect,useRef,useCallback,useMemo}=React;
+
+// ── i18n ───────────────────────────────────────────────────────────────────
+const T={
+  en:{
+    appTitle:"RefSign",appSub:"Checker",modeDesc:"Description",modeClaims:"Claims",
+    editorLbl:"INPUT TEXT",ovLbl:"REFERENCE SIGNS",
+    placeholder_desc:`Paste your patent description here…\n\nExample: The device 10 comprises a housing 12 and a cover 14. The housing 12 is made of aluminium. The cover 14 is secured to the housing 12 by screws 18. The first bearing 20 supports the shaft 22. The second bearing 21 is at the opposite end of the shaft 22.`,
+    placeholder_claims:`Paste your claims here…\n\nSigns should be in parentheses:\n1. A device (10) comprising a housing (12) and a cover (14), wherein the housing (12) is made of aluminium.`,
+    searchPh:"Filter signs…",
+    errLbl:"Errors",artLbl:"Articles",okLbl:"OK",totalLbl:"Total",
+    gErr:"Inconsistencies",gArt:"Article Errors",gOk:"Consistent",gDis:"Dismissed",
+    occ:n=>`${n}×`,
+    emptyTitle:"No reference signs detected",
+    emptyBody:"Paste your patent text on the left. Reference signs (like 10, 12a) will appear here.",
+    charCount:n=>`${n} chars`,
+    claimsNote:"Claims: signs must be in ( )",
+    conflictTS:(term,signs)=>`"${term}" also with: ${signs.join(", ")}`,
+    conflictST:terms=>`also: ${terms.map(t=>`"${t}"`).join(", ")}`,
+    claimsBad:n=>`${n} occurrence${n>1?'s':''} not in ( )`,
+    artFD:a=>`"${a}" — first mention should use "a"/"an"`,
+    artRI:a=>`"${a}" — later mention should use "the"`,
+    artGender:(a,b)=>`"${a}" conflicts with "${b}" (gender)`,
+    noTerm:"standalone",
+    navLabel:(i,n)=>`${i} / ${n}`,
+    disCt:n=>`${n} dismissed`,
+    restoreAll:"Restore all",
+    extendTerm:n=>`Extend term (${n} word${n!==1?'s':''})`,
+    reduceTerm:"Reduce term",
+    disSign:s=>`Dismiss errors for "${s}"`,
+    disArt:t=>`Dismiss article errors for "${t}"`,
+    disAll:"Dismiss all errors",
+    wdCt:n=>`${n}w`,
+    gBare:"Missing Signs",bareLbl:"Missing",
+    bareTerm:(term,signs)=>`"${term}" — missing sign (${signs.join(', ')})`,
+  },
+  de:{
+    appTitle:"BezZeichen",appSub:"Prüfer",modeDesc:"Beschreibung",modeClaims:"Ansprüche",
+    editorLbl:"EINGABETEXT",ovLbl:"BEZUGSZEICHEN",
+    placeholder_desc:`Patentbeschreibung hier einfügen…\n\nBeispiel: Die Vorrichtung 10 umfasst ein Gehäuse 12 und einen Deckel 14. Das Gehäuse 12 besteht aus Aluminium. Der Deckel 14 ist am Gehäuse 12 durch Schrauben 18 befestigt. Das erste Lager 20 stützt die Welle 22. Das zweite Lager 21 befindet sich am anderen Ende der Welle 22.`,
+    placeholder_claims:`Patentansprüche hier einfügen…\n\n1. Vorrichtung (10), umfassend ein Gehäuse (12) und einen Deckel (14), wobei das Gehäuse (12) aus Aluminium besteht.`,
+    searchPh:"Zeichen filtern…",
+    errLbl:"Fehler",artLbl:"Artikel",okLbl:"OK",totalLbl:"Gesamt",
+    gErr:"Inkonsistenzen",gArt:"Artikelfehler",gOk:"Konsistent",gDis:"Ausgeblendet",
+    occ:n=>`${n}×`,
+    emptyTitle:"Keine Bezugszeichen erkannt",
+    emptyBody:"Fügen Sie links Ihren Patenttext ein. Bezugszeichen wie 10, 12a erscheinen hier.",
+    charCount:n=>`${n} Zeichen`,
+    claimsNote:"Ansprüche: Zeichen in ( ) erforderlich",
+    conflictTS:(term,signs)=>`„${term}" auch bei: ${signs.join(", ")}`,
+    conflictST:terms=>`auch: ${terms.map(t=>`„${t}"`).join(", ")}`,
+    claimsBad:n=>`${n} Vorkommen nicht in Klammern`,
+    artFD:a=>`„${a}" — Erstnennung: unbestimmter Artikel erforderlich`,
+    artRI:a=>`„${a}" — Folgeerwähnung: bestimmter Artikel erforderlich`,
+    artGender:(a,b)=>`„${a}" und „${b}" widersprüchlich (Genus)`,
+    noTerm:"alleinstehend",
+    navLabel:(i,n)=>`${i} / ${n}`,
+    disCt:n=>`${n} ausgeblendet`,
+    restoreAll:"Alle wiederherstellen",
+    extendTerm:n=>`Begriff erweitern (${n} Wort${n!==1?'e':''})`,
+    reduceTerm:"Begriff kürzen",
+    disSign:s=>`Fehler für „${s}" ausblenden`,
+    disArt:t=>`Artikelfehler für „${t}" ausblenden`,
+    disAll:"Alle Fehler ausblenden",
+    wdCt:n=>`${n}W`,
+    gBare:"Fehlende Zeichen",bareLbl:"Fehlend",
+    bareTerm:(term,signs)=>`„${term}" — fehlendes Bezugszeichen (${signs.join(', ')})`,
+  }
+};
+
+// ── CONSTANTS ──────────────────────────────────────────────────────────────
+const EXCL=new Set([
+  'figure','figures','fig','figs','claim','claims','paragraph','page','section','step',
+  'table','equation','item','reference','numeral','number','sign','no','nr','see','note',
+  'wherein','whereby','comprising','having','including','being','said','respective',
+  'at','in','of','on','to','by','as','an','a','the','with','from','via','and','or',
+  'is','are','was','were','be','been','has','have','had','that','this','these','those',
+  'such','each','least','more','less','than','about','between','through','into',
+  'according','further','also','only','each','any','all','both',
+  // German
+  'figur','abbildung','anspruch','ansprüche','absatz','seite','abschnitt','schritt',
+  'tabelle','bezugszeichen','ziffer','wobei','umfassend','aufweisend','gemäß',
+  'bei','nach','vor','über','unter','durch','für','von','mit','zu','an','am',
+  'im','in','der','die','das','dem','den','des','ein','eine','einen','einem',
+  'eines','einer','und','oder','ist','sind','war','waren','hat','haben','sich',
+  'auch','nur','noch','bereits','dabei','hierbei','hierdurch','hierzu',
+]);
+const EN_ART=new Set(['a','an','the']);
+const DE_ART=new Set(['der','die','das','des','dem','den','ein','eine','eines','einer','einem','einen']);
+const EN_ORD=new Set(['first','second','third','fourth','fifth','sixth','seventh','eighth','ninth','tenth','further','other','another','next','upper','lower','inner','outer','front','rear','left','right','top','bottom','primary','secondary','main','auxiliary','additional']);
+const DE_ORD=new Set(['erste','ersten','erstem','erster','erstes','zweite','zweiten','zweitem','zweiter','zweites','dritte','dritten','vierte','vierten','weitere','weiteren','weiterer','zusätzliche','zusätzlichen','primäre','primären','sekundäre','sekundären','obere','oberen','untere','unteren','innere','inneren','äußere','äußeren','vordere','vorderen','hintere','hinteren','linke','linken','rechte','rechten','andere','anderen','anderer']);
+
+const isArt=(w,l)=>(l==='de'?DE_ART:EN_ART).has(w.toLowerCase());
+const isOrd=(w,l)=>(l==='de'?DE_ORD:EN_ORD).has(w.toLowerCase());
+const artType=w=>['a','an','ein','eine','einer','eines','einem','einen'].includes(w.toLowerCase())?'indef':'def';
+const likelySign=s=>{const n=parseInt(s,10);return n>=1&&n<=99999;};
+
+// ── STEMMING ── Porter (EN) + Snowball (DE) ────────────────────────────────
+function stemEn(w){
+  w=w.toLowerCase();
+  if(w.length<=2)return w;
+  const isv=(s,i)=>s[i]==='y'?(i>0&&!isv(s,i-1)):/[aeiou]/.test(s[i]);
+  const mg=s=>{let n=0,v=false;for(let i=0;i<s.length;i++){if(isv(s,i)){if(!v)v=true;}else if(v){n++;v=false;}}return n;};
+  const hv=s=>{for(let i=0;i<s.length;i++)if(isv(s,i))return true;return false;};
+  const dbl=s=>{const n=s.length;return n>=2&&s[n-1]===s[n-2]&&!isv(s,n-1);};
+  const cvc=s=>{const n=s.length;return n>=3&&!isv(s,n-1)&&!'wxy'.includes(s[n-1])&&isv(s,n-2)&&!isv(s,n-3);};
+  // 1a
+  if(w.endsWith('sses'))w=w.slice(0,-2);
+  else if(w.endsWith('ies'))w=w.slice(0,-2);
+  else if(!w.endsWith('ss')&&w.endsWith('s'))w=w.slice(0,-1);
+  // 1b
+  let b=false;
+  if(w.endsWith('eed')){if(mg(w.slice(0,-3))>0)w=w.slice(0,-1);}
+  else if(w.endsWith('ed')&&hv(w.slice(0,-2))){w=w.slice(0,-2);b=true;}
+  else if(w.endsWith('ing')&&hv(w.slice(0,-3))){w=w.slice(0,-3);b=true;}
+  if(b){
+    if(w.endsWith('at'))w+='e';
+    else if(w.endsWith('bl'))w+='e';
+    else if(w.endsWith('iz'))w+='e';
+    else if(dbl(w)&&!'lsz'.includes(w[w.length-1]))w=w.slice(0,-1);
+    else if(mg(w)===1&&cvc(w))w+='e';
+  }
+  // 1c
+  if(w.length>2&&w.endsWith('y')&&hv(w.slice(0,-1)))w=w.slice(0,-1)+'i';
+  // 2
+  for(const[s,r]of[['ational','ate'],['tional','tion'],['enci','ence'],['anci','ance'],
+    ['izer','ize'],['abli','able'],['alli','al'],['entli','ent'],['eli','e'],
+    ['ousli','ous'],['ization','ize'],['ation','ate'],['ator','ate'],['alism','al'],
+    ['iveness','ive'],['fulness','ful'],['ousness','ous'],['aliti','al'],
+    ['iviti','ive'],['biliti','ble']]){
+    if(w.endsWith(s)){const t=w.slice(0,-s.length);if(mg(t)>0){w=t+r;break;}}
+  }
+  // 3
+  for(const[s,r]of[['icate','ic'],['ative',''],['alize','al'],['iciti','ic'],
+    ['ical','ic'],['ful',''],['ness','']]){
+    if(w.endsWith(s)){const t=w.slice(0,-s.length);if(mg(t)>0){w=t+r;break;}}
+  }
+  // 4
+  let m4=false;
+  for(const s of['ement','ment','ance','ence','able','ible','ant','ent','ism',
+    'ate','iti','ous','ive','ize','al','er','ic','ou']){
+    if(w.endsWith(s)){const t=w.slice(0,-s.length);if(mg(t)>1){w=t;m4=true;break;}}
+  }
+  if(!m4&&w.endsWith('ion')){const t=w.slice(0,-3);if(mg(t)>1&&/[st]$/.test(t))w=t;}
+  // 5a
+  if(w.endsWith('e')){const t=w.slice(0,-1);if(mg(t)>1||(mg(t)===1&&!cvc(t)))w=t;}
+  // 5b
+  if(mg(w)>1&&dbl(w)&&w.endsWith('l'))w=w.slice(0,-1);
+  return w;
+}
+function stemDe(w){
+  w=w.toLowerCase().replace(/ß/g,'ss');
+  if(w.length<=2)return w;
+  const isv=c=>/[aeiouyäöü]/.test(c);
+  function r1p(s){for(let i=1;i<s.length;i++)if(isv(s[i-1])&&!isv(s[i]))return Math.max(3,i+1);return s.length;}
+  const p1=r1p(w),p2=p1+r1p(w.slice(p1));
+  const ir1=n=>n>=p1,ir2=n=>n>=p2;
+  const VS=new Set([...'bdfghklmnrt']),VST=new Set([...'bdfghklmnt']);
+  // Step 1 – noun inflections
+  let found=false;
+  for(const s of['ern','em','er','en','es','e']){
+    const p=w.length-s.length;
+    if(w.endsWith(s)&&ir1(p)){w=w.slice(0,p);found=true;break;}
+  }
+  if(!found){const p=w.length-1;if(w.endsWith('s')&&ir1(p)&&p>0&&VS.has(w[p-1]))w=w.slice(0,p);}
+  // Step 2 – verb inflections
+  found=false;
+  for(const s of['est','en','er']){
+    const p=w.length-s.length;
+    if(w.endsWith(s)&&ir1(p)){w=w.slice(0,p);found=true;break;}
+  }
+  if(!found){const p=w.length-2;if(w.endsWith('st')&&ir1(p)&&p>0&&VST.has(w[p-1]))w=w.slice(0,p);}
+  // Step 3 – derivational suffixes in R2
+  const wl=w.length;
+  if(w.endsWith('keit')&&ir2(wl-4)){
+    w=w.slice(0,-4);
+    if(w.endsWith('lich')&&ir2(w.length-4))w=w.slice(0,-4);
+    else if(w.endsWith('ig')&&ir2(w.length-2))w=w.slice(0,-2);
+  }else if(w.endsWith('heit')&&ir2(wl-4)){
+    w=w.slice(0,-4);
+    if((w.endsWith('er')||w.endsWith('en'))&&ir1(w.length-2))w=w.slice(0,-2);
+  }else if(w.endsWith('lich')&&ir2(wl-4)){
+    w=w.slice(0,-4);
+    if((w.endsWith('er')||w.endsWith('en'))&&ir1(w.length-2))w=w.slice(0,-2);
+  }else if(w.endsWith('isch')&&ir2(wl-4)&&w[wl-5]!=='e'){
+    w=w.slice(0,-4);
+  }else if(w.endsWith('ung')&&ir2(wl-3)){
+    w=w.slice(0,-3);
+    if(w.endsWith('ig')&&ir2(w.length-2)&&w[w.length-3]!=='e')w=w.slice(0,-2);
+  }else if(w.endsWith('end')&&ir2(wl-3)){
+    w=w.slice(0,-3);
+    if(w.endsWith('ig')&&ir2(w.length-2)&&w[w.length-3]!=='e')w=w.slice(0,-2);
+  }else if(w.endsWith('ik')&&ir2(wl-2)&&w[wl-3]!=='e'){
+    w=w.slice(0,-2);
+  }else if(w.endsWith('ig')&&ir2(wl-2)&&w[wl-3]!=='e'){
+    w=w.slice(0,-2);
+  }
+  return w.replace(/ä/g,'a').replace(/ö/g,'o').replace(/ü/g,'u');
+}
+const stem=(w,l)=>l==='de'?stemDe(w):stemEn(w);
+
+// ── TOKENIZER ──────────────────────────────────────────────────────────────
+function tokenize(text){
+  const RE=/(?<![a-zA-ZäöüÄÖÜß\-\d])([a-zA-ZäöüÄÖÜß\-]+|\d{1,5}[a-z]?)(?![a-zA-ZäöüÄÖÜß\-\d])/g;
+  const toks=[];let m;
+  while((m=RE.exec(text))!==null)toks.push({word:m[1],start:m.index,end:m.index+m[1].length});
+  return toks;
+}
+
+// ── EXTRACTION ─────────────────────────────────────────────────────────────
+function detectOrdStems(tokens,lang){
+  const s=new Set();
+  for(let i=2;i<tokens.length;i++){
+    const t=tokens[i];
+    if(!/^\d{1,5}[a-z]?$/.test(t.word)||!likelySign(t.word))continue;
+    const p1=tokens[i-1],p2=tokens[i-2];
+    if(!p1||!p2)continue;
+    const l1=p1.word.toLowerCase();
+    if(EXCL.has(l1)||isArt(l1,lang)||p1.word.length<2)continue;
+    if(isOrd(p2.word,lang))s.add(stem(p1.word,lang));
+  }
+  return s;
+}
+
+function extractData(text,lang,mwo={},autoMW=true){
+  const toks=tokenize(text);
+  const ordStems=autoMW?detectOrdStems(toks,lang):new Set();
+  const signData={},termData={},artByTerm={};
+
+  for(let i=0;i<toks.length;i++){
+    const tok=toks[i];
+    if(!/^\d{1,5}[a-z]?$/.test(tok.word)||!likelySign(tok.word))continue;
+    const sign=tok.word;
+    const signStart=tok.start,signEnd=tok.end;
+    const inParens=signStart>0&&text[signStart-1]==='('&&text[signEnd]===')';
+
+    // Walk backwards for term tokens and article
+    let j=i-1,artTok=null;
+    const allTT=[];
+    while(j>=0&&allTT.length<5){
+      const t=toks[j];
+      const lo=t.word.toLowerCase();
+      if(/^\d/.test(t.word))break;
+      if(isArt(lo,lang)){artTok=t;break;}
+      if(t.word.length<2){j--;continue;}
+      if(EXCL.has(lo))break;
+      allTT.unshift(t);
+      j--;
+    }
+    if(allTT.length===0)continue;
+
+    // Determine word count
+    const baseW=allTT[allTT.length-1].word;
+    const bs=stem(baseW,lang);
+    const manExtra=mwo[bs]||0;
+    let autoExtra=0;
+    if(ordStems.has(bs)&&allTT.length>=2&&isOrd(allTT[allTT.length-2].word,lang))autoExtra=1;
+    const wc=1+Math.max(manExtra,autoExtra);
+    const termToks=allTT.slice(Math.max(0,allTT.length-wc));
+
+    const termStr=termToks.map(t=>t.word.toLowerCase()).join(' ');
+    const termStem=termToks.map(t=>stem(t.word,lang)).join(' ');
+    const termStart=termToks[0].start,termEnd=termToks[termToks.length-1].end;
+
+    if(!signData[sign])signData[sign]={terms:{},positions:[],count:0,inPC:0};
+    signData[sign].terms[termStem]=(signData[sign].terms[termStem]||0)+1;
+    signData[sign].count++;
+    if(inParens)signData[sign].inPC++;
+    signData[sign].positions.push({termStart,termEnd,signStart,signEnd,term:termStr,termStem,inParens});
+
+    if(!termData[termStem])termData[termStem]={signs:{},rawTerms:new Set()};
+    termData[termStem].signs[sign]=(termData[termStem].signs[sign]||0)+1;
+    termData[termStem].rawTerms.add(termStr);
+
+    if(artTok&&termToks.length===allTT.length){
+      const al=artTok.word.toLowerCase();
+      if(!artByTerm[termStem])artByTerm[termStem]=[];
+      artByTerm[termStem].push({article:al,type:artType(al),artStart:artTok.start,artEnd:artTok.end,termStart,signStart,sign,termStem});
+    }
+  }
+
+  // Generate article errors
+  const artErrors=[];
+  for(const[ts,occs]of Object.entries(artByTerm)){
+    occs.sort((a,b)=>a.artStart-b.artStart);
+    occs.forEach((occ,idx)=>{
+      if(idx===0&&occ.type==='def')artErrors.push({...occ,errType:'first-def'});
+      else if(idx>0&&occ.type==='indef')artErrors.push({...occ,errType:'repeat-indef'});
+    });
+    // German gender consistency: flag if nominative def articles conflict
+    if(lang==='de'){
+      const nomDef=occs.filter(o=>['der','die','das'].includes(o.article));
+      if(new Set(nomDef.map(o=>o.article)).size>1){
+        const seen=new Set();
+        for(const occ of nomDef){
+          if(!seen.size){seen.add(occ.article);continue;}
+          if(!seen.has(occ.article)){
+            artErrors.push({...occ,errType:'de-gender',prevArt:[...seen][0]});
+            seen.add(occ.article);
+          }
+        }
+      }
+    }
+  }
+  // ── Bare-term detection (second pass) ──
+  // Build index: stem of last word → [termStem, …] sorted longest-first
+  const baseToTerms={};
+  for(const ts of Object.keys(termData)){
+    const parts=ts.split(' ');
+    const base=parts[parts.length-1];
+    if(!baseToTerms[base])baseToTerms[base]=[];
+    baseToTerms[base].push(ts);
+  }
+  for(const k of Object.keys(baseToTerms))
+    baseToTerms[k].sort((a,b)=>b.split(' ').length-a.split(' ').length);
+
+  // Collect all positions already associated with a sign
+  const knownSpans=new Set();
+  for(const sData of Object.values(signData))
+    for(const p of sData.positions)knownSpans.add(`${p.termStart}-${p.termEnd}`);
+
+  const bareTerms=[];
+  const bareSpans=new Set();
+  for(let i=0;i<toks.length;i++){
+    const s=stem(toks[i].word,lang);
+    if(!baseToTerms[s])continue;
+    for(const ts of baseToTerms[s]){
+      const parts=ts.split(' ');
+      const wc=parts.length;
+      if(i<wc-1)continue;
+      let match=true;
+      for(let k=0;k<wc;k++){
+        if(stem(toks[i-(wc-1)+k].word,lang)!==parts[k]){match=false;break;}
+      }
+      if(!match)continue;
+      const tStart=toks[i-(wc-1)].start,tEnd=toks[i].end;
+      if(knownSpans.has(`${tStart}-${tEnd}`))break;
+      if(bareSpans.has(`${tStart}-${tEnd}`))break;
+      // Skip if immediately followed by a sign token
+      const nxt=toks[i+1];
+      if(nxt&&/^\d{1,5}[a-z]?$/.test(nxt.word)&&likelySign(nxt.word))break;
+      const signs=Object.keys(termData[ts]?.signs||{});
+      bareSpans.add(`${tStart}-${tEnd}`);
+      bareTerms.push({termStart:tStart,termEnd:tEnd,termStem:ts,
+        term:toks.slice(i-(wc-1),i+1).map(t=>t.word.toLowerCase()).join(' '),signs});
+      break;
+    }
+  }
+
+  return{signData,termData,artErrors,bareTerms};
+}
+
+// ── CLASSIFICATION ─────────────────────────────────────────────────────────
+function classify(sign,sData,termData,mode){
+  if(mode==='claims')return sData.count>sData.inPC?'warn':'ok';
+  if(Object.keys(sData.terms).length>1)return 'warn';
+  for(const t of Object.keys(sData.terms)){
+    if(termData[t]&&Object.keys(termData[t].signs).length>1)return 'warn';
+  }
+  return 'ok';
+}
+
+function getAllErrors(signData,termData,artErrors,bareTerms,mode,dis){
+  const out=[];
+  for(const[sign,sData]of Object.entries(signData)){
+    if(dis.has('s:'+sign))continue;
+    if(classify(sign,sData,termData,mode)==='warn')
+      for(const p of sData.positions)out.push({type:'sign',start:p.signStart,end:p.signEnd,sign});
+  }
+  for(const ae of artErrors){
+    if(dis.has('a:'+ae.termStem))continue;
+    out.push({type:'art',start:ae.artStart,end:ae.artEnd,ae});
+  }
+  for(const bt of bareTerms){
+    if(dis.has('b:'+bt.termStem))continue;
+    out.push({type:'bare',start:bt.termStart,end:bt.termEnd,bt});
+  }
+  out.sort((a,b)=>a.start-b.start);
+  return out;
+}
+
+// ── HTML BUILDER ────────────────────────────────────────────────────────────
+const esc=s=>s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+
+function buildHtml(text,signData,termData,artErrors,bareTerms,mode,dis,focusSign){
+  if(!text)return '';
+  const spans=[];
+  for(const[sign,sData]of Object.entries(signData)){
+    const isDis=dis.has('s:'+sign);
+    const sev=isDis?'dis':classify(sign,sData,termData,mode);
+    const focused=focusSign===sign;
+    for(const p of sData.positions){
+      const cls=sev==='warn'?'h-warn':sev==='dis'?'h-dis':'h-ok';
+      spans.push({start:p.signStart,end:p.signEnd,cls:focused?cls+' h-focus':cls});
+      if(sev==='warn')spans.push({start:p.termStart,end:p.termEnd,cls:'h-wt'});
+    }
+  }
+  for(const ae of artErrors){
+    if(dis.has('a:'+ae.termStem))continue;
+    spans.push({start:ae.artStart,end:ae.artEnd,cls:'h-art'});
+  }
+  for(const bt of bareTerms){
+    if(dis.has('b:'+bt.termStem))continue;
+    spans.push({start:bt.termStart,end:bt.termEnd,cls:'h-bare'});
+  }
+  spans.sort((a,b)=>a.start-b.start||a.end-b.end);
+  const clean=[];let cur=0;
+  for(const sp of spans){if(sp.start>=cur){clean.push(sp);cur=sp.end;}}
+  let html='',pos=0;
+  for(const sp of clean){
+    if(sp.start>pos)html+=esc(text.slice(pos,sp.start));
+    html+=`<mark class="${sp.cls}">${esc(text.slice(sp.start,sp.end))}</mark>`;
+    pos=sp.end;
+  }
+  if(pos<text.length)html+=esc(text.slice(pos));
+  return html;
+}
+
+function findAtPos(charPos,signData,artErrors){
+  for(const ae of artErrors)
+    if(charPos>=ae.artStart&&charPos<=ae.artEnd)return{type:'art',ae};
+  for(const[sign,sData]of Object.entries(signData))
+    for(const p of sData.positions)
+      if(charPos>=p.termStart&&charPos<=p.signEnd)return{type:'sign',sign,pos:p};
+  return null;
+}
+
+// ── CONTEXT MENU ────────────────────────────────────────────────────────────
+function CtxMenu({menu,onClose,onAction}){
+  const ref=useRef(null);
+  useEffect(()=>{
+    const h=e=>{if(ref.current&&!ref.current.contains(e.target))onClose();};
+    setTimeout(()=>document.addEventListener('mousedown',h),10);
+    return()=>document.removeEventListener('mousedown',h);
+  },[]);
+  const x=Math.min(menu.x,window.innerWidth-240),y=Math.min(menu.y,window.innerHeight-220);
+  return(
+    <div className="ctx" ref={ref} style={{left:x,top:y}}>
+      {menu.label&&<div className="ctx-lbl">{menu.label}</div>}
+      {menu.items.map((it,i)=>it.sep?<div key={i} className="ctx-sep"/>:
+        <button key={i} className={`ctx-item ${it.v||''}`} onClick={()=>{onAction(it.a,it.d);onClose();}}>
+          {it.label}
+        </button>
+      )}
+    </div>
+  );
+}
+
+// ── SIGN CARD ───────────────────────────────────────────────────────────────
+function SignCard({sign,sData,termData,mode,focused,t,lang,dis,mwo,onFocus,onDismiss}){
+  const isDis=dis.has('s:'+sign);
+  const sev=isDis?'dim':classify(sign,sData,termData,mode);
+  const terms=Object.keys(sData.terms);
+  const bs=stem(sData.positions[0]?.term.split(' ').pop()||'',lang);
+  const wc=1+(mwo[bs]||0);
+
+  const notes=[];
+  if(!isDis){
+    if(mode==='claims'){const bad=sData.count-sData.inPC;if(bad>0)notes.push(t.claimsBad(bad));}
+    else{
+      if(terms.length>1){
+        const raws=terms.flatMap(ts=>[...(termData[ts]?.rawTerms||new Set())]).filter((v,i,a)=>a.indexOf(v)===i);
+        notes.push(t.conflictST(raws.slice(0,3)));
+      }
+      terms.forEach(ts=>{
+        const td=termData[ts];if(!td)return;
+        const others=Object.keys(td.signs).filter(s2=>s2!==sign);
+        if(others.length>0){
+          const raw=[...(td.rawTerms||new Set())][0]||ts;
+          notes.push(t.conflictTS(raw,others));
+        }
+      });
+    }
+  }
+  return(
+    <div className={`sign-card${focused?' focused':''}`} onClick={()=>onFocus(sign)}>
+      <div className="sc-row">
+        <span className={`badge ${sev}`}>{sign}</span>
+        <span className="sc-main">
+          <div className="term-chips">
+            {terms.map(ts=>{
+              const isConf=sev==='warn'&&(terms.length>1||(termData[ts]&&Object.keys(termData[ts].signs).length>1));
+              const raw=[...(termData[ts]?.rawTerms||new Set())][0]||ts;
+              return<span key={ts} className={`tc ${isConf?'err':sev==='ok'?'ok':''}`}>
+                {raw}{wc>1&&<span className="mw-badge">{t.wdCt(wc)}</span>}
+              </span>;
+            })}
+          </div>
+        </span>
+        <span className="sc-cnt">{t.occ(sData.count)}</span>
+        <button className="dis-btn" onClick={e=>{e.stopPropagation();onDismiss('s:'+sign);}}
+          title={isDis?'Restore':'Dismiss'}>
+          {isDis?'↩':'×'}
+        </button>
+      </div>
+      {notes.map((n,i)=><div key={i} className="sc-note">↳ <strong>{n}</strong></div>)}
+    </div>
+  );
+}
+
+// ── ARTICLE CARD ────────────────────────────────────────────────────────────
+function ArtCard({ae,focused,t,dis,onFocus,onDismiss}){
+  const isDis=dis.has('a:'+ae.termStem);
+  const msg=ae.errType==='first-def'?t.artFD(ae.article):ae.errType==='repeat-indef'?t.artRI(ae.article):t.artGender(ae.article,ae.prevArt);
+  return(
+    <div className={`art-card${focused?' focused':''}`} onClick={()=>onFocus('art:'+ae.artStart,ae.artStart)}>
+      <div className="sc-row">
+        <span className={`badge ${isDis?'dim':'art'}`} style={{minWidth:36,fontSize:'12px'}}>{ae.article}</span>
+        <span className="sc-main">
+          <div style={{fontSize:'12px',color:'var(--text-muted)',lineHeight:1.35}}>{msg}</div>
+          <div style={{fontSize:'11px',color:'var(--text-dim)',marginTop:2,fontFamily:'var(--font-mono)'}}>{ae.sign} · {ae.termStem}</div>
+        </span>
+        <button className="dis-btn" onClick={e=>{e.stopPropagation();onDismiss('a:'+ae.termStem);}}>
+          {isDis?'↩':'×'}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ── BARE-TERM CARD ──────────────────────────────────────────────────────────
+function BareCard({bt,focused,t,dis,onFocus,onDismiss}){
+  const isDis=dis.has('b:'+bt.termStem);
+  return(
+    <div className={`bare-card${focused?' focused':''}`} onClick={()=>onFocus('bare:'+bt.termStart,bt.termStart,bt.termEnd)}>
+      <div className="sc-row">
+        <span className={`badge ${isDis?'dim':'warn'}`} style={{minWidth:36,fontSize:'12px',background:'var(--bare-bg)',color:'var(--bare)'}}>∅</span>
+        <span className="sc-main">
+          <div style={{fontSize:'12px',color:'var(--text-muted)',lineHeight:1.35}}>{t.bareTerm(bt.term,bt.signs)}</div>
+        </span>
+        <button className="dis-btn" onClick={e=>{e.stopPropagation();onDismiss('b:'+bt.termStem);}}>
+          {isDis?'↩':'×'}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ── APP ─────────────────────────────────────────────────────────────────────
+function App(){
+  const[lang,setLang]=useState('en');
+  const[mode,setMode]=useState('description');
+  const[text,setText]=useState('');
+  const[focusSign,setFocusSign]=useState(null);
+  const[focusArtKey,setFocusArtKey]=useState(null);
+  const[focusBareKey,setFocusBareKey]=useState(null);
+  const[search,setSearch]=useState('');
+  const[dis,setDis]=useState(new Set());
+  const[mwo,setMwo]=useState(()=>{try{return JSON.parse(localStorage.getItem('rsc_mwo')||'{}')}catch{return{}}});
+  const[navIdx,setNavIdx]=useState(0);
+  const[ctx,setCtx]=useState(null);
+  const[theme,setTheme]=useState(()=>{try{return localStorage.getItem('rsc_theme')||'dark'}catch{return'dark'}});
+  const bdRef=useRef(null),taRef=useRef(null);
+  const t=T[lang];
+
+  useEffect(()=>{try{localStorage.setItem('rsc_mwo',JSON.stringify(mwo))}catch{};},[mwo]);
+
+  // Theme management
+  useEffect(()=>{
+    try{localStorage.setItem('rsc_theme',theme)}catch{}
+    const applyTheme=(t)=>document.documentElement.setAttribute('data-theme',t);
+    if(theme==='system'){
+      const mq=window.matchMedia('(prefers-color-scheme: dark)');
+      const updateSystemTheme=()=>applyTheme(mq.matches?'dark':'light');
+      updateSystemTheme();
+      mq.addEventListener('change',updateSystemTheme);
+      return()=>mq.removeEventListener('change',updateSystemTheme);
+    }else{
+      applyTheme(theme);
+    }
+  },[theme]);
+
+  const{signData,termData,artErrors,bareTerms}=useMemo(()=>extractData(text,lang,mwo,true),[text,lang,mwo]);
+
+  const allErrors=useMemo(()=>getAllErrors(signData,termData,artErrors,bareTerms,mode,dis),[signData,termData,artErrors,bareTerms,mode,dis]);
+
+  useEffect(()=>setNavIdx(0),[allErrors.length]);
+
+  const html=useMemo(()=>buildHtml(text,signData,termData,artErrors,bareTerms,mode,dis,focusSign),[text,signData,termData,artErrors,bareTerms,mode,dis,focusSign]);
+
+  const syncScroll=useCallback(()=>{if(taRef.current&&bdRef.current)bdRef.current.scrollTop=taRef.current.scrollTop;},[]);
+
+  const{errSigns,okSigns}=useMemo(()=>{
+    const q=search.toLowerCase(),err=[],ok=[];
+    for(const[sign,sData]of Object.entries(signData)){
+      if(q&&!sign.includes(q))continue;
+      (classify(sign,sData,termData,mode)==='warn'?err:ok).push([sign,sData]);
+    }
+    const byN=([a],[b])=>parseInt(a)-parseInt(b);
+    return{errSigns:err.sort(byN),okSigns:ok.sort(byN)};
+  },[signData,termData,mode,search,dis]);
+
+  const visArt=useMemo(()=>artErrors.filter(ae=>!search||ae.termStem.includes(search.toLowerCase())),[artErrors,search]);
+  const visArtActive=visArt.filter(ae=>!dis.has('a:'+ae.termStem));
+  const visBare=useMemo(()=>bareTerms.filter(bt=>!search||bt.termStem.includes(search.toLowerCase())),[bareTerms,search]);
+  const visBareActive=visBare.filter(bt=>!dis.has('b:'+bt.termStem));
+  const errSignsActive=errSigns.filter(([s])=>!dis.has('s:'+s));
+  const totalErrs=errSignsActive.length+visArtActive.length+visBareActive.length;
+  const disCt=dis.size;
+  const totalSigns=Object.keys(signData).length;
+
+  function scrollTo(start,end){
+    const ta=taRef.current;if(!ta)return;
+    ta.focus();ta.setSelectionRange(start,end);
+    const lines=text.slice(0,start).split('\n').length;
+    ta.scrollTop=Math.max(0,(lines-5)*13.5*1.75);
+    syncScroll();
+  }
+
+  function doFocusSign(sign){
+    setFocusSign(f=>f===sign?null:sign);setFocusArtKey(null);setFocusBareKey(null);
+    if(signData[sign]?.positions[0]){const p=signData[sign].positions[0];scrollTo(p.signStart,p.signEnd);}
+  }
+  function doFocusArt(key,pos){setFocusArtKey(f=>f===key?null:key);setFocusSign(null);setFocusBareKey(null);scrollTo(pos,pos+2);}
+  function doFocusBare(key,start,end){setFocusBareKey(f=>f===key?null:key);setFocusSign(null);setFocusArtKey(null);scrollTo(start,end);}
+
+  function navigate(dir){
+    if(!allErrors.length)return;
+    const next=(navIdx+dir+allErrors.length)%allErrors.length;
+    setNavIdx(next);
+    const e=allErrors[next];scrollTo(e.start,e.end);
+    if(e.type==='sign'){setFocusSign(e.sign);setFocusArtKey(null);setFocusBareKey(null);}
+    else if(e.type==='art'){setFocusArtKey('art:'+e.start);setFocusSign(null);setFocusBareKey(null);}
+    else if(e.type==='bare'){setFocusBareKey('bare:'+e.start);setFocusSign(null);setFocusArtKey(null);}
+  }
+
+  function toggleDis(key){setDis(d=>{const n=new Set(d);n.has(key)?n.delete(key):n.add(key);return n;});}
+  function disAll(){
+    const k=new Set();
+    Object.keys(signData).forEach(s=>k.add('s:'+s));
+    artErrors.forEach(ae=>k.add('a:'+ae.termStem));
+    bareTerms.forEach(bt=>k.add('b:'+bt.termStem));
+    setDis(k);
+  }
+  function restoreAll(){setDis(new Set());}
+
+  function handleCtxMenu(e){
+    e.preventDefault();
+    const pos=taRef.current?.selectionStart??0;
+    const found=findAtPos(pos,signData,artErrors);
+    if(!found)return;
+    const items=[];
+    if(found.type==='sign'){
+      const{sign,pos:p}=found;
+      const bs=stem(p.term.split(' ').pop(),lang);
+      const cur=1+(mwo[bs]||0);
+      items.push({label:t.extendTerm(cur),a:'extend',d:{bs}});
+      if(cur>1)items.push({label:t.reduceTerm,a:'reduce',d:{bs}});
+      items.push({sep:true});
+      const isDis=dis.has('s:'+sign);
+      items.push({label:isDis?`↩ Restore "${sign}"`:t.disSign(sign),a:isDis?'rdis':'dis-sign',d:{sign}});
+    } else {
+      const{ae}=found;
+      const isDis=dis.has('a:'+ae.termStem);
+      items.push({label:isDis?`↩ Restore article`:t.disArt(ae.termStem),a:isDis?'rdis-art':'dis-art',d:{ts:ae.termStem}});
+    }
+    items.push({sep:true});
+    items.push({label:t.disAll,a:'dis-all',v:'warn'});
+    if(disCt)items.push({label:`↩ ${t.restoreAll} (${disCt})`,a:'restore-all'});
+    setCtx({x:e.clientX,y:e.clientY,items,label:found.type==='sign'?`Sign ${found.sign}`:`Article: ${found.ae?.article}`});
+  }
+
+  function handleCtxAction(a,d){
+    if(a==='extend')setMwo(m=>({...m,[d.bs]:(m[d.bs]||0)+1}));
+    else if(a==='reduce')setMwo(m=>{const n={...m};n[d.bs]>1?n[d.bs]--:delete n[d.bs];return n;});
+    else if(a==='dis-sign')toggleDis('s:'+d.sign);
+    else if(a==='rdis')toggleDis('s:'+d.sign);
+    else if(a==='dis-art')toggleDis('a:'+d.ts);
+    else if(a==='rdis-art')toggleDis('a:'+d.ts);
+    else if(a==='dis-all')disAll();
+    else if(a==='restore-all')restoreAll();
+  }
+
+  return(<>
+    {ctx&&<CtxMenu menu={ctx} onClose={()=>setCtx(null)} onAction={handleCtxAction}/>}
+
+    <div className="topbar">
+      <div className="logo">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+          <polyline points="14 2 14 8 20 8"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="17" x2="12" y2="17"/>
+        </svg>
+        <span>{t.appTitle}<em> {t.appSub}</em></span>
+      </div>
+      <div className="spacer"/>
+      <div className="theme-toggle">
+        <button className={theme==='light'?'active':''} onClick={()=>setTheme('light')}>Light</button>
+        <button className={theme==='system'?'active':''} onClick={()=>setTheme('system')}>System</button>
+        <button className={theme==='dark'?'active':''} onClick={()=>setTheme('dark')}>Dark</button>
+      </div>
+      <div className="pill-toggle">
+        <button className={mode==='description'?'active':''} onClick={()=>{setMode('description');setFocusSign(null);}}>{t.modeDesc}</button>
+        <button className={mode==='claims'?'active':''} onClick={()=>{setMode('claims');setFocusSign(null);}}>{t.modeClaims}</button>
+      </div>
+      <div className="lang-toggle">
+        <button className={lang==='en'?'active':''} onClick={()=>setLang('en')}>EN</button>
+        <button className={lang==='de'?'active':''} onClick={()=>setLang('de')}>DE</button>
+      </div>
+    </div>
+
+    <div className="main">
+      <div className="editor-pane">
+        <div className="pane-hdr">
+          <span className="pane-title">{t.editorLbl}</span>
+          <span style={{fontSize:'11px',color:'var(--text-dim)',fontFamily:'var(--font-mono)'}}>{t.charCount(text.length)}</span>
+        </div>
+        <div className="editor-wrap">
+          <div className="backdrop" ref={bdRef} aria-hidden="true" dangerouslySetInnerHTML={{__html:html}}/>
+          <textarea className="editor-ta" ref={taRef} value={text}
+            placeholder={mode==='description'?t.placeholder_desc:t.placeholder_claims}
+            onChange={e=>{setText(e.target.value);setFocusSign(null);}}
+            onScroll={syncScroll} onContextMenu={handleCtxMenu}
+            spellCheck={false} autoCorrect="off" autoCapitalize="off"/>
+        </div>
+        <div className="statusbar">
+          {errSignsActive.length>0&&<div className="s-chip" style={{color:'var(--warn)'}}>
+            <span className="s-dot" style={{background:'var(--warn)'}}/>{errSignsActive.length} {t.errLbl}
+          </div>}
+          {visArtActive.length>0&&<div className="s-chip" style={{color:'var(--art)'}}>
+            <span className="s-dot" style={{background:'var(--art)'}}/>{visArtActive.length} {t.artLbl}
+          </div>}
+          {visBareActive.length>0&&<div className="s-chip" style={{color:'var(--bare)'}}>
+            <span className="s-dot" style={{background:'var(--bare)'}}/>{visBareActive.length} {t.bareLbl}
+          </div>}
+          {totalSigns>0&&errSignsActive.length===0&&visArtActive.length===0&&visBareActive.length===0&&
+            <div className="s-chip" style={{color:'var(--ok)'}}><span className="s-dot" style={{background:'var(--ok)'}}/>All consistent</div>}
+          {allErrors.length>0&&<div className="err-nav" style={{marginLeft:'auto'}}>
+            <button className="nav-btn" onClick={()=>navigate(-1)}>
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="15 18 9 12 15 6"/></svg>
+            </button>
+            <span className="nav-lbl">{t.navLabel(navIdx+1,allErrors.length)}</span>
+            <button className="nav-btn" onClick={()=>navigate(1)}>
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="9 18 15 12 9 6"/></svg>
+            </button>
+          </div>}
+          {disCt>0&&<button className="restore-btn" onClick={restoreAll}>↩ {t.restoreAll} ({disCt})</button>}
+          {mode==='claims'&&text.length>0&&<div className="s-chip" style={{color:'var(--text-dim)',fontSize:'11px'}}>{t.claimsNote}</div>}
+        </div>
+      </div>
+
+      <div className="ov-pane">
+        <div className="pane-hdr"><span className="pane-title">{t.ovLbl}</span></div>
+        {totalSigns>0&&<div className="stats-row">
+          <div className="stat-cell"><span className="stat-n" style={{color:'var(--text)'}}>{totalSigns}</span><span className="stat-l">{t.totalLbl}</span></div>
+          <div className="stat-cell"><span className="stat-n" style={{color:totalErrs>0?'var(--warn)':'var(--text-dim)'}}>{totalErrs}</span><span className="stat-l">{t.errLbl}</span></div>
+          <div className="stat-cell"><span className="stat-n" style={{color:okSigns.length>0?'var(--ok)':'var(--text-dim)'}}>{okSigns.length}</span><span className="stat-l">{t.okLbl}</span></div>
+        </div>}
+        {totalSigns>0&&<div className="search-row">
+          <input className="search-in" placeholder={t.searchPh} value={search} onChange={e=>setSearch(e.target.value)}/>
+        </div>}
+        <div className="ov-scroll">
+          {totalSigns===0?(
+            <div className="ov-empty">
+              <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 9h6M9 12h6M9 15h4"/>
+              </svg>
+              <p><strong style={{color:'var(--text-muted)'}}>{t.emptyTitle}</strong><br/>{t.emptyBody}</p>
+            </div>
+          ):(
+            <>
+              {errSignsActive.length>0&&<>
+                <div className="sec-lbl" style={{color:'var(--warn)'}}>⚠ {t.gErr}</div>
+                {errSignsActive.map(([sign,sData])=>(
+                  <SignCard key={sign} sign={sign} sData={sData} termData={termData}
+                    mode={mode} focused={focusSign===sign} t={t} lang={lang}
+                    dis={dis} mwo={mwo} onFocus={doFocusSign} onDismiss={toggleDis}/>
+                ))}
+              </>}
+              {visArtActive.length>0&&<>
+                <div className="sec-lbl" style={{color:'var(--art)'}}>◈ {t.gArt}</div>
+                {visArtActive.map((ae,i)=>(
+                  <ArtCard key={i} ae={ae} focused={focusArtKey==='art:'+ae.artStart}
+                    t={t} dis={dis} onFocus={doFocusArt} onDismiss={toggleDis}/>
+                ))}
+              </>}
+              {visBareActive.length>0&&<>
+                <div className="sec-lbl" style={{color:'var(--bare)'}}>∅ {t.gBare}</div>
+                {visBareActive.map((bt,i)=>(
+                  <BareCard key={i} bt={bt} focused={focusBareKey==='bare:'+bt.termStart}
+                    t={t} dis={dis} onFocus={doFocusBare} onDismiss={toggleDis}/>
+                ))}
+              </>}
+              {okSigns.length>0&&<>
+                <div className="sec-lbl" style={{color:'var(--ok)'}}>✓ {t.gOk}</div>
+                {okSigns.map(([sign,sData])=>(
+                  <SignCard key={sign} sign={sign} sData={sData} termData={termData}
+                    mode={mode} focused={focusSign===sign} t={t} lang={lang}
+                    dis={dis} mwo={mwo} onFocus={doFocusSign} onDismiss={toggleDis}/>
+                ))}
+              </>}
+              {errSigns.filter(([s])=>dis.has('s:'+s)).length>0&&<>
+                <div className="sec-lbl" style={{color:'var(--text-dim)'}}>↩ {t.gDis}</div>
+                {errSigns.filter(([s])=>dis.has('s:'+s)).map(([sign,sData])=>(
+                  <SignCard key={sign} sign={sign} sData={sData} termData={termData}
+                    mode={mode} focused={false} t={t} lang={lang}
+                    dis={dis} mwo={mwo} onFocus={doFocusSign} onDismiss={toggleDis}/>
+                ))}
+              </>}
+              {disCt>0&&<div className="dis-section">
+                <div className="dis-hdr">
+                  <span>↩ {t.disCt(disCt)}</span>
+                  <button className="ra-btn" onClick={restoreAll}>{t.restoreAll}</button>
+                </div>
+              </div>}
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  </>);
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+</script>
+</body>
+</html>
