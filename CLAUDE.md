@@ -10,6 +10,8 @@ Patent documents must maintain strict consistency between reference signs (numer
 2. **Inconsistent term-to-sign mappings** - Same term associated with different signs
 3. **Article usage errors** - Incorrect use of definite ("the") vs indefinite ("a"/"an") articles
 4. **Claims formatting** - Reference signs not enclosed in parentheses (required in claims)
+5. **Missing signs** - Terms that appear without their reference sign nearby
+6. **Orphaned signs** - Signs present in description but not claims, or vice versa
 
 ## Architecture
 
@@ -22,26 +24,33 @@ Single HTML file (`index.html`) containing:
 
 | Component | Location (line) | Purpose |
 |-----------|-----------------|---------|
-| `App` | 555 | Main application state and layout |
-| `SignCard` | 483 | Displays a reference sign with its associated terms |
-| `ArtCard` | 535 | Displays article usage errors |
-| `CtxMenu` | 462 | Right-click context menu |
+| `App` | 747 | Main application state and layout |
+| `SignCard` | 654 | Displays a reference sign with its associated terms |
+| `ArtCard` | 709 | Displays article usage errors |
+| `BareCard` | 729 | Displays missing-sign (bare term) errors |
+| `CtxMenu` | 633 | Right-click context menu |
 
 ### Core Functions
 
 | Function | Location (line) | Purpose |
 |----------|-----------------|---------|
-| `tokenize()` | 288 | Splits text into word/number tokens |
-| `extractData()` | 310 | Extracts signs, terms, and article usage |
-| `classify()` | 395 | Determines if a sign has errors |
-| `buildHtml()` | 422 | Generates highlighted HTML for the backdrop |
-| `stemEn()` / `stemDe()` | 257, 276 | Language-specific word stemming |
+| `tokenize()` | 399 | Splits text into word/number tokens |
+| `extractData()` | 421 | Extracts signs, terms, article usage, and bare terms |
+| `classify()` | 557 | Determines if a sign has errors |
+| `buildHtml()` | 588 | Generates highlighted HTML for the backdrop |
+| `getAllErrors()` | 566 | Collects all error positions for navigation |
+| `findAtPos()` | 623 | Finds sign/article at a given character position |
+| `stemEn()` / `stemDe()` | 295, 347 | Language-specific word stemming |
 
 ## Features
 
 ### Modes
-- **Description Mode**: Validates sign-term consistency throughout the text
+- **Description Mode**: Validates sign-term consistency throughout the text; each mode maintains its own text buffer
 - **Claims Mode**: Additionally checks that signs are wrapped in parentheses `(10)`
+- Mode buttons show a dot indicator when their buffer contains text
+
+### Cross-reference
+- When both Description and Claims buffers have content, a **Cross-reference** section appears in the sidebar listing signs present in one buffer but absent from the other
 
 ### Languages
 - **English (EN)**: English article rules (a/an vs the)
@@ -52,32 +61,43 @@ Single HTML file (`index.html`) containing:
 
 ### Error Management
 - Click errors in sidebar to navigate to occurrence in text
+- Hover a sign number in the editor to highlight its sidebar card; hover a card to highlight its marks in the editor
 - Use arrow buttons in status bar to cycle through errors
 - Dismiss individual errors or all errors
 - Right-click context menu for advanced options
+- **Reset all** button (bottom-right, fixed) clears multi-word overrides and dismissed errors
 
 ### Multi-word Terms
 - Auto-detects ordinal patterns ("first bearing", "second bearing")
 - Manual override via context menu "Extend term" / "Reduce term"
 - Settings stored in `localStorage` (`rsc_mwo`)
+- Words consumed by a multi-word term are not flagged as bare-term errors
+
+### Article Checking
+- Flags definite articles on the **first use** of a term (should introduce with "a"/"an")
+- Flags indefinite articles on **subsequent uses** of a term (should use "the")
+- First use is determined by document position, not by the first occurrence that has an article
 
 ## Data Flow
 
 ```
-User Input (textarea)
+User Input (textarea — per-mode buffer)
        |
        v
   tokenize() ──> Array of {word, start, end}
        |
        v
-  extractData() ──> {signData, termData, artErrors}
+  extractData() ──> {signData, termData, artErrors, bareTerms}
        |
        v
   classify() ──> 'warn' | 'ok' for each sign
        |
        v
   buildHtml() ──> Highlighted HTML for backdrop overlay
+                  (marks carry data-sign attribute for hover)
 ```
+
+Cross-reference runs `extractData` on both buffers independently and compares sign sets.
 
 ## localStorage Keys
 
@@ -89,7 +109,7 @@ User Input (textarea)
 ## Known Limitations / Potential Improvements
 
 ### Data Persistence
-- [ ] Text content is not persisted - lost on page refresh
+- [ ] Text content is not persisted — lost on page refresh
 - [ ] Consider adding `localStorage` persistence or file save/load
 
 ### Export Features
@@ -108,16 +128,8 @@ User Input (textarea)
 - [ ] Focus management in context menu needs work
 
 ### Theming
-- [ ] Some highlight colors in `.h-wt` class (line 75) use hardcoded oklch values
-- [ ] Some inline styles don't respect theme variables
-
-### i18n
-- [ ] "All consistent" message (line 732) is hardcoded in English
 - [ ] Theme toggle labels ("Light", "System", "Dark") are not localized
-
-### Mobile / Responsive
-- [ ] Fixed sidebar width (360px) doesn't adapt to small screens
-- [ ] Editor/sidebar layout should stack on mobile
+- [ ] "All consistent" message is hardcoded in English
 
 ### Performance
 - [ ] Large documents may cause lag (no virtualization)
@@ -128,9 +140,9 @@ User Input (textarea)
 - [ ] Could add support for other European languages
 
 ### Sign Detection
-- [ ] Currently only detects 1-3 digit numbers (10-999)
-- [ ] Some patents use 4-digit signs or letter prefixes (A10, B12)
-- [ ] Signs without preceding terms are currently ignored
+- [ ] Detects 1–5 digit numbers (1–99999) with optional trailing letter (e.g. `12a`)
+- [ ] Letter-prefix signs (A10, B12) are not yet supported
+- [ ] Signs without a preceding term are currently ignored
 
 ### Undo/Redo
 - [ ] No undo for dismiss actions
@@ -147,7 +159,7 @@ No build process required. Simply edit `index.html` and refresh the browser.
 - Google Fonts: Space Grotesk, JetBrains Mono
 
 ### Testing
-Open `index.html` in a browser and paste sample patent text:
+Open `index.html` in a browser and paste sample patent text into Description mode:
 
 ```
 The device 10 comprises a housing 12 and a cover 14.
@@ -163,3 +175,5 @@ The housing 12 is connected to the casing 12.
 ```
 
 Expected: Sign 12 should appear as "Inconsistency" with both "housing" and "casing" shown.
+
+To test cross-reference: paste description text in Description mode and different signs in Claims mode. The Cross-reference section should list signs missing from each buffer.
