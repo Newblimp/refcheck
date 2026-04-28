@@ -492,10 +492,10 @@ function extractData(text,lang,mwo={},autoMW=true){
   for(const k of Object.keys(baseToTerms))
     baseToTerms[k].sort((a,b)=>b.split(' ').length-a.split(' ').length);
 
-  // Collect all positions already associated with a sign
-  const knownSpans=new Set();
+  // Collect all term ranges already associated with a sign
+  const knownRanges=[];
   for(const sData of Object.values(signData))
-    for(const p of sData.positions)knownSpans.add(`${p.termStart}-${p.termEnd}`);
+    for(const p of sData.positions)knownRanges.push([p.termStart,p.termEnd]);
 
   const bareTerms=[];
   const bareSpans=new Set();
@@ -512,7 +512,9 @@ function extractData(text,lang,mwo={},autoMW=true){
       }
       if(!match)continue;
       const tStart=toks[i-(wc-1)].start,tEnd=toks[i].end;
-      if(knownSpans.has(`${tStart}-${tEnd}`))break;
+      let coveredByKnown=false;
+      for(const[ks,ke]of knownRanges){if(tStart>=ks&&tEnd<=ke){coveredByKnown=true;break;}}
+      if(coveredByKnown)break;
       if(bareSpans.has(`${tStart}-${tEnd}`))break;
       // Skip if immediately followed by a sign token
       const nxt=toks[i+1];
