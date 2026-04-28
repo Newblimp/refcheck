@@ -95,6 +95,8 @@ mark.h-focus{outline:1.5px solid var(--accent);border-radius:3px}
 .nav-btn:hover{background:var(--border2);color:var(--text)}
 .restore-btn{font-size:11px;font-family:var(--font-ui);background:none;border:1px solid var(--border2);border-radius:5px;color:var(--text-dim);cursor:pointer;padding:3px 8px;transition:all .12s;white-space:nowrap}
 .restore-btn:hover{border-color:var(--warn);color:var(--warn)}
+.reset-btn{position:fixed;bottom:16px;right:16px;font-size:11px;font-family:var(--font-ui);background:var(--surface2);border:1px solid var(--border2);border-radius:6px;color:var(--text-dim);cursor:pointer;padding:5px 10px;transition:all .15s;z-index:100;opacity:.7}
+.reset-btn:hover{border-color:#e05252;color:#e05252;opacity:1}
 
 /* OVERVIEW */
 .ov-pane{display:flex;flex-direction:column;overflow:hidden;background:var(--surface)}
@@ -206,6 +208,7 @@ const T={
     wdCt:n=>`${n}w`,
     gBare:"Missing Signs",bareLbl:"Missing",
     bareTerm:(term,signs)=>`"${term}" — missing sign (${signs.join(', ')})`,
+    resetAll:"Reset all",
   },
   de:{
     appTitle:"BezZeichen",appSub:"Prüfer",modeDesc:"Beschreibung",modeClaims:"Ansprüche",
@@ -238,6 +241,7 @@ const T={
     wdCt:n=>`${n}W`,
     gBare:"Fehlende Zeichen",bareLbl:"Fehlend",
     bareTerm:(term,signs)=>`„${term}" — fehlendes Bezugszeichen (${signs.join(', ')})`,
+    resetAll:"Zurücksetzen",
   }
 };
 
@@ -851,6 +855,12 @@ function App(){
     else if(a==='restore-all')restoreAll();
   }
 
+  function doReset(){
+    setDis(new Set());
+    setMwo({});
+    try{localStorage.removeItem('rsc_mwo');}catch{}
+  }
+
   return(<>
     {ctx&&<CtxMenu menu={ctx} onClose={()=>setCtx(null)} onAction={handleCtxAction}/>}
 
@@ -987,6 +997,7 @@ function App(){
         </div>
       </div>
     </div>
+    <button className="reset-btn" onClick={doReset} title={t.resetAll}>{t.resetAll}</button>
   </>);
 }
 
