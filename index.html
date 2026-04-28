@@ -44,7 +44,7 @@ html,body,#root{height:100%;background:var(--bg);color:var(--text);font-family:v
 #root{display:flex;flex-direction:column;overflow:hidden}
 
 /* TOP BAR */
-.topbar{display:flex;align-items:center;gap:14px;padding:0 18px;height:52px;background:var(--surface);border-bottom:1px solid var(--border);flex-shrink:0}
+.topbar{display:flex;align-items:center;gap:14px;padding:0 18px;min-height:52px;background:var(--surface);border-bottom:1px solid var(--border);flex-shrink:0;flex-wrap:wrap}
 .logo{display:flex;align-items:center;gap:9px;font-weight:700;font-size:15px;letter-spacing:-.3px}
 .logo em{color:var(--accent);font-style:normal}
 .spacer{flex:1}
@@ -61,7 +61,7 @@ html,body,#root{height:100%;background:var(--bg);color:var(--text);font-family:v
 .theme-toggle button:hover:not(.active){color:var(--text)}
 
 /* LAYOUT */
-.main{display:grid;grid-template-columns:1fr 360px;flex:1;overflow:hidden}
+.main{display:grid;grid-template-columns:1fr clamp(260px,30%,360px);flex:1;overflow:hidden}
 
 /* EDITOR */
 .editor-pane{display:flex;flex-direction:column;border-right:1px solid var(--border);overflow:hidden}
@@ -168,6 +168,13 @@ mark.h-focus{outline:1.5px solid var(--accent);border-radius:3px}
 .ctx-item:hover{background:var(--border);color:var(--text)}
 .ctx-item.warn:hover{background:var(--warn-bg);color:var(--warn)}
 .ctx-sep{height:1px;background:var(--border);margin:4px 0}
+@media(max-width:640px){
+  .topbar{padding:6px 12px;row-gap:6px;}
+  .spacer{display:none;}
+  .main{grid-template-columns:1fr;overflow-y:auto;}
+  .editor-pane{height:55vh;border-right:none;border-bottom:1px solid var(--border);}
+  .ov-pane{min-height:55vh;}
+}
 </style>
 </head>
 <body>
@@ -870,7 +877,7 @@ function App(){
           <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
           <polyline points="14 2 14 8 20 8"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="17" x2="12" y2="17"/>
         </svg>
-        <span>{t.appTitle}<em> {t.appSub}</em></span>
+        <span>RefSign<em> Checker</em></span>
       </div>
       <div className="spacer"/>
       <div className="theme-toggle">
