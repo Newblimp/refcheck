@@ -398,7 +398,7 @@ function detectOrdStems(tokens,lang){
 function extractData(text,lang,mwo={},autoMW=true){
   const toks=tokenize(text);
   const ordStems=autoMW?detectOrdStems(toks,lang):new Set();
-  const signData={},termData={},artByTerm={};
+  const signData={},termData={},artByTerm={},termFirstPos={};
 
   for(let i=0;i<toks.length;i++){
     const tok=toks[i];
@@ -445,6 +445,9 @@ function extractData(text,lang,mwo={},autoMW=true){
     termData[termStem].signs[sign]=(termData[termStem].signs[sign]||0)+1;
     termData[termStem].rawTerms.add(termStr);
 
+    if(termFirstPos[termStem]===undefined||termStart<termFirstPos[termStem])
+      termFirstPos[termStem]=termStart;
+
     if(artTok&&termToks.length===allTT.length){
       const al=artTok.word.toLowerCase();
       if(!artByTerm[termStem])artByTerm[termStem]=[];
@@ -456,9 +459,11 @@ function extractData(text,lang,mwo={},autoMW=true){
   const artErrors=[];
   for(const[ts,occs]of Object.entries(artByTerm)){
     occs.sort((a,b)=>a.artStart-b.artStart);
-    occs.forEach((occ,idx)=>{
-      if(idx===0&&occ.type==='def')artErrors.push({...occ,errType:'first-def'});
-      else if(idx>0&&occ.type==='indef')artErrors.push({...occ,errType:'repeat-indef'});
+    const firstTermPos=termFirstPos[ts]??Infinity;
+    occs.forEach((occ)=>{
+      const isFirst=occ.termStart===firstTermPos;
+      if(isFirst&&occ.type==='def')artErrors.push({...occ,errType:'first-def'});
+      else if(!isFirst&&occ.type==='indef')artErrors.push({...occ,errType:'repeat-indef'});
     });
     // German gender consistency: flag if nominative def articles conflict
     if(lang==='de'){
