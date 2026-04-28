@@ -84,6 +84,12 @@ mark.h-bare{background:var(--bare-bg);color:var(--bare)!important;border-radius:
 mark.h-ok{background:transparent;color:var(--text)!important}
 mark.h-dis{background:transparent;color:var(--text-dim)!important;border-bottom:1px dotted var(--text-dim)}
 mark.h-focus{outline:1.5px solid var(--accent);border-radius:3px}
+mark.h-hover{box-shadow:0 0 0 2px var(--accent);border-radius:3px;}
+.sign-card.hovered{background:var(--surface2);border-color:var(--border);}
+.buf-dot{display:inline-block;width:5px;height:5px;border-radius:50%;background:currentColor;margin-left:5px;vertical-align:middle;opacity:.6}
+.orphan-card{display:flex;align-items:center;gap:8px;padding:5px 8px;border-radius:6px;margin-bottom:3px;}
+.orphan-sign{font-family:var(--font-mono);font-size:13px;font-weight:600;color:var(--text-muted);}
+.orphan-msg{font-size:11.5px;color:var(--text-dim);}
 
 /* STATUS BAR */
 .statusbar{display:flex;align-items:center;gap:10px;padding:6px 16px;border-top:1px solid var(--border);background:var(--surface);flex-shrink:0;min-height:36px;flex-wrap:wrap}
@@ -216,6 +222,9 @@ const T={
     gBare:"Missing Signs",bareLbl:"Missing",
     bareTerm:(term,signs)=>`"${term}" — missing sign (${signs.join(', ')})`,
     resetAll:"Reset all",
+    crossRefLbl:"Cross-reference",
+    missingInDesc:"in claims, not in description",
+    missingInClaims:"in description, not in claims",
   },
   de:{
     appTitle:"BezZeichen",appSub:"Prüfer",modeDesc:"Beschreibung",modeClaims:"Ansprüche",
@@ -249,6 +258,9 @@ const T={
     gBare:"Fehlende Zeichen",bareLbl:"Fehlend",
     bareTerm:(term,signs)=>`„${term}" — fehlendes Bezugszeichen (${signs.join(', ')})`,
     resetAll:"Zurücksetzen",
+    crossRefLbl:"Quervergleich",
+    missingInDesc:"in Ansprüchen, nicht in Beschreibung",
+    missingInClaims:"in Beschreibung, nicht in Ansprüchen",
   }
 };
 
@@ -582,7 +594,7 @@ function buildHtml(text,signData,termData,artErrors,bareTerms,mode,dis,focusSign
     const focused=focusSign===sign;
     for(const p of sData.positions){
       const cls=sev==='warn'?'h-warn':sev==='dis'?'h-dis':'h-ok';
-      spans.push({start:p.signStart,end:p.signEnd,cls:focused?cls+' h-focus':cls});
+      spans.push({start:p.signStart,end:p.signEnd,cls:focused?cls+' h-focus':cls,sign});
       if(sev==='warn')spans.push({start:p.termStart,end:p.termEnd,cls:'h-wt'});
     }
   }
@@ -600,7 +612,8 @@ function buildHtml(text,signData,termData,artErrors,bareTerms,mode,dis,focusSign
   let html='',pos=0;
   for(const sp of clean){
     if(sp.start>pos)html+=esc(text.slice(pos,sp.start));
-    html+=`<mark class="${sp.cls}">${esc(text.slice(sp.start,sp.end))}</mark>`;
+    const ds=sp.sign?` data-sign="${sp.sign}"`:'';
+    html+=`<mark class="${sp.cls}"${ds}>${esc(text.slice(sp.start,sp.end))}</mark>`;
     pos=sp.end;
   }
   if(pos<text.length)html+=esc(text.slice(pos));
@@ -638,7 +651,7 @@ function CtxMenu({menu,onClose,onAction}){
 }
 
 // ── SIGN CARD ───────────────────────────────────────────────────────────────
-function SignCard({sign,sData,termData,mode,focused,t,lang,dis,mwo,onFocus,onDismiss}){
+function SignCard({sign,sData,termData,mode,focused,t,lang,dis,mwo,onFocus,onDismiss,hoverSign,onHover}){
   const isDis=dis.has('s:'+sign);
   const sev=isDis?'dim':classify(sign,sData,termData,mode);
   const terms=Object.keys(sData.terms);
@@ -664,7 +677,10 @@ function SignCard({sign,sData,termData,mode,focused,t,lang,dis,mwo,onFocus,onDis
     }
   }
   return(
-    <div className={`sign-card${focused?' focused':''}`} onClick={()=>onFocus(sign)}>
+    <div className={`sign-card${focused?' focused':''}${hoverSign===sign?' hovered':''}`}
+      onClick={()=>onFocus(sign)}
+      onMouseEnter={()=>onHover&&onHover(sign)}
+      onMouseLeave={()=>onHover&&onHover(null)}>
       <div className="sc-row">
         <span className={`badge ${sev}`}>{sign}</span>
         <span className="sc-main">
@@ -731,7 +747,10 @@ function BareCard({bt,focused,t,dis,onFocus,onDismiss}){
 function App(){
   const[lang,setLang]=useState('en');
   const[mode,setMode]=useState('description');
-  const[text,setText]=useState('');
+  const[descText,setDescText]=useState('');
+  const[claimsText,setClaimsText]=useState('');
+  const text=mode==='description'?descText:claimsText;
+  const[hoverSign,setHoverSign]=useState(null);
   const[focusSign,setFocusSign]=useState(null);
   const[focusArtKey,setFocusArtKey]=useState(null);
   const[focusBareKey,setFocusBareKey]=useState(null);
@@ -761,7 +780,19 @@ function App(){
     }
   },[theme]);
 
-  const{signData,termData,artErrors,bareTerms}=useMemo(()=>extractData(text,lang,mwo,true),[text,lang,mwo]);
+  const descResult=useMemo(()=>descText?extractData(descText,lang,mwo,true):null,[descText,lang,mwo]);
+  const claimsResult=useMemo(()=>claimsText?extractData(claimsText,lang,mwo,true):null,[claimsText,lang,mwo]);
+  const _empty={signData:{},termData:{},artErrors:[],bareTerms:[]};
+  const{signData,termData,artErrors,bareTerms}=(mode==='description'?descResult:claimsResult)??_empty;
+
+  const orphaned=useMemo(()=>{
+    if(!descResult||!claimsResult)return null;
+    const dS=new Set(Object.keys(descResult.signData));
+    const cS=new Set(Object.keys(claimsResult.signData));
+    const missingInDesc=[...cS].filter(s=>!dS.has(s)).sort((a,b)=>+a-+b);
+    const missingInClaims=[...dS].filter(s=>!cS.has(s)).sort((a,b)=>+a-+b);
+    return(missingInDesc.length||missingInClaims.length)?{missingInDesc,missingInClaims}:null;
+  },[descResult,claimsResult]);
 
   const allErrors=useMemo(()=>getAllErrors(signData,termData,artErrors,bareTerms,mode,dis),[signData,termData,artErrors,bareTerms,mode,dis]);
 
@@ -770,6 +801,22 @@ function App(){
   const html=useMemo(()=>buildHtml(text,signData,termData,artErrors,bareTerms,mode,dis,focusSign),[text,signData,termData,artErrors,bareTerms,mode,dis,focusSign]);
 
   const syncScroll=useCallback(()=>{if(taRef.current&&bdRef.current)bdRef.current.scrollTop=taRef.current.scrollTop;},[]);
+
+  function handleEditorHover(e){
+    const ta=taRef.current;if(!ta)return;
+    ta.style.pointerEvents='none';
+    const el=document.elementFromPoint(e.clientX,e.clientY);
+    ta.style.pointerEvents='';
+    const sign=el?.dataset?.sign||el?.closest?.('[data-sign]')?.dataset?.sign||null;
+    setHoverSign(prev=>prev===(sign||null)?prev:(sign||null));
+  }
+
+  useEffect(()=>{
+    const bd=bdRef.current;if(!bd)return;
+    bd.querySelectorAll('mark[data-sign]').forEach(m=>{
+      m.classList.toggle('h-hover',m.dataset.sign===hoverSign);
+    });
+  },[hoverSign,html]);
 
   const{errSigns,okSigns}=useMemo(()=>{
     const q=search.toLowerCase(),err=[],ok=[];
@@ -886,8 +933,8 @@ function App(){
         <button className={theme==='dark'?'active':''} onClick={()=>setTheme('dark')}>Dark</button>
       </div>
       <div className="pill-toggle">
-        <button className={mode==='description'?'active':''} onClick={()=>{setMode('description');setFocusSign(null);}}>{t.modeDesc}</button>
-        <button className={mode==='claims'?'active':''} onClick={()=>{setMode('claims');setFocusSign(null);}}>{t.modeClaims}</button>
+        <button className={mode==='description'?'active':''} onClick={()=>{setMode('description');setFocusSign(null);}}>{t.modeDesc}{descText&&<span className="buf-dot"/>}</button>
+        <button className={mode==='claims'?'active':''} onClick={()=>{setMode('claims');setFocusSign(null);}}>{t.modeClaims}{claimsText&&<span className="buf-dot"/>}</button>
       </div>
       <div className="lang-toggle">
         <button className={lang==='en'?'active':''} onClick={()=>setLang('en')}>EN</button>
@@ -901,11 +948,11 @@ function App(){
           <span className="pane-title">{t.editorLbl}</span>
           <span style={{fontSize:'11px',color:'var(--text-dim)',fontFamily:'var(--font-mono)'}}>{t.charCount(text.length)}</span>
         </div>
-        <div className="editor-wrap">
+        <div className="editor-wrap" onMouseMove={handleEditorHover} onMouseLeave={()=>setHoverSign(null)}>
           <div className="backdrop" ref={bdRef} aria-hidden="true" dangerouslySetInnerHTML={{__html:html}}/>
           <textarea className="editor-ta" ref={taRef} value={text}
             placeholder={mode==='description'?t.placeholder_desc:t.placeholder_claims}
-            onChange={e=>{setText(e.target.value);setFocusSign(null);}}
+            onChange={e=>{mode==='description'?setDescText(e.target.value):setClaimsText(e.target.value);setFocusSign(null);}}
             onScroll={syncScroll} onContextMenu={handleCtxMenu}
             spellCheck={false} autoCorrect="off" autoCapitalize="off"/>
         </div>
@@ -960,7 +1007,8 @@ function App(){
                 {errSignsActive.map(([sign,sData])=>(
                   <SignCard key={sign} sign={sign} sData={sData} termData={termData}
                     mode={mode} focused={focusSign===sign} t={t} lang={lang}
-                    dis={dis} mwo={mwo} onFocus={doFocusSign} onDismiss={toggleDis}/>
+                    dis={dis} mwo={mwo} onFocus={doFocusSign} onDismiss={toggleDis}
+                    hoverSign={hoverSign} onHover={setHoverSign}/>
                 ))}
               </>}
               {visArtActive.length>0&&<>
@@ -982,7 +1030,8 @@ function App(){
                 {okSigns.map(([sign,sData])=>(
                   <SignCard key={sign} sign={sign} sData={sData} termData={termData}
                     mode={mode} focused={focusSign===sign} t={t} lang={lang}
-                    dis={dis} mwo={mwo} onFocus={doFocusSign} onDismiss={toggleDis}/>
+                    dis={dis} mwo={mwo} onFocus={doFocusSign} onDismiss={toggleDis}
+                    hoverSign={hoverSign} onHover={setHoverSign}/>
                 ))}
               </>}
               {errSigns.filter(([s])=>dis.has('s:'+s)).length>0&&<>
@@ -990,7 +1039,8 @@ function App(){
                 {errSigns.filter(([s])=>dis.has('s:'+s)).map(([sign,sData])=>(
                   <SignCard key={sign} sign={sign} sData={sData} termData={termData}
                     mode={mode} focused={false} t={t} lang={lang}
-                    dis={dis} mwo={mwo} onFocus={doFocusSign} onDismiss={toggleDis}/>
+                    dis={dis} mwo={mwo} onFocus={doFocusSign} onDismiss={toggleDis}
+                    hoverSign={hoverSign} onHover={setHoverSign}/>
                 ))}
               </>}
               {disCt>0&&<div className="dis-section">
@@ -999,6 +1049,21 @@ function App(){
                   <button className="ra-btn" onClick={restoreAll}>{t.restoreAll}</button>
                 </div>
               </div>}
+              {orphaned&&<>
+                <div className="sec-lbl" style={{color:'var(--text-muted)'}}>⇄ {t.crossRefLbl}</div>
+                {orphaned.missingInDesc.map(s=>(
+                  <div className="orphan-card" key={'od'+s}>
+                    <span className="orphan-sign">{s}</span>
+                    <span className="orphan-msg">{t.missingInDesc}</span>
+                  </div>
+                ))}
+                {orphaned.missingInClaims.map(s=>(
+                  <div className="orphan-card" key={'oc'+s}>
+                    <span className="orphan-sign">{s}</span>
+                    <span className="orphan-msg">{t.missingInClaims}</span>
+                  </div>
+                ))}
+              </>}
             </>
           )}
         </div>
