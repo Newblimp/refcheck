@@ -530,7 +530,7 @@ function extractData(text,lang,mwo={},autoMW=true){
 
 // ── CLASSIFICATION ─────────────────────────────────────────────────────────
 function classify(sign,sData,termData,mode){
-  if(mode==='claims')return sData.count>sData.inPC?'warn':'ok';
+  if(mode==='claims'&&sData.count>sData.inPC)return 'warn';
   if(Object.keys(sData.terms).length>1)return 'warn';
   for(const t of Object.keys(sData.terms)){
     if(termData[t]&&Object.keys(termData[t].signs).length>1)return 'warn';
