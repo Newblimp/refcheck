@@ -853,16 +853,20 @@ function App(){
   const{errSigns,okSigns}=useMemo(()=>{
     const q=search.toLowerCase(),err=[],ok=[];
     for(const[sign,sData]of Object.entries(signData)){
-      if(q&&!sign.includes(q))continue;
+      if(q&&!sign.includes(q)){
+        const termMatch=Object.keys(sData.terms).some(ts=>
+          [...(termData[ts]?.rawTerms||[])].some(r=>r.includes(q)));
+        if(!termMatch)continue;
+      }
       (classify(sign,sData,termData,mode)==='warn'?err:ok).push([sign,sData]);
     }
     const byN=([a],[b])=>parseInt(a)-parseInt(b);
     return{errSigns:err.sort(byN),okSigns:ok.sort(byN)};
   },[signData,termData,mode,search,dis]);
 
-  const visArt=useMemo(()=>artErrors.filter(ae=>!search||ae.termStem.includes(search.toLowerCase())),[artErrors,search]);
+  const visArt=useMemo(()=>{const q=search.toLowerCase();return artErrors.filter(ae=>!q||ae.termStem.includes(q)||[...(termData[ae.termStem]?.rawTerms||[])].some(r=>r.includes(q)));},[artErrors,termData,search]);
   const visArtActive=visArt.filter(ae=>!dis.has('a:'+ae.termStem));
-  const visBare=useMemo(()=>bareTerms.filter(bt=>!search||bt.termStem.includes(search.toLowerCase())),[bareTerms,search]);
+  const visBare=useMemo(()=>{const q=search.toLowerCase();return bareTerms.filter(bt=>!q||bt.term.includes(q)||bt.termStem.includes(q));},[bareTerms,search]);
   const visBareActive=visBare.filter(bt=>!dis.has('b:'+bt.termStem));
   const errSignsActive=errSigns.filter(([s])=>!dis.has('s:'+s));
   const totalErrs=errSignsActive.length+visArtActive.length+visBareActive.length;
