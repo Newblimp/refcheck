@@ -225,6 +225,8 @@ const T={
     crossRefLbl:"Cross-reference",
     missingInDesc:"in claims, not in description",
     missingInClaims:"in description, not in claims",
+    crossSignConflict:(dT,cT)=>`"${dT}" (desc) · "${cT}" (claims)`,
+    crossTermConflict:(dS,cS)=>`sign ${dS} (desc) · ${cS} (claims)`,
   },
   de:{
     appTitle:"BezZeichen",appSub:"Prüfer",modeDesc:"Beschreibung",modeClaims:"Ansprüche",
@@ -261,6 +263,8 @@ const T={
     crossRefLbl:"Quervergleich",
     missingInDesc:"in Ansprüchen, nicht in Beschreibung",
     missingInClaims:"in Beschreibung, nicht in Ansprüchen",
+    crossSignConflict:(dT,cT)=>`„${dT}" (Beschr.) · „${cT}" (Anspr.)`,
+    crossTermConflict:(dS,cS)=>`Zeichen ${dS} (Beschr.) · ${cS} (Anspr.)`,
   }
 };
 
@@ -791,7 +795,35 @@ function App(){
     const cS=new Set(Object.keys(claimsResult.signData));
     const missingInDesc=[...cS].filter(s=>!dS.has(s)).sort((a,b)=>+a-+b);
     const missingInClaims=[...dS].filter(s=>!cS.has(s)).sort((a,b)=>+a-+b);
-    return(missingInDesc.length||missingInClaims.length)?{missingInDesc,missingInClaims}:null;
+
+    // Same sign, different term across buffers
+    const signConflicts=[];
+    for(const sign of [...dS].filter(s=>cS.has(s))){
+      const dT=Object.keys(descResult.signData[sign].terms);
+      const cT=Object.keys(claimsResult.signData[sign].terms);
+      if(!dT.some(t=>cT.includes(t))){
+        const dRaw=[...new Set(dT.flatMap(ts=>[...(descResult.termData[ts]?.rawTerms||[])]))];
+        const cRaw=[...new Set(cT.flatMap(ts=>[...(claimsResult.termData[ts]?.rawTerms||[])]))];
+        signConflicts.push({sign,descTerms:dRaw,claimsTerms:cRaw});
+      }
+    }
+    signConflicts.sort((a,b)=>+a.sign-+b.sign);
+
+    // Same term, different sign across buffers
+    const termConflicts=[];
+    const dTD=new Set(Object.keys(descResult.termData));
+    const cTD=new Set(Object.keys(claimsResult.termData));
+    for(const ts of [...dTD].filter(t=>cTD.has(t))){
+      const dSigns=Object.keys(descResult.termData[ts].signs);
+      const cSigns=Object.keys(claimsResult.termData[ts].signs);
+      if(!dSigns.some(s=>cSigns.includes(s))){
+        const rawTerm=[...(descResult.termData[ts].rawTerms||[])][0]||ts;
+        termConflicts.push({ts,rawTerm,descSigns:dSigns.sort((a,b)=>+a-+b),claimsSigns:cSigns.sort((a,b)=>+a-+b)});
+      }
+    }
+
+    const hasAny=missingInDesc.length||missingInClaims.length||signConflicts.length||termConflicts.length;
+    return hasAny?{missingInDesc,missingInClaims,signConflicts,termConflicts}:null;
   },[descResult,claimsResult]);
 
   const allErrors=useMemo(()=>getAllErrors(signData,termData,artErrors,bareTerms,mode,dis),[signData,termData,artErrors,bareTerms,mode,dis]);
@@ -1051,6 +1083,18 @@ function App(){
               </div>}
               {orphaned&&<>
                 <div className="sec-lbl" style={{color:'var(--text-muted)'}}>⇄ {t.crossRefLbl}</div>
+                {orphaned.signConflicts.map(({sign,descTerms,claimsTerms})=>(
+                  <div className="orphan-card" key={'sc'+sign}>
+                    <span className="orphan-sign">{sign}</span>
+                    <span className="orphan-msg">{t.crossSignConflict(descTerms[0]||'?',claimsTerms[0]||'?')}</span>
+                  </div>
+                ))}
+                {orphaned.termConflicts.map(({ts,rawTerm,descSigns,claimsSigns})=>(
+                  <div className="orphan-card" key={'tc'+ts}>
+                    <span className="orphan-sign">"{rawTerm}"</span>
+                    <span className="orphan-msg">{t.crossTermConflict(descSigns.join('/'),claimsSigns.join('/'))}</span>
+                  </div>
+                ))}
                 {orphaned.missingInDesc.map(s=>(
                   <div className="orphan-card" key={'od'+s}>
                     <span className="orphan-sign">{s}</span>
