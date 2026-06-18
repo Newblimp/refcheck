@@ -1,5 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import { extractData, classify, getAllErrors } from './extract.js';
+import { extractData, classify, getAllErrors, detectOrdStems } from './extract.js';
+import { tokenize } from './tokenize.js';
+import { stem } from './stem.js';
 
 // Raw terms recorded for a given sign (across all its term stems).
 const rawTermsFor = (res, sign) =>
@@ -125,6 +127,109 @@ describe('extractData — bare terms', () => {
     const res = extractData('The housing 12 is shown. The housing is metallic.', 'en');
     expect(res.bareTerms.some(bt => bt.term === 'housing')).toBe(true);
   });
+
+  it('does NOT flag a term that always carries its sign', () => {
+    const res = extractData('The housing 12 is shown. The housing 12 is metallic.', 'en');
+    expect(res.bareTerms).toEqual([]);
+  });
+
+  it('records the signs associated with a bare term for the hint', () => {
+    const res = extractData('The cover 14 is shown. The cover is removed.', 'en');
+    const bare = res.bareTerms.find(bt => bt.term === 'cover');
+    expect(bare.signs).toEqual(['14']);
+  });
+
+  it('does not flag a term that has never been associated with a sign', () => {
+    // "metal" never appears with a sign, so termData has no entry for it.
+    const res = extractData('The housing 12 is made of metal. The metal is hard.', 'en');
+    expect(res.bareTerms.some(bt => bt.term === 'metal')).toBe(false);
+  });
+});
+
+describe('detectOrdStems & multi-word terms', () => {
+  it('detects an ordinal-led multi-word term stem', () => {
+    const text = 'The first bearing 20 supports the shaft 22.';
+    const stems = detectOrdStems(tokenize(text), 'en', text, false);
+    expect(stems.has(stem('bearing', 'en'))).toBe(true);
+  });
+
+  it('auto-extends "first bearing" / "second bearing" into two-word terms', () => {
+    const res = extractData(
+      'The first bearing 20 supports the shaft 22. The second bearing 21 is at the end.', 'en');
+    expect(Object.keys(res.signData['20'].terms)).toEqual([stem('first', 'en') + ' ' + stem('bearing', 'en')]);
+    expect(Object.keys(res.signData['21'].terms)[0]).toContain(stem('bearing', 'en'));
+    // The two bearings are distinct multi-word terms, so neither is an inconsistency.
+    expect(classify('20', res.signData['20'], res.termData, 'description')).toBe('ok');
+    expect(classify('21', res.signData['21'], res.termData, 'description')).toBe('ok');
+  });
+
+  it('honours a manual multi-word override (mwo)', () => {
+    const res = extractData('The control unit 10 is here. The control unit 10 again.',
+      'en', { [stem('unit', 'en')]: 1 }, false, false);
+    expect(Object.keys(res.signData['10'].terms)).toEqual(['control unit']);
+  });
+
+  it('treats a single-word term as one word when no override applies', () => {
+    const res = extractData('The control unit 10 is here.', 'en', {}, false, false);
+    expect(Object.keys(res.signData['10'].terms)).toEqual([stem('unit', 'en')]);
+  });
+});
+
+describe('extractData — trailing-letter & standalone signs', () => {
+  it('keeps 12a and 12b as distinct signs', () => {
+    const res = extractData('The cover 12a is here. The cover 12b is there.', 'en');
+    expect(Object.keys(res.signData).sort()).toEqual(['12a', '12b']);
+  });
+
+  it('ignores a number with no preceding term (e.g. after an excluded word)', () => {
+    const res = extractData('See 10 and 20.', 'en');
+    expect(Object.keys(res.signData)).toEqual([]);
+  });
+});
+
+describe('extractData — German', () => {
+  it('extracts signs and stems German terms', () => {
+    const res = extractData(
+      'Die Vorrichtung 10 umfasst ein Gehäuse 12. Das Gehäuse 12 besteht aus Aluminium.', 'de');
+    expect(Object.keys(res.signData).sort()).toEqual(['10', '12']);
+    // Singular/plural German forms collapse, so 12 has a single term stem.
+    expect(Object.keys(res.signData['12'].terms)).toHaveLength(1);
+  });
+
+  it('flags a German definite article on first mention', () => {
+    const res = extractData('Das Gehäuse 12 ist groß.', 'de');
+    const fd = res.artErrors.find(e => e.errType === 'first-def');
+    expect(fd).toBeTruthy();
+    expect(fd.article).toBe('das');
+  });
+
+  it('flags a German indefinite article on a later mention', () => {
+    const res = extractData('Ein Gehäuse 12 ist da. Ein Gehäuse 12 ist hier.', 'de');
+    const ri = res.artErrors.find(e => e.errType === 'repeat-indef');
+    expect(ri).toBeTruthy();
+    expect(ri.article).toBe('ein');
+  });
+
+  it('flags a German gender (der/die/das) conflict on the same term', () => {
+    const res = extractData('Der Deckel 14 ist da. Die Deckel 14 ist weg. Das Deckel 14 ist hier.', 'de');
+    const gender = res.artErrors.filter(e => e.errType === 'de-gender');
+    expect(gender.map(e => e.article)).toEqual(['die', 'das']);
+    expect(gender[0].prevArt).toBe('der');
+  });
+
+  it('does not raise a gender conflict when the article is consistent', () => {
+    const res = extractData('Der Deckel 14 ist da. Der Deckel 14 ist weg.', 'de');
+    expect(res.artErrors.some(e => e.errType === 'de-gender')).toBe(false);
+  });
+});
+
+describe('classify — claims parentheses', () => {
+  it('warns when a sign appears both inside and outside parentheses', () => {
+    const res = extractData('1. A housing (12) and a housing 12.', 'en', {}, true, true);
+    expect(res.signData['12'].count).toBe(2);
+    expect(res.signData['12'].inPC).toBe(1);
+    expect(classify('12', res.signData['12'], res.termData, 'claims')).toBe('warn');
+  });
 });
 
 describe('getAllErrors', () => {
@@ -140,5 +245,21 @@ describe('getAllErrors', () => {
     const res = extractData('The housing 12 is connected to the casing 12.', 'en');
     const errs = getAllErrors(res.signData, res.termData, res.artErrors, res.bareTerms, res.numErrors, 'description', new Set(['s:12']));
     expect(errs.some(e => e.type === 'sign' && e.sign === '12')).toBe(false);
+  });
+
+  it('aggregates all four error categories (sign, art, bare, num)', () => {
+    const text = '1. A device 10.\n3. The housing 12 is here. The housing is metal.';
+    const res = extractData(text, 'en', {}, true, true);
+    const errs = getAllErrors(res.signData, res.termData, res.artErrors, res.bareTerms, res.numErrors, 'claims', new Set());
+    const types = new Set(errs.map(e => e.type));
+    expect(types).toEqual(new Set(['sign', 'art', 'bare', 'num']));
+  });
+
+  it('omits a dismissed numbering error by its start key', () => {
+    const text = '1. A device (1).\n3. A housing (2).';
+    const res = extractData(text, 'en', {}, true, true);
+    const ne = res.numErrors[0];
+    const errs = getAllErrors(res.signData, res.termData, res.artErrors, res.bareTerms, res.numErrors, 'claims', new Set(['n:' + ne.start]));
+    expect(errs.some(e => e.type === 'num')).toBe(false);
   });
 });

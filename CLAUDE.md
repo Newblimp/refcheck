@@ -159,6 +159,8 @@ User Input (textarea — per-mode buffer)
 - [ ] Detects 1–5 digit numbers (1–99999) with optional trailing letter (e.g. `12a`)
 - [ ] Letter-prefix signs (A10, B12) are not yet supported
 - [ ] Signs without a preceding term are currently ignored
+- [ ] A sign glued to a word (`housing12`, `12housing`) is **not** tokenized at all —
+      signs must be whitespace/punctuation-separated from their term to be detected
 
 ### Undo/Redo
 - [ ] No undo for dismiss actions
@@ -192,9 +194,21 @@ Actions"** in Settings → Pages. The Vite `base` is `/refcheck/` (project-site 
 
 ### Testing
 Unit tests live alongside the logic in `src/logic/*.test.js` and a UI render smoke test
-in `src/components/App.smoke.test.jsx`. Run with `npm test`. The suite covers the
-tokenizer, stemmer, extraction/classification, claim-numbering, cross-reference, and
-HTML builder.
+in `src/components/App.smoke.test.jsx`. Run with `npm test` (currently **91 tests**).
+Coverage by area:
+
+| File | Covers |
+|------|--------|
+| `tokenize.test.js` | word/number spans, trailing-letter signs (`12a`), German letters/hyphens, >5-digit runs, glued word+number, decimals |
+| `stem.test.js` | EN Porter steps (`-s`/`-ies`/`-ing`/`-ed`/`-tion`, `-ss` retention, short words), DE Snowball (plurals, umlaut folding, case), dispatch + EN fallback |
+| `constants.test.js` | `likelySign` range + trailing letter, `isClaimNumber` (`.`/`)`, indented, parens, mid-sentence, no terminator), article/ordinal helpers |
+| `extract.test.js` | sign/term consistency, sign↔term inconsistencies, claims parentheses, claim-numbering (sequential, out-of-order, `)`-style, leading-number guard), article errors (EN + DE first-def/repeat-indef), **DE gender conflict**, **ordinal multi-word auto-detect**, **manual `mwo` override**, bare terms (flagged/suppressed/sign-recording), trailing-letter/standalone signs, `getAllErrors` aggregation + dismissal of all four categories |
+| `crossref.test.js` | null/agreement cases, missing-in-desc/claims, numeric sort, sign conflicts, term conflicts |
+| `buildHtml.test.js` | empty input, warn/data-sign marks, numbering highlight, dismissed→`h-dis`, focus class, HTML escaping, non-overlapping marks; `findAtPos` sign/article/null |
+
+Known untested area: the React UI is only exercised by a server-render smoke test
+(`App.smoke.test.jsx`); interactive behaviour (hover, navigation, context menu) has no
+DOM-level tests because the Vitest environment is `node`, not `jsdom`.
 
 Manual smoke test — `npm run dev`, then paste into Description mode:
 
