@@ -1,6 +1,6 @@
 # Reference Sign Checker (RefSign Checker)
 
-A browser-based tool for validating reference sign consistency in patent applications. Built as a single-file React application.
+A browser-based tool for validating reference sign consistency in patent applications. Built as a React + Vite application and deployed to GitHub Pages.
 
 ## Purpose
 
@@ -15,32 +15,48 @@ Patent documents must maintain strict consistency between reference signs (numer
 
 ## Architecture
 
-Single HTML file (`index.html`) containing:
-- Inline CSS with CSS custom properties for theming
-- React 18 application compiled via Babel standalone
-- No build step required - runs directly in browser
+A React 18 + Vite project. The UI (JSX components) is separated from the pure
+parsing/validation logic so the logic can be unit-tested in Node with no DOM.
+Styling uses CSS custom properties for theming. The production bundle is built to
+`dist/` and published to GitHub Pages by `.github/workflows/deploy.yml`.
 
-### Key Components
-
-| Component | Location (line) | Purpose |
-|-----------|-----------------|---------|
-| `App` | 747 | Main application state and layout |
-| `SignCard` | 654 | Displays a reference sign with its associated terms |
-| `ArtCard` | 709 | Displays article usage errors |
-| `BareCard` | 729 | Displays missing-sign (bare term) errors |
-| `CtxMenu` | 633 | Right-click context menu |
+```
+index.html              Vite entry (HTML shell; sets initial theme to avoid FOUC)
+src/
+  main.jsx              Mounts <App/> and imports styles.css
+  styles.css            All styles
+  i18n.js               English/German UI strings (T)
+  logic/                Pure, framework-free logic (unit-tested)
+    constants.js        EXCL list, article/ordinal sets, likelySign, isClaimNumber
+    stem.js             stemEn / stemDe / stem (Porter EN, Snowball DE)
+    tokenize.js         tokenize()
+    extract.js          detectOrdStems, extractData, classify, getAllErrors
+    buildHtml.js        esc, buildHtml, findAtPos
+    crossref.js         computeCrossRef (Description ↔ Claims comparison)
+    *.test.js           Vitest unit tests for the above
+  components/           React components
+    App.jsx             Main application state and layout
+    SignCard.jsx        A reference sign with its associated terms
+    ArtCard.jsx         Article-usage errors
+    BareCard.jsx        Missing-sign (bare term) errors
+    NumCard.jsx         Claim-numbering errors
+    CtxMenu.jsx         Right-click context menu
+    App.smoke.test.jsx  Server-render smoke test for the whole UI
+```
 
 ### Core Functions
 
-| Function | Location (line) | Purpose |
-|----------|-----------------|---------|
-| `tokenize()` | 399 | Splits text into word/number tokens |
-| `extractData()` | 421 | Extracts signs, terms, article usage, and bare terms |
-| `classify()` | 557 | Determines if a sign has errors |
-| `buildHtml()` | 588 | Generates highlighted HTML for the backdrop |
-| `getAllErrors()` | 566 | Collects all error positions for navigation |
-| `findAtPos()` | 623 | Finds sign/article at a given character position |
-| `stemEn()` / `stemDe()` | 295, 347 | Language-specific word stemming |
+| Function | Module | Purpose |
+|----------|--------|---------|
+| `tokenize()` | `logic/tokenize.js` | Splits text into word/number tokens |
+| `extractData()` | `logic/extract.js` | Extracts signs, terms, article usage, bare terms, numbering errors |
+| `classify()` | `logic/extract.js` | Determines if a sign has errors |
+| `getAllErrors()` | `logic/extract.js` | Collects all error positions for navigation |
+| `buildHtml()` | `logic/buildHtml.js` | Generates highlighted HTML for the backdrop |
+| `findAtPos()` | `logic/buildHtml.js` | Finds sign/article at a given character position |
+| `computeCrossRef()` | `logic/crossref.js` | Compares the Description and Claims buffers |
+| `isClaimNumber()` | `logic/constants.js` | Detects a line-leading claim number (`1.`, `1)`) |
+| `stemEn()` / `stemDe()` | `logic/stem.js` | Language-specific word stemming |
 
 ## Features
 
@@ -87,7 +103,7 @@ User Input (textarea — per-mode buffer)
   tokenize() ──> Array of {word, start, end}
        |
        v
-  extractData() ──> {signData, termData, artErrors, bareTerms}
+  extractData() ──> {signData, termData, artErrors, bareTerms, numErrors}
        |
        v
   classify() ──> 'warn' | 'ok' for each sign
@@ -97,7 +113,7 @@ User Input (textarea — per-mode buffer)
                   (marks carry data-sign attribute for hover)
 ```
 
-Cross-reference runs `extractData` on both buffers independently and compares sign sets.
+`computeCrossRef` (in `logic/crossref.js`) runs `extractData` on both buffers independently and compares sign sets.
 
 ## localStorage Keys
 
@@ -150,16 +166,37 @@ Cross-reference runs `extractData` on both buffers independently and compares si
 
 ## Development
 
-No build process required. Simply edit `index.html` and refresh the browser.
+React + Vite. Common commands:
 
-### Dependencies (CDN)
-- React 18.3.1
-- ReactDOM 18.3.1
-- Babel Standalone 7.29.0
-- Google Fonts: Space Grotesk, JetBrains Mono
+```bash
+npm install      # first-time setup
+npm run dev      # dev server with hot reload
+npm test         # run the Vitest unit tests
+npm run build    # production bundle → dist/
+npm run preview  # serve the production build locally
+```
+
+Because the app uses native ES modules, run it through the dev/preview server (or the
+live GitHub Pages site) — opening `index.html` directly from disk will not work.
+
+### Deployment
+`.github/workflows/deploy.yml` runs the tests and (on pushes to `main`) builds and
+publishes `dist/` to GitHub Pages. The repo's Pages **source must be set to "GitHub
+Actions"** in Settings → Pages. The Vite `base` is `/refcheck/` (project-site path).
+
+### Dependencies
+- React / ReactDOM 18.3.1 (bundled, not CDN)
+- Vite + @vitejs/plugin-react (build)
+- Vitest (tests)
+- Google Fonts: Space Grotesk, JetBrains Mono (loaded in `index.html`)
 
 ### Testing
-Open `index.html` in a browser and paste sample patent text into Description mode:
+Unit tests live alongside the logic in `src/logic/*.test.js` and a UI render smoke test
+in `src/components/App.smoke.test.jsx`. Run with `npm test`. The suite covers the
+tokenizer, stemmer, extraction/classification, claim-numbering, cross-reference, and
+HTML builder.
+
+Manual smoke test — `npm run dev`, then paste into Description mode:
 
 ```
 The device 10 comprises a housing 12 and a cover 14.
@@ -167,13 +204,6 @@ The housing 12 is made of aluminium.
 The cover 14 is secured to the housing 12 by screws 18.
 ```
 
-Expected: Signs 10, 12, 14, 18 should appear in sidebar as "Consistent".
-
-To test error detection:
-```
-The housing 12 is connected to the casing 12.
-```
-
-Expected: Sign 12 should appear as "Inconsistency" with both "housing" and "casing" shown.
-
-To test cross-reference: paste description text in Description mode and different signs in Claims mode. The Cross-reference section should list signs missing from each buffer.
+Expected: Signs 10, 12, 14, 18 appear in the sidebar as "Consistent". Pasting
+`The housing 12 is connected to the casing 12.` should flag sign 12 as an
+inconsistency showing both "housing" and "casing".
