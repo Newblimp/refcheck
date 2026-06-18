@@ -30,4 +30,30 @@ describe('tokenize', () => {
     // on every side, so no token can terminate inside it.
     expect(tokenize('123456')).toEqual([]);
   });
+
+  it('emits no token when a word and number are glued together', () => {
+    // Known limitation: the lookbehind/lookahead require a non-alphanumeric
+    // boundary, so "housing12" yields neither "housing" nor "12". Signs must be
+    // whitespace- or punctuation-separated from their term to be detected.
+    expect(tokenize('housing12')).toEqual([]);
+    expect(tokenize('12housing')).toEqual([]);
+  });
+
+  it('does not merge a number across a decimal point', () => {
+    // "3.5" — the '.' is not a word/number character, so two tokens appear.
+    expect(tokenize('3.5').map(t => t.word)).toEqual(['3', '5']);
+  });
+
+  it('returns an empty array for text with no word/number characters', () => {
+    expect(tokenize('—  ()  ,')).toEqual([]);
+  });
+
+  it('records correct spans for multiple tokens on a line', () => {
+    const toks = tokenize('a cover 14.');
+    expect(toks).toEqual([
+      { word: 'a', start: 0, end: 1 },
+      { word: 'cover', start: 2, end: 7 },
+      { word: '14', start: 8, end: 10 },
+    ]);
+  });
 });

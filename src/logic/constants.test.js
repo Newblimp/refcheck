@@ -13,6 +13,10 @@ describe('likelySign', () => {
     expect(likelySign('0')).toBe(false);
     expect(likelySign('100000')).toBe(false);
   });
+  it('treats a trailing letter as part of the same sign', () => {
+    expect(likelySign('12b')).toBe(true);
+    expect(likelySign('999a')).toBe(true);
+  });
 });
 
 describe('isClaimNumber', () => {
@@ -45,6 +49,11 @@ describe('isClaimNumber', () => {
   it('does NOT match a mid-sentence "claim 1" reference', () => {
     const text = 'according to claim 1, comprising';
     expect(isClaimNumber(text, tokFor(text, '1'))).toBe(false);
+  });
+
+  it('does NOT match a line-leading number with no terminator', () => {
+    const text = '10 housings were tested';
+    expect(isClaimNumber(text, tokFor(text, '10'))).toBe(false);
   });
 });
 

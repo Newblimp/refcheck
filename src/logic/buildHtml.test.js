@@ -41,6 +41,46 @@ describe('buildHtml', () => {
     const html = buildHtml(bad, r.signData, r.termData, r.artErrors, r.bareTerms, r.numErrors, 'claims', new Set(), null);
     expect(html).toContain('h-num');
   });
+
+  it('renders a dismissed sign as h-dis rather than h-warn', () => {
+    const text = 'The housing 12 is the casing 12.';
+    const r = extractData(text, 'en');
+    const html = buildHtml(text, r.signData, r.termData, r.artErrors, r.bareTerms, r.numErrors,
+      'description', new Set(['s:12']), null);
+    expect(html).toContain('h-dis');
+    expect(html).not.toContain('h-warn');
+  });
+
+  it('adds the h-focus class to the focused sign', () => {
+    const text = 'The housing 12 is large.';
+    const r = extractData(text, 'en');
+    const html = buildHtml(text, r.signData, r.termData, r.artErrors, r.bareTerms, r.numErrors,
+      'description', new Set(), '12');
+    expect(html).toContain('h-focus');
+  });
+
+  it('escapes HTML metacharacters in the surrounding (unmarked) text', () => {
+    const text = 'a <b> housing 12 & more';
+    const r = extractData(text, 'en');
+    const html = buildHtml(text, r.signData, r.termData, r.artErrors, r.bareTerms, r.numErrors,
+      'description', new Set(), null);
+    expect(html).toContain('&lt;b&gt;');
+    expect(html).toContain('&amp;');
+  });
+
+  it('produces non-overlapping, ascending marks', () => {
+    const text = 'The housing 12 is the casing 12. A housing 12.';
+    const r = extractData(text, 'en');
+    const html = buildHtml(text, r.signData, r.termData, r.artErrors, r.bareTerms, r.numErrors,
+      'description', new Set(), null);
+    // Every <mark> should open before the next one — no nested marks.
+    const opens = [...html.matchAll(/<mark/g)].map(m => m.index);
+    const closes = [...html.matchAll(/<\/mark>/g)].map(m => m.index);
+    expect(opens.length).toBe(closes.length);
+    for (let i = 1; i < opens.length; i++) {
+      expect(opens[i]).toBeGreaterThan(closes[i - 1]); // previous mark closed first
+    }
+  });
 });
 
 describe('findAtPos', () => {
@@ -49,5 +89,17 @@ describe('findAtPos', () => {
     const at = findAtPos(13, r.signData, r.artErrors); // inside "12"
     expect(at?.type).toBe('sign');
     expect(at?.sign).toBe('12');
+  });
+
+  it('locates an article error at its position', () => {
+    const r = extractData('The housing 12 is large.', 'en'); // "The" → first-def
+    const at = findAtPos(1, r.signData, r.artErrors); // inside "The"
+    expect(at?.type).toBe('art');
+    expect(at?.ae.article).toBe('the');
+  });
+
+  it('returns null when nothing is at the position', () => {
+    const r = extractData('The housing 12 is large.', 'en');
+    expect(findAtPos(999, r.signData, r.artErrors)).toBeNull();
   });
 });
