@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { likelySign, isClaimNumber, isArt, isOrd, artType } from './constants.js';
+import { likelySign, isClaimNumber, isArt, isOrd, artType, isSignToken, compareSigns } from './constants.js';
 import { tokenize } from './tokenize.js';
 
 describe('likelySign', () => {
@@ -54,6 +54,31 @@ describe('isClaimNumber', () => {
   it('does NOT match a line-leading number with no terminator', () => {
     const text = '10 housings were tested';
     expect(isClaimNumber(text, tokFor(text, '10'))).toBe(false);
+  });
+});
+
+describe('isSignToken', () => {
+  it('accepts plain, lettered and primed signs', () => {
+    expect(isSignToken('10')).toBe(true);
+    expect(isSignToken('12a')).toBe(true);
+    expect(isSignToken("10'")).toBe(true);   // ASCII apostrophe
+    expect(isSignToken('10′')).toBe(true); // U+2032 prime
+  });
+  it('rejects words, out-of-range and uppercase-suffixed numbers', () => {
+    expect(isSignToken('housing')).toBe(false);
+    expect(isSignToken('0')).toBe(false);
+    expect(isSignToken('100000')).toBe(false);
+    expect(isSignToken('12A')).toBe(false); // suffix letter is lowercase-only
+  });
+});
+
+describe('compareSigns', () => {
+  it('orders numerically, then by suffix (10 < 10\' < 10a < 12)', () => {
+    const sorted = ['12', '10a', "10'", '10'].sort(compareSigns);
+    expect(sorted).toEqual(['10', "10'", '10a', '12']);
+  });
+  it('does not collapse a primed sign to its bare number', () => {
+    expect(compareSigns('10', "10'")).not.toBe(0);
   });
 });
 

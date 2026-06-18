@@ -39,6 +39,12 @@ export const T = {
     crossTermConflict: (dS, cS) => `sign ${dS} (desc) · ${cS} (claims)`,
     numberingLbl: "Claim numbering",
     numberingErr: (value, expected) => `claim "${value}" — expected ${expected}`,
+    notIntroducedInDesc: "in claims; appears in description without a term",
+    refListLbl: "Reference list",
+    refListCopy: "Copy",
+    refListCopied: "Copied",
+    refListColSign: "Sign", refListColTerm: "Term", refListColCount: "Count",
+    resetConfirm: "Clear all text and settings?",
   },
   de: {
     appTitle: "BezZeichen", appSub: "Prüfer", modeDesc: "Beschreibung", modeClaims: "Ansprüche",
@@ -79,5 +85,11 @@ export const T = {
     crossTermConflict: (dS, cS) => `Zeichen ${dS} (Beschr.) · ${cS} (Anspr.)`,
     numberingLbl: "Nummerierung",
     numberingErr: (value, expected) => `Anspruch „${value}" — erwartet ${expected}`,
+    notIntroducedInDesc: "in Ansprüchen; in Beschreibung ohne Begriff",
+    refListLbl: "Bezugszeichenliste",
+    refListCopy: "Kopieren",
+    refListCopied: "Kopiert",
+    refListColSign: "Zeichen", refListColTerm: "Begriff", refListColCount: "Anzahl",
+    resetConfirm: "Allen Text und Einstellungen löschen?",
   }
 };

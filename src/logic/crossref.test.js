@@ -64,4 +64,19 @@ describe('computeCrossRef', () => {
     const x = computeCrossRef(d, c);
     expect(x).toBeNull();
   });
+
+  it('flags a claims sign that appears in the description only without a term', () => {
+    // "(12)" in the description is standalone (no term) → noTermSigns.
+    const d = desc('The device 10 has a part. See (12) in the drawing.');
+    const c = claims('1. A device (10) with a housing (12).');
+    const x = computeCrossRef(d, c);
+    expect(x.notIntroducedInDesc).toEqual(['12']);
+    expect(x.missingInDesc).toEqual([]); // present in desc (bare), so not "missing"
+  });
+
+  it('does not flag notIntroducedInDesc when the sign is properly introduced', () => {
+    const d = desc('The device 10 has a housing 12.');
+    const c = claims('1. A device (10) with a housing (12).');
+    expect(computeCrossRef(d, c)).toBeNull();
+  });
 });
