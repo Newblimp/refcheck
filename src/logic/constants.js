@@ -28,6 +28,19 @@ export const isOrd = (w, l) => (l === 'de' ? DE_ORD : EN_ORD).has(w.toLowerCase(
 export const artType = w => ['a', 'an', 'ein', 'eine', 'einer', 'eines', 'einem', 'einen'].includes(w.toLowerCase()) ? 'indef' : 'def';
 export const likelySign = s => { const n = parseInt(s, 10); return n >= 1 && n <= 99999; };
 
+// ── REFERENCE-SIGN PATTERN ───────────────────────────────────────────────────
+// Single source of truth for what a reference sign looks like: 1–5 digits, an
+// optional trailing letter (12a) and an optional trailing prime (10', 10′).
+// SIGN_RE is a bare fragment (no anchors/groups) so it can be interpolated into
+// the tokenizer's alternation and into an anchored test regex.
+export const SIGN_RE = "\\d{1,5}[a-z]?['′]?";
+export const SIGN_RE_ANCHORED = new RegExp('^(?:' + SIGN_RE + ')$');
+// A token is a sign if it has the right shape AND a numeric value in range.
+export const isSignToken = s => SIGN_RE_ANCHORED.test(s) && likelySign(s);
+// Order signs numerically, then by suffix (10 < 10' < 10a < 12). Plain `+a-+b`
+// yields NaN for primed/lettered signs, so always sort through this.
+export const compareSigns = (a, b) => (parseInt(a, 10) - parseInt(b, 10)) || a.localeCompare(b);
+
 // A numeric token that starts a line and is followed by '.' or ')' → claim number
 export function isClaimNumber(text, tok) {
   const after = text[tok.end];

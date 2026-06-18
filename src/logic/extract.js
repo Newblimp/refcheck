@@ -1,4 +1,4 @@
-import { EXCL, isArt, isOrd, artType, likelySign, isClaimNumber } from './constants.js';
+import { EXCL, isArt, isOrd, artType, isSignToken, isClaimNumber, SIGN_RE } from './constants.js';
 import { stem } from './stem.js';
 import { tokenize } from './tokenize.js';
 
@@ -7,7 +7,7 @@ export function detectOrdStems(tokens,lang,text,isClaims){
   const s=new Set();
   for(let i=2;i<tokens.length;i++){
     const t=tokens[i];
-    if(!/^\d{1,5}[a-z]?$/.test(t.word)||!likelySign(t.word))continue;
+    if(!isSignToken(t.word))continue;
     if(isClaims&&isClaimNumber(text,t))continue;
     const p1=tokens[i-1],p2=tokens[i-2];
     if(!p1||!p2)continue;
@@ -18,36 +18,35 @@ export function detectOrdStems(tokens,lang,text,isClaims){
   return s;
 }
 
+// Walk backwards from token index `i` collecting the term tokens (and a leading
+// article) that belong to the sign at `i`. Returns {allTT, artTok}.
+function collectTermToks(toks,i,lang){
+  let j=i-1,artTok=null;
+  const allTT=[];
+  while(j>=0&&allTT.length<5){
+    const t=toks[j];
+    const lo=t.word.toLowerCase();
+    if(/^\d/.test(t.word))break;
+    if(isArt(lo,lang)){artTok=t;break;}
+    if(t.word.length<2){j--;continue;}
+    if(EXCL.has(lo))break;
+    allTT.unshift(t);
+    j--;
+  }
+  return {allTT,artTok};
+}
+
 export function extractData(text,lang,mwo={},autoMW=true,isClaims=false){
   const toks=tokenize(text);
   const ordStems=autoMW?detectOrdStems(toks,lang,text,isClaims):new Set();
   const signData={},termData={},artByTerm={},termFirstPos={};
   const claimNums=[];
+  const noTermSigns=new Set();
 
-  for(let i=0;i<toks.length;i++){
-    const tok=toks[i];
-    if(!/^\d{1,5}[a-z]?$/.test(tok.word)||!likelySign(tok.word))continue;
-    if(isClaims&&isClaimNumber(text,tok)){claimNums.push({value:parseInt(tok.word,10),start:tok.start,end:tok.end});continue;}
-    const sign=tok.word;
-    const signStart=tok.start,signEnd=tok.end;
-    const inParens=signStart>0&&text[signStart-1]==='('&&text[signEnd]===')';
-
-    // Walk backwards for term tokens and article
-    let j=i-1,artTok=null;
-    const allTT=[];
-    while(j>=0&&allTT.length<5){
-      const t=toks[j];
-      const lo=t.word.toLowerCase();
-      if(/^\d/.test(t.word))break;
-      if(isArt(lo,lang)){artTok=t;break;}
-      if(t.word.length<2){j--;continue;}
-      if(EXCL.has(lo))break;
-      allTT.unshift(t);
-      j--;
-    }
-    if(allTT.length===0)continue;
-
-    // Determine word count
+  // Record one occurrence of `sign` against the term described by `allTT`.
+  // Shared by the main scan and range detection. Pass artTok=null to skip
+  // article bookkeeping (range endpoints reuse the term's already-seen article).
+  function recordOccurrence(sign,signStart,signEnd,allTT,artTok,inParens){
     const baseW=allTT[allTT.length-1].word;
     const bs=stem(baseW,lang);
     const manExtra=mwo[bs]||0;
@@ -78,6 +77,41 @@ export function extractData(text,lang,mwo={},autoMW=true,isClaims=false){
       if(!artByTerm[termStem])artByTerm[termStem]=[];
       artByTerm[termStem].push({article:al,type:artType(al),artStart:artTok.start,artEnd:artTok.end,termStart,signStart,sign,termStem});
     }
+  }
+
+  for(let i=0;i<toks.length;i++){
+    const tok=toks[i];
+    if(!isSignToken(tok.word))continue;
+    if(isClaims&&isClaimNumber(text,tok)){claimNums.push({value:parseInt(tok.word,10),start:tok.start,end:tok.end});continue;}
+    const sign=tok.word;
+    const signStart=tok.start,signEnd=tok.end;
+    const inParens=signStart>0&&text[signStart-1]==='('&&text[signEnd]===')';
+
+    const {allTT,artTok}=collectTermToks(toks,i,lang);
+    if(allTT.length===0){noTermSigns.add(sign);continue;}
+    recordOccurrence(sign,signStart,signEnd,allTT,artTok,inParens);
+  }
+
+  // ── Sign ranges / lists (endpoints only) ──
+  // "screws 18 to 22", "18 bis 22", "18 and 22", "18 und 22", "18–22", "18-22".
+  // The digit-connector-digit adjacency keeps "a housing 12 and a cover 14"
+  // (distinct terms, with words between the connector and the second number)
+  // from being misread as a range. Only the two endpoints are registered.
+  const RANGE_RE=new RegExp(`(${SIGN_RE})\\s*(?:to|bis|and|und|[-–—])\\s*(${SIGN_RE})`,'gi');
+  let rm;
+  while((rm=RANGE_RE.exec(text))!==null){
+    const a=rm[1],b=rm[2];
+    if(!isSignToken(a)||!isSignToken(b))continue;
+    const aStart=rm.index;
+    const bStart=rm.index+rm[0].length-b.length;
+    // Index of the first token at/after the first endpoint; the shared term is
+    // whatever precedes it (works whether or not the endpoints tokenized).
+    let baseIdx=toks.findIndex(t=>t.start>=aStart);
+    if(baseIdx<0)baseIdx=toks.length;
+    const {allTT}=collectTermToks(toks,baseIdx,lang);
+    if(allTT.length===0)continue; // no shared term (e.g. "claims 1 to 5") → skip
+    if(!signData[a])recordOccurrence(a,aStart,aStart+a.length,allTT,null,false);
+    if(!signData[b])recordOccurrence(b,bStart,bStart+b.length,allTT,null,false);
   }
 
   // Generate article errors
@@ -143,7 +177,7 @@ export function extractData(text,lang,mwo={},autoMW=true,isClaims=false){
       if(bareSpans.has(`${tStart}-${tEnd}`))break;
       // Skip if immediately followed by a sign token
       const nxt=toks[i+1];
-      if(nxt&&/^\d{1,5}[a-z]?$/.test(nxt.word)&&likelySign(nxt.word)&&!(isClaims&&isClaimNumber(text,nxt)))break;
+      if(nxt&&isSignToken(nxt.word)&&!(isClaims&&isClaimNumber(text,nxt)))break;
       const signs=Object.keys(termData[ts]?.signs||{});
       bareSpans.add(`${tStart}-${tEnd}`);
       bareTerms.push({termStart:tStart,termEnd:tEnd,termStem:ts,
@@ -160,7 +194,7 @@ export function extractData(text,lang,mwo={},autoMW=true,isClaims=false){
     expected=cn.value+1;
   }
 
-  return{signData,termData,artErrors,bareTerms,numErrors};
+  return{signData,termData,artErrors,bareTerms,numErrors,noTermSigns};
 }
 
 // ── CLASSIFICATION ─────────────────────────────────────────────────────────

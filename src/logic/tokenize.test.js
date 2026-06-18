@@ -15,6 +15,15 @@ describe('tokenize', () => {
     expect(toks.map(t => t.word)).toEqual(['cover', '12a', 'here']);
   });
 
+  it('captures a trailing prime as part of the sign (10\' and 10′)', () => {
+    expect(tokenize("arm 10' here").map(t => t.word)).toEqual(['arm', "10'", 'here']);
+    expect(tokenize('arm 10′ here').map(t => t.word)).toEqual(['arm', '10′', 'here']);
+  });
+
+  it('keeps a primed sign distinct from its bare number', () => {
+    expect(tokenize("10 10'").map(t => t.word)).toEqual(['10', "10'"]);
+  });
+
   it('reports spans that exclude surrounding parentheses', () => {
     const toks = tokenize('device (10)');
     const sign = toks.find(t => t.word === '10');

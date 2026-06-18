@@ -223,6 +223,67 @@ describe('extractData — German', () => {
   });
 });
 
+describe('extractData — prime-notation signs', () => {
+  it('treats a sign and its primed variant as distinct', () => {
+    const res = extractData("The arm 10 and the arm 10' differ.", 'en');
+    expect(Object.keys(res.signData).sort()).toEqual(['10', "10'"]);
+  });
+});
+
+describe('extractData — sign ranges (endpoints only)', () => {
+  const endpointsOnly = (text, lang = 'en') => {
+    const res = extractData(text, lang);
+    return Object.keys(res.signData).sort();
+  };
+
+  it('registers both endpoints of an English "to" range', () => {
+    expect(endpointsOnly('The screws 18 to 22 hold the plate.')).toEqual(['18', '22']);
+  });
+  it('registers a German "bis" range', () => {
+    expect(endpointsOnly('Die Schrauben 18 bis 22 halten die Platte.', 'de')).toEqual(['18', '22']);
+  });
+  it('registers an English "and" list of two signs', () => {
+    expect(endpointsOnly('The screws 18 and 22 are shown.')).toEqual(['18', '22']);
+  });
+  it('registers a German "und" list of two signs', () => {
+    expect(endpointsOnly('Die Schrauben 18 und 22 sind gezeigt.', 'de')).toEqual(['18', '22']);
+  });
+  it('registers an en-dash and an ASCII-hyphen range', () => {
+    expect(endpointsOnly('The screws 18–22 hold it.')).toEqual(['18', '22']);
+    expect(endpointsOnly('The screws 18-22 hold it.')).toEqual(['18', '22']);
+  });
+  it('shares the preceding term across both endpoints and does not flag it as bare', () => {
+    const res = extractData('The screws 18 to 22 hold the plate.', 'en');
+    const term18 = Object.keys(res.signData['18'].terms)[0];
+    const term22 = Object.keys(res.signData['22'].terms)[0];
+    expect(term22).toBe(term18);
+    expect(res.bareTerms).toEqual([]);
+  });
+  it('does NOT treat "a housing 12 and a cover 14" as a range (distinct terms survive)', () => {
+    const res = extractData('a housing 12 and a cover 14.', 'en');
+    const t12 = [...res.termData[Object.keys(res.signData['12'].terms)[0]].rawTerms];
+    const t14 = [...res.termData[Object.keys(res.signData['14'].terms)[0]].rawTerms];
+    expect(t12).toContain('housing');
+    expect(t14).toContain('cover');
+  });
+  it('does NOT register a range whose preceding word is excluded (claims 1 to 5)', () => {
+    const res = extractData('according to claims 1 to 5.', 'en');
+    expect(Object.keys(res.signData)).toEqual([]);
+  });
+});
+
+describe('extractData — noTermSigns', () => {
+  it('records a standalone sign that never gets a term', () => {
+    const res = extractData('See (10) here.', 'en');
+    expect([...res.noTermSigns]).toContain('10');
+    expect(Object.keys(res.signData)).toEqual([]);
+  });
+  it('does not record a sign that does have a term', () => {
+    const res = extractData('The housing 12 is large.', 'en');
+    expect([...res.noTermSigns]).toEqual([]);
+  });
+});
+
 describe('classify — claims parentheses', () => {
   it('warns when a sign appears both inside and outside parentheses', () => {
     const res = extractData('1. A housing (12) and a housing 12.', 'en', {}, true, true);

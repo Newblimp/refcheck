@@ -1,3 +1,5 @@
+import { compareSigns } from './constants.js';
+
 // ── CROSS-REFERENCE ─────────────────────────────────────────────────────────
 // Compares the extraction results of the Description and Claims buffers and
 // reports signs/terms that are present in one but missing or conflicting in the
@@ -6,8 +8,15 @@ export function computeCrossRef(descResult, claimsResult){
   if(!descResult||!claimsResult)return null;
   const dS=new Set(Object.keys(descResult.signData));
   const cS=new Set(Object.keys(claimsResult.signData));
-  const missingInDesc=[...cS].filter(s=>!dS.has(s)).sort((a,b)=>+a-+b);
-  const missingInClaims=[...dS].filter(s=>!cS.has(s)).sort((a,b)=>+a-+b);
+  const descNoTerm=descResult.noTermSigns||new Set();
+
+  // Partition claims signs absent from the description's termful set into two
+  // mutually-exclusive buckets:
+  //   • missingInDesc       — absent entirely (never seen in the description)
+  //   • notIntroducedInDesc — seen, but only ever bare (no associated term)
+  const missingInDesc=[...cS].filter(s=>!dS.has(s)&&!descNoTerm.has(s)).sort(compareSigns);
+  const notIntroducedInDesc=[...cS].filter(s=>!dS.has(s)&&descNoTerm.has(s)).sort(compareSigns);
+  const missingInClaims=[...dS].filter(s=>!cS.has(s)).sort(compareSigns);
 
   // Same sign, different term across buffers
   const signConflicts=[];
@@ -20,7 +29,7 @@ export function computeCrossRef(descResult, claimsResult){
       signConflicts.push({sign,descTerms:dRaw,claimsTerms:cRaw});
     }
   }
-  signConflicts.sort((a,b)=>+a.sign-+b.sign);
+  signConflicts.sort((a,b)=>compareSigns(a.sign,b.sign));
 
   // Same term, different sign across buffers
   const termConflicts=[];
@@ -31,10 +40,10 @@ export function computeCrossRef(descResult, claimsResult){
     const cSigns=Object.keys(claimsResult.termData[ts].signs);
     if(!dSigns.some(s=>cSigns.includes(s))){
       const rawTerm=[...(descResult.termData[ts].rawTerms||[])][0]||ts;
-      termConflicts.push({ts,rawTerm,descSigns:dSigns.sort((a,b)=>+a-+b),claimsSigns:cSigns.sort((a,b)=>+a-+b)});
+      termConflicts.push({ts,rawTerm,descSigns:dSigns.sort(compareSigns),claimsSigns:cSigns.sort(compareSigns)});
     }
   }
 
-  const hasAny=missingInDesc.length||missingInClaims.length||signConflicts.length||termConflicts.length;
-  return hasAny?{missingInDesc,missingInClaims,signConflicts,termConflicts}:null;
+  const hasAny=missingInDesc.length||missingInClaims.length||signConflicts.length||termConflicts.length||notIntroducedInDesc.length;
+  return hasAny?{missingInDesc,missingInClaims,signConflicts,termConflicts,notIntroducedInDesc}:null;
 }

@@ -4,18 +4,20 @@ import { extractData, classify, getAllErrors } from '../logic/extract.js';
 import { buildHtml, findAtPos } from '../logic/buildHtml.js';
 import { computeCrossRef } from '../logic/crossref.js';
 import { stem } from '../logic/stem.js';
+import { useDebounced } from '../hooks/useDebounced.js';
 import { CtxMenu } from './CtxMenu.jsx';
 import { SignCard } from './SignCard.jsx';
 import { NumCard } from './NumCard.jsx';
 import { ArtCard } from './ArtCard.jsx';
 import { BareCard } from './BareCard.jsx';
+import { RefList } from './RefList.jsx';
 
 // ── APP ─────────────────────────────────────────────────────────────────────
 export function App(){
   const[lang,setLang]=useState('en');
   const[mode,setMode]=useState('description');
-  const[descText,setDescText]=useState('');
-  const[claimsText,setClaimsText]=useState('');
+  const[descText,setDescText]=useState(()=>{try{return localStorage.getItem('rsc_desc')||''}catch{return''}});
+  const[claimsText,setClaimsText]=useState(()=>{try{return localStorage.getItem('rsc_claims')||''}catch{return''}});
   const text=mode==='description'?descText:claimsText;
   const[hoverSign,setHoverSign]=useState(null);
   const[focusSign,setFocusSign]=useState(null);
@@ -32,6 +34,9 @@ export function App(){
   const t=T[lang];
 
   useEffect(()=>{try{localStorage.setItem('rsc_mwo',JSON.stringify(mwo))}catch{};},[mwo]);
+  // Persist the editor buffers so work survives a refresh (immediate, not debounced).
+  useEffect(()=>{try{localStorage.setItem('rsc_desc',descText)}catch{}},[descText]);
+  useEffect(()=>{try{localStorage.setItem('rsc_claims',claimsText)}catch{}},[claimsText]);
 
   // Theme management
   useEffect(()=>{
@@ -48,9 +53,14 @@ export function App(){
     }
   },[theme]);
 
-  const descResult=useMemo(()=>descText?extractData(descText,lang,mwo,true,false):null,[descText,lang,mwo]);
-  const claimsResult=useMemo(()=>claimsText?extractData(claimsText,lang,mwo,true,true):null,[claimsText,lang,mwo]);
-  const _empty={signData:{},termData:{},artErrors:[],bareTerms:[],numErrors:[]};
+  // Debounce the expensive extraction on large documents; the textarea value
+  // stays immediate so typing is never blocked.
+  const debDesc=useDebounced(descText,descText.length>5000?200:0);
+  const debClaims=useDebounced(claimsText,claimsText.length>5000?200:0);
+  const debText=mode==='description'?debDesc:debClaims;
+  const descResult=useMemo(()=>debDesc?extractData(debDesc,lang,mwo,true,false):null,[debDesc,lang,mwo]);
+  const claimsResult=useMemo(()=>debClaims?extractData(debClaims,lang,mwo,true,true):null,[debClaims,lang,mwo]);
+  const _empty={signData:{},termData:{},artErrors:[],bareTerms:[],numErrors:[],noTermSigns:new Set()};
   const{signData,termData,artErrors,bareTerms,numErrors}=(mode==='description'?descResult:claimsResult)??_empty;
 
   const orphaned=useMemo(()=>computeCrossRef(descResult,claimsResult),[descResult,claimsResult]);
@@ -59,7 +69,7 @@ export function App(){
 
   useEffect(()=>setNavIdx(0),[allErrors.length]);
 
-  const html=useMemo(()=>buildHtml(text,signData,termData,artErrors,bareTerms,numErrors,mode,dis,focusSign),[text,signData,termData,artErrors,bareTerms,numErrors,mode,dis,focusSign]);
+  const html=useMemo(()=>buildHtml(debText,signData,termData,artErrors,bareTerms,numErrors,mode,dis,focusSign),[debText,signData,termData,artErrors,bareTerms,numErrors,mode,dis,focusSign]);
 
   const syncScroll=useCallback(()=>{if(taRef.current&&bdRef.current)bdRef.current.scrollTop=taRef.current.scrollTop;},[]);
 
@@ -180,9 +190,12 @@ export function App(){
   }
 
   function doReset(){
+    if(typeof window!=='undefined'&&!window.confirm(t.resetConfirm))return;
     setDis(new Set());
     setMwo({});
-    try{localStorage.removeItem('rsc_mwo');}catch{}
+    setDescText('');
+    setClaimsText('');
+    try{localStorage.removeItem('rsc_mwo');localStorage.removeItem('rsc_desc');localStorage.removeItem('rsc_claims');}catch{}
   }
 
   return(<>
@@ -355,7 +368,14 @@ export function App(){
                     <span className="orphan-msg">{t.missingInClaims}</span>
                   </div>
                 ))}
+                {orphaned.notIntroducedInDesc.map(s=>(
+                  <div className="orphan-card" key={'ni'+s}>
+                    <span className="orphan-sign">{s}</span>
+                    <span className="orphan-msg">{t.notIntroducedInDesc}</span>
+                  </div>
+                ))}
               </>}
+              <RefList signData={signData} termData={termData} t={t} lang={lang}/>
             </>
           )}
         </div>
