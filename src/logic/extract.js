@@ -92,26 +92,33 @@ export function extractData(text,lang,mwo={},autoMW=true,isClaims=false){
     recordOccurrence(sign,signStart,signEnd,allTT,artTok,inParens);
   }
 
-  // ── Sign ranges / lists (endpoints only) ──
-  // "screws 18 to 22", "18 bis 22", "18 and 22", "18 und 22", "18–22", "18-22".
-  // The digit-connector-digit adjacency keeps "a housing 12 and a cover 14"
-  // (distinct terms, with words between the connector and the second number)
-  // from being misread as a range. Only the two endpoints are registered.
-  const RANGE_RE=new RegExp(`(${SIGN_RE})\\s*(?:to|bis|and|und|[-–—])\\s*(${SIGN_RE})`,'gi');
+  // ── Sign ranges / lists ──
+  // "18 to 22", "18 bis 22", "18 and 22", "18 und 22", "18–22", "18-22",
+  // "18, 20" and longer comma lists "18, 20 and 22" / "18, 20, and 22" (Oxford),
+  // EN + DE. Every literally-listed sign is registered under the single shared
+  // term preceding the list. The digit-connector-digit adjacency (each separator
+  // sits directly between two numbers) keeps "a housing 12 and a cover 14"
+  // (distinct terms, with a word between the connector and the second number)
+  // from being misread as a list.
+  const SEP=`\\s*(?:,\\s*(?:and|und|to|bis)?|and|und|to|bis|[-–—])\\s*`;
+  const LIST_RE=new RegExp(`(${SIGN_RE})(?:${SEP}(?:${SIGN_RE}))+`,'gi');
+  const NUM_RE=new RegExp(SIGN_RE,'g');
   let rm;
-  while((rm=RANGE_RE.exec(text))!==null){
-    const a=rm[1],b=rm[2];
-    if(!isSignToken(a)||!isSignToken(b))continue;
-    const aStart=rm.index;
-    const bStart=rm.index+rm[0].length-b.length;
-    // Index of the first token at/after the first endpoint; the shared term is
+  while((rm=LIST_RE.exec(text))!==null){
+    // Index of the first token at/after the list start; the shared term is
     // whatever precedes it (works whether or not the endpoints tokenized).
-    let baseIdx=toks.findIndex(t=>t.start>=aStart);
+    let baseIdx=toks.findIndex(t=>t.start>=rm.index);
     if(baseIdx<0)baseIdx=toks.length;
     const {allTT}=collectTermToks(toks,baseIdx,lang);
-    if(allTT.length===0)continue; // no shared term (e.g. "claims 1 to 5") → skip
-    if(!signData[a])recordOccurrence(a,aStart,aStart+a.length,allTT,null,false);
-    if(!signData[b])recordOccurrence(b,bStart,bStart+b.length,allTT,null,false);
+    if(allTT.length===0)continue; // no shared term (e.g. "claims 1, 2 and 3") → skip
+    // Pull every sign out of the matched span (connector words carry no digits).
+    NUM_RE.lastIndex=0;let nm;
+    while((nm=NUM_RE.exec(rm[0]))!==null){
+      const sign=nm[0];
+      if(!isSignToken(sign))continue;
+      const start=rm.index+nm.index;
+      if(!signData[sign])recordOccurrence(sign,start,start+sign.length,allTT,null,false);
+    }
   }
 
   // Generate article errors

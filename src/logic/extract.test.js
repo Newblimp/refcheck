@@ -270,6 +270,29 @@ describe('extractData — sign ranges (endpoints only)', () => {
     const res = extractData('according to claims 1 to 5.', 'en');
     expect(Object.keys(res.signData)).toEqual([]);
   });
+
+  it('registers all elements of a 3+ element comma list with a conjunction', () => {
+    expect(endpointsOnly('The screws 18, 20 and 22 hold the plate.')).toEqual(['18', '20', '22']);
+  });
+  it('handles the Oxford comma (EN and DE)', () => {
+    expect(endpointsOnly('The screws 18, 20, and 22 hold it.')).toEqual(['18', '20', '22']);
+    expect(endpointsOnly('Die Schrauben 18, 20, und 22 halten.', 'de')).toEqual(['18', '20', '22']);
+  });
+  it('registers a German "und" comma list', () => {
+    expect(endpointsOnly('Die Schrauben 18, 20 und 22 halten.', 'de')).toEqual(['18', '20', '22']);
+  });
+  it('registers a pure comma list with no conjunction (module 18, 20)', () => {
+    expect(endpointsOnly('The module 18, 20 is shown.')).toEqual(['18', '20']);
+  });
+  it('registers a longer list of four signs', () => {
+    expect(endpointsOnly('The bolts 18, 20, 22 and 24 are used.')).toEqual(['18', '20', '22', '24']);
+  });
+  it('shares the one preceding term across every listed sign', () => {
+    const res = extractData('The screws 18, 20 and 22 hold the plate.', 'en');
+    const terms = ['18', '20', '22'].map(s => Object.keys(res.signData[s].terms)[0]);
+    expect(new Set(terms).size).toBe(1);
+    expect(res.bareTerms).toEqual([]);
+  });
 });
 
 describe('extractData — noTermSigns', () => {
