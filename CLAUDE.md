@@ -181,11 +181,14 @@ User Input (textarea — per-mode buffer)
 - The sign pattern is centralized in `constants.js` as `SIGN_RE` / `isSignToken`; the
   tokenizer and every extraction site share it. Sort sign lists with `compareSigns`.
 - [x] Detects 1–5 digit numbers (1–99999) with optional trailing letter (`12a`) **and optional trailing prime (`10'`, `10′`)**; `10` and `10'` are distinct signs
-- [x] **Sign ranges/lists** register both endpoints (endpoints-only): `18 to 22`, `18 bis 22`,
-      `18 and 22`, `18 und 22`, `18–22`, `18-22`. Digit-connector-digit adjacency keeps
-      `a housing 12 and a cover 14` (distinct terms) from being misread as a range
+- [x] **Sign ranges/lists** register every literally-listed sign under the shared preceding
+      term: `18 to 22`, `18 bis 22`, `18 and 22`, `18 und 22`, `18–22`, `18-22`, and comma
+      lists of 2+ signs `18, 20` / `18, 20 and 22` / `18, 20, and 22` (Oxford), EN + DE.
+      Digit-connector-digit adjacency keeps `a housing 12 and a cover 14` (distinct terms)
+      from being misread as a list. Ranges are endpoints-only (no invented intermediates)
 - [ ] Letter-prefix signs (A10, B12) are not yet supported
-- [ ] 3+ element comma lists (`18, 20 and 22`) capture only the connector pair (18,20 / 20,22)
+- [ ] A trailing comma list makes a date a false positive: `January 3, 2020` registers `2020`
+      (and `3`, which the main scan already records) under the preceding word
 - [ ] Signs without a preceding term are recorded in `noTermSigns` (used by cross-ref) but not shown as signs
 - [ ] A sign glued to a word (`housing12`, `12housing`) is **not** tokenized at all —
       signs must be whitespace/punctuation-separated from their term to be detected
