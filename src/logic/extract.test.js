@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { extractData, classify, getAllErrors, detectOrdStems } from './extract.js';
 import { tokenize } from './tokenize.js';
 import { stem } from './stem.js';
+import { compareSigns } from './constants.js';
 
 // Raw terms recorded for a given sign (across all its term stems).
 const rawTermsFor = (res, sign) =>
@@ -227,6 +228,32 @@ describe('extractData — prime-notation signs', () => {
   it('treats a sign and its primed variant as distinct', () => {
     const res = extractData("The arm 10 and the arm 10' differ.", 'en');
     expect(Object.keys(res.signData).sort()).toEqual(['10', "10'"]);
+  });
+});
+
+describe('extractData — Roman-numeral step signs', () => {
+  it('detects Roman step numerals as signs, associated with their term', () => {
+    const res = extractData(
+      'The method comprises step I and step II. Step I is repeated.', 'en');
+    expect(Object.keys(res.signData).sort(compareSigns)).toEqual(['I', 'II']);
+    expect(rawTermsFor(res, 'I')).toContain('step');
+  });
+
+  it('detects a Roman substep (I.1) as a distinct sign from its parent step', () => {
+    const res = extractData('The step I opens. The substep I.1 follows.', 'en');
+    expect(Object.keys(res.signData).sort(compareSigns)).toEqual(['I', 'I.1']);
+  });
+
+  it('flags a Roman step used with two different terms as an inconsistency', () => {
+    const res = extractData('The bracket II holds it. The clamp II holds it.', 'en');
+    expect(Object.keys(res.signData['II'].terms).length).toBe(2);
+    expect(classify('II', res.signData['II'], res.termData, 'description')).toBe('warn');
+  });
+
+  it('does not misread a capitalised sentence-initial word as a Roman sign', () => {
+    // "In" starts with a Roman letter but is a word, so it forms no sign.
+    const res = extractData('In the housing 12 a bolt is fixed.', 'en');
+    expect(Object.keys(res.signData)).toEqual(['12']);
   });
 });
 

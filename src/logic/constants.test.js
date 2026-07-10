@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { likelySign, isClaimNumber, isArt, isOrd, artType, isSignToken, compareSigns } from './constants.js';
+import { likelySign, isClaimNumber, isArt, isOrd, artType, isSignToken, compareSigns, romanToInt, signVal } from './constants.js';
 import { tokenize } from './tokenize.js';
 
 describe('likelySign', () => {
@@ -55,6 +55,11 @@ describe('isClaimNumber', () => {
     const text = '10 housings were tested';
     expect(isClaimNumber(text, tokFor(text, '10'))).toBe(false);
   });
+
+  it('does NOT treat a line-leading Roman step ("I.") as a claim number', () => {
+    const text = 'I. Insert the pin.';
+    expect(isClaimNumber(text, tokFor(text, 'I'))).toBe(false);
+  });
 });
 
 describe('isSignToken', () => {
@@ -70,6 +75,42 @@ describe('isSignToken', () => {
     expect(isSignToken('100000')).toBe(false);
     expect(isSignToken('12A')).toBe(false); // suffix letter is lowercase-only
   });
+  it('accepts uppercase Roman-numeral steps and substeps', () => {
+    expect(isSignToken('I')).toBe(true);
+    expect(isSignToken('II')).toBe(true);
+    expect(isSignToken('IX')).toBe(true);
+    expect(isSignToken('XIV')).toBe(true);
+    expect(isSignToken('I.1')).toBe(true);
+    expect(isSignToken('IX.3')).toBe(true);
+  });
+  it('rejects malformed Roman numerals and lowercase forms', () => {
+    expect(isSignToken('IIII')).toBe(false); // four I's is not valid
+    expect(isSignToken('VV')).toBe(false);
+    expect(isSignToken('ii')).toBe(false);   // must be uppercase
+    expect(isSignToken('I.')).toBe(false);   // substep needs an Arabic numeral
+  });
+});
+
+describe('romanToInt', () => {
+  it('converts Roman numerals to their integer value', () => {
+    expect(romanToInt('I')).toBe(1);
+    expect(romanToInt('IV')).toBe(4);
+    expect(romanToInt('IX')).toBe(9);
+    expect(romanToInt('XIV')).toBe(14);
+    expect(romanToInt('XL')).toBe(40);
+  });
+});
+
+describe('signVal', () => {
+  it('returns the Arabic integer for numeric signs (ignoring suffix)', () => {
+    expect(signVal('10')).toBe(10);
+    expect(signVal('12a')).toBe(12);
+  });
+  it('returns the Roman value, with substeps as a fractional minor', () => {
+    expect(signVal('II')).toBe(2);
+    expect(signVal('I.1')).toBeCloseTo(1.001);
+    expect(signVal('II.3')).toBeCloseTo(2.003);
+  });
 });
 
 describe('compareSigns', () => {
@@ -79,6 +120,10 @@ describe('compareSigns', () => {
   });
   it('does not collapse a primed sign to its bare number', () => {
     expect(compareSigns('10', "10'")).not.toBe(0);
+  });
+  it('orders Roman steps by value, with substeps after their parent step', () => {
+    const sorted = ['II', 'IX', 'I', 'I.1', 'X'].sort(compareSigns);
+    expect(sorted).toEqual(['I', 'I.1', 'II', 'IX', 'X']);
   });
 });
 
