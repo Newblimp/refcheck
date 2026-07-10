@@ -102,4 +102,20 @@ export function stemDe(w){
   return w.replace(/ä/g,'a').replace(/ö/g,'o').replace(/ü/g,'u');
 }
 
-export const stem = (w, l) => l === 'de' ? stemDe(w) : stemEn(w);
+// Memoized dispatcher. Patent prose has a tiny vocabulary relative to its
+// length (a 27k-token document typically contains ~100 unique words), and
+// extraction stems every token at least once, so caching turns the stemmer
+// from ~half of extractData's cost into noise. The cap only guards against
+// pathological input; normal documents never come close.
+const CACHE_MAX = 50000;
+const cache = new Map();
+export function stem(w, l) {
+  const key = (l === 'de' ? 'd:' : 'e:') + w;
+  let s = cache.get(key);
+  if (s === undefined) {
+    s = l === 'de' ? stemDe(w) : stemEn(w);
+    if (cache.size >= CACHE_MAX) cache.clear();
+    cache.set(key, s);
+  }
+  return s;
+}

@@ -81,9 +81,16 @@ describe('extractData — claim numbering', () => {
       '4. A screw (4).';
     const res = extractData(bad, 'en', {}, true, true);
     expect(res.numErrors).toEqual([
-      { value: 5, expected: 3, start: expect.any(Number), end: expect.any(Number) },
-      { value: 4, expected: 6, start: expect.any(Number), end: expect.any(Number) },
+      { value: 5, expected: 3, start: expect.any(Number), end: expect.any(Number), key: '5#1' },
+      { value: 4, expected: 6, start: expect.any(Number), end: expect.any(Number), key: '4#1' },
     ]);
+  });
+
+  it('handles CRLF (Windows) line endings', () => {
+    const res = extractData('1. A device (10).\r\n3. A housing (12).', 'en', {}, true, true);
+    expect(Object.keys(res.signData).sort()).toEqual(['10', '12']);
+    expect(res.numErrors).toHaveLength(1);
+    expect(res.numErrors[0].value).toBe(3);
   });
 
   it('also recognises ")"-style claim numbering', () => {
@@ -173,6 +180,18 @@ describe('detectOrdStems & multi-word terms', () => {
   it('treats a single-word term as one word when no override applies', () => {
     const res = extractData('The control unit 10 is here.', 'en', {}, false, false);
     expect(Object.keys(res.signData['10'].terms)).toEqual([stem('unit', 'en')]);
+  });
+
+  it('does not learn a stem when the sign-preceding word is excluded', () => {
+    const text = 'the first claim 20 is discussed.'; // "claim" ∈ EXCL
+    expect(detectOrdStems(tokenize(text), 'en', text, false).size).toBe(0);
+  });
+
+  it('skips claim numbers in claims mode (no stem learned from "first bearing\\n1.")', () => {
+    const text = 'the first bearing\n1. A device.';
+    // Without the claims flag the line-leading "1" counts as a sign after "bearing".
+    expect(detectOrdStems(tokenize(text), 'en', text, false).has(stem('bearing', 'en'))).toBe(true);
+    expect(detectOrdStems(tokenize(text), 'en', text, true).size).toBe(0);
   });
 });
 
@@ -343,10 +362,126 @@ describe('classify — claims parentheses', () => {
   });
 });
 
+describe('extractData — per-claim antecedent basis (claims mode)', () => {
+  it('does not flag a second independent claim re-introducing terms with "a"', () => {
+    const text =
+      '1. A device (10) comprising a housing (12).\n' +
+      '2. The device (10) of claim 1, wherein the housing (12) is metal.\n' +
+      '3. A device (10) comprising a housing (12) and a cover (14).';
+    const res = extractData(text, 'en', {}, true, true);
+    expect(res.artErrors).toEqual([]);
+  });
+
+  it('flags "the" on a term never introduced in the claim chain', () => {
+    const text =
+      '1. A device (10).\n' +
+      '2. The device (10) of claim 1, wherein the seal (20) is provided.';
+    const res = extractData(text, 'en', {}, true, true);
+    expect(res.artErrors).toHaveLength(1);
+    expect(res.artErrors[0].errType).toBe('first-def');
+    expect(res.artErrors[0].termStem).toBe(stem('seal', 'en'));
+  });
+
+  it('accepts "the" when the term was introduced in an ancestor claim', () => {
+    const text =
+      '1. A device (10) with a seal (20).\n' +
+      '2. The device (10) of claim 1, wherein the seal (20) is round.';
+    const res = extractData(text, 'en', {}, true, true);
+    expect(res.artErrors).toEqual([]);
+  });
+
+  it('flags "the" when the term exists only in a sibling (non-ancestor) claim', () => {
+    const text =
+      '1. A device (10).\n' +
+      '2. The device (10) of claim 1, with a seal (20).\n' +
+      '3. The device (10) of claim 1, wherein the seal (20) is round.';
+    const res = extractData(text, 'en', {}, true, true);
+    expect(res.artErrors).toHaveLength(1);
+    expect(res.artErrors[0].errType).toBe('first-def');
+    expect(res.artErrors[0].termStem).toBe(stem('seal', 'en'));
+  });
+
+  it('flags re-introduction with "a" in a dependent claim', () => {
+    const text =
+      '1. A device (10) with a seal (20).\n' +
+      '2. The device (10) of claim 1, wherein a seal (20) is round.';
+    const res = extractData(text, 'en', {}, true, true);
+    expect(res.artErrors).toHaveLength(1);
+    expect(res.artErrors[0].errType).toBe('repeat-indef');
+  });
+
+  it('inherits antecedents through "any one of the preceding claims"', () => {
+    const text =
+      '1. A device (10).\n' +
+      '2. The device (10) of claim 1, with a seal (20).\n' +
+      '3. The device (10) according to any one of the preceding claims, wherein the seal (20) is round.';
+    const res = extractData(text, 'en', {}, true, true);
+    expect(res.artErrors).toEqual([]);
+  });
+
+  it('inherits antecedents transitively through the dependency chain', () => {
+    const text =
+      '1. A device (10) with a seal (20).\n' +
+      '2. The device (10) of claim 1, wherein a housing (12) is provided.\n' +
+      '3. The device (10) of claim 2, wherein the seal (20) touches the housing (12).';
+    const res = extractData(text, 'en', {}, true, true);
+    expect(res.artErrors).toEqual([]); // seal comes from claim 1 via 3 → 2 → 1
+  });
+
+  it('falls back to document-position logic when the buffer has no claim numbers', () => {
+    const res = extractData('The housing 12 is large.', 'en', {}, true, true);
+    expect(res.artErrors).toHaveLength(1);
+    expect(res.artErrors[0].errType).toBe('first-def');
+  });
+});
+
+describe('extractData — claim dependency errors', () => {
+  it('flags a reference to a nonexistent claim', () => {
+    const text = '1. A device (10).\n2. The device (10) according to claim 5.';
+    const res = extractData(text, 'en', {}, true, true);
+    expect(res.depErrors).toHaveLength(1);
+    expect(res.depErrors[0]).toMatchObject({ claim: 2, ref: 5, type: 'missing' });
+    expect(text.slice(res.depErrors[0].start, res.depErrors[0].end)).toBe('5');
+  });
+
+  it('flags a forward reference to an existing claim', () => {
+    const text = '1. A device (10) as in claim 2.\n2. The device (10) of claim 1.';
+    const res = extractData(text, 'en', {}, true, true);
+    expect(res.depErrors).toHaveLength(1);
+    expect(res.depErrors[0]).toMatchObject({ claim: 1, ref: 2, type: 'forward' });
+  });
+
+  it('flags a self-reference', () => {
+    const text = '1. A device (10).\n2. The device (10) according to claim 2.';
+    const res = extractData(text, 'en', {}, true, true);
+    expect(res.depErrors).toHaveLength(1);
+    expect(res.depErrors[0]).toMatchObject({ claim: 2, ref: 2, type: 'self' });
+  });
+
+  it('reports no errors for well-formed dependencies (EN + DE, ranges, preceding)', () => {
+    const en =
+      '1. A device (10).\n2. The device (10) of claim 1.\n' +
+      '3. The device (10) according to claim 1 or 2.\n' +
+      '4. The device (10) according to any one of claims 1 to 3.\n' +
+      '5. The device (10) according to any one of the preceding claims.';
+    expect(extractData(en, 'en', {}, true, true).depErrors).toEqual([]);
+    const de =
+      '1. Vorrichtung (10).\n2. Vorrichtung (10) nach Anspruch 1.\n' +
+      '3. Vorrichtung (10) nach einem der Ansprüche 1 bis 2.\n' +
+      '4. Vorrichtung (10) nach einem der vorhergehenden Ansprüche.';
+    expect(extractData(de, 'de', {}, true, true).depErrors).toEqual([]);
+  });
+
+  it('returns empty depErrors in description mode', () => {
+    const res = extractData('The device 10 according to claim 5.', 'en');
+    expect(res.depErrors).toEqual([]);
+  });
+});
+
 describe('getAllErrors', () => {
   it('aggregates and position-sorts active errors', () => {
     const res = extractData('The housing 12 is connected to the casing 12.', 'en');
-    const errs = getAllErrors(res.signData, res.termData, res.artErrors, res.bareTerms, res.numErrors, 'description', new Set());
+    const errs = getAllErrors(res, 'description', new Set());
     expect(errs.length).toBeGreaterThan(0);
     const starts = errs.map(e => e.start);
     expect(starts).toEqual([...starts].sort((a, b) => a - b));
@@ -354,23 +489,31 @@ describe('getAllErrors', () => {
 
   it('omits dismissed signs', () => {
     const res = extractData('The housing 12 is connected to the casing 12.', 'en');
-    const errs = getAllErrors(res.signData, res.termData, res.artErrors, res.bareTerms, res.numErrors, 'description', new Set(['s:12']));
+    const errs = getAllErrors(res, 'description', new Set(['s:12']));
     expect(errs.some(e => e.type === 'sign' && e.sign === '12')).toBe(false);
   });
 
-  it('aggregates all four error categories (sign, art, bare, num)', () => {
-    const text = '1. A device 10.\n3. The housing 12 is here. The housing is metal.';
+  it('aggregates all five error categories (sign, art, bare, num, dep)', () => {
+    const text = '1. A device 10 according to claim 9.\n3. The housing 12 is here. The housing is metal.';
     const res = extractData(text, 'en', {}, true, true);
-    const errs = getAllErrors(res.signData, res.termData, res.artErrors, res.bareTerms, res.numErrors, 'claims', new Set());
+    const errs = getAllErrors(res, 'claims', new Set());
     const types = new Set(errs.map(e => e.type));
-    expect(types).toEqual(new Set(['sign', 'art', 'bare', 'num']));
+    expect(types).toEqual(new Set(['sign', 'art', 'bare', 'num', 'dep']));
   });
 
-  it('omits a dismissed numbering error by its start key', () => {
+  it('omits a dismissed numbering error by its stable key', () => {
     const text = '1. A device (1).\n3. A housing (2).';
     const res = extractData(text, 'en', {}, true, true);
     const ne = res.numErrors[0];
-    const errs = getAllErrors(res.signData, res.termData, res.artErrors, res.bareTerms, res.numErrors, 'claims', new Set(['n:' + ne.start]));
+    const errs = getAllErrors(res, 'claims', new Set(['n:' + ne.key]));
     expect(errs.some(e => e.type === 'num')).toBe(false);
+  });
+
+  it('omits a dismissed dependency error by its key', () => {
+    const text = '1. A device (10) according to claim 9.';
+    const res = extractData(text, 'en', {}, true, true);
+    const de = res.depErrors[0];
+    const errs = getAllErrors(res, 'claims', new Set(['d:' + de.key]));
+    expect(errs.some(e => e.type === 'dep')).toBe(false);
   });
 });

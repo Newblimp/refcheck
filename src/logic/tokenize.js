@@ -8,9 +8,18 @@ import { SIGN_RE, ROMAN_RE } from './constants.js';
 // (dot and Arabic part included); the trailing boundary lets it fall through to
 // the word branch when the Roman letters are really the start of a word (In, DC
 // vs II — "In" fails the boundary after "I" and is re-matched as one word).
-export function tokenize(text){
-  const RE=new RegExp(`(?<![a-zA-ZäöüÄÖÜß\\-\\d])(${ROMAN_RE}|[a-zA-ZäöüÄÖÜß\\-]+|${SIGN_RE})(?![a-zA-ZäöüÄÖÜß\\-\\d])`,'g');
-  const toks=[];let m;
-  while((m=RE.exec(text))!==null)toks.push({word:m[1],start:m.index,end:m.index+m[1].length});
+// Compiled once at module load; tokenize() resets lastIndex so the shared /g
+// regex is safe across calls.
+const TOKEN_RE = new RegExp(
+  `(?<![a-zA-ZäöüÄÖÜß\\-\\d])(${ROMAN_RE}|[a-zA-ZäöüÄÖÜß\\-]+|${SIGN_RE})(?![a-zA-ZäöüÄÖÜß\\-\\d])`,
+  'g'
+);
+
+export function tokenize(text) {
+  TOKEN_RE.lastIndex = 0;
+  const toks = [];
+  let m;
+  while ((m = TOKEN_RE.exec(text)) !== null)
+    toks.push({ word: m[1], start: m.index, end: m.index + m[1].length });
   return toks;
 }

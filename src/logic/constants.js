@@ -74,6 +74,18 @@ export function signVal(s) {
 // `+a-+b` yields NaN for primed/lettered/Roman signs, so always sort through this.
 export const compareSigns = (a, b) => (signVal(a) - signVal(b)) || a.localeCompare(b);
 
+// ── DISMISSAL KEYS ───────────────────────────────────────────────────────────
+// Single place that defines the "<prefix>:<id>" scheme used to identify a
+// dismissed error. Shared by App, getAllErrors, buildHtml and the sidebar
+// cards — never assemble these strings by hand.
+export const disKey = {
+  sign: sign => 's:' + sign,      // id: the sign itself
+  art: termStem => 'a:' + termStem, // id: the term stem
+  bare: termStem => 'b:' + termStem, // id: the term stem
+  num: key => 'n:' + key,         // id: numError.key (value#ordinal — edit-stable)
+  dep: key => 'd:' + key,         // id: depError.key (claim>ref#ordinal)
+};
+
 // A numeric token that starts a line and is followed by '.' or ')' → claim number.
 // Claim numbers are Arabic; a line-leading Roman step (e.g. "I.") is not one.
 export function isClaimNumber(text, tok) {

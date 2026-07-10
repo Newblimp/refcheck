@@ -1,9 +1,10 @@
 import { stem } from '../logic/stem.js';
 import { classify } from '../logic/extract.js';
+import { disKey } from '../logic/constants.js';
 
 // ── SIGN CARD ───────────────────────────────────────────────────────────────
 export function SignCard({ sign, sData, termData, mode, focused, t, lang, dis, mwo, onFocus, onDismiss, hoverSign, onHover }) {
-  const isDis = dis.has('s:' + sign);
+  const isDis = dis.has(disKey.sign(sign));
   const sev = isDis ? 'dim' : classify(sign, sData, termData, mode);
   const terms = Object.keys(sData.terms);
   const bs = stem(sData.positions[0]?.term.split(' ').pop() || '', lang);
@@ -46,7 +47,7 @@ export function SignCard({ sign, sData, termData, mode, focused, t, lang, dis, m
           </div>
         </span>
         <span className="sc-cnt">{t.occ(sData.count)}</span>
-        <button className="dis-btn" onClick={e => { e.stopPropagation(); onDismiss('s:' + sign); }}
+        <button className="dis-btn" onClick={e => { e.stopPropagation(); onDismiss(disKey.sign(sign)); }}
           title={isDis ? 'Restore' : 'Dismiss'}>
           {isDis ? '↩' : '×'}
         </button>
