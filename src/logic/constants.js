@@ -70,9 +70,15 @@ export function signVal(s) {
   if (m) return romanToInt(m[1]) + (m[2] ? parseInt(m[2], 10) / 1000 : 0);
   return parseInt(s, 10);
 }
-// Order signs by value, then by suffix (10 < 10' < 10a < 12; I < I.1 < II). Plain
-// `+a-+b` yields NaN for primed/lettered/Roman signs, so always sort through this.
-export const compareSigns = (a, b) => (signVal(a) - signVal(b)) || a.localeCompare(b);
+// Order signs: all Arabic signs first (by value, then suffix: 10 < 10' < 10a < 12),
+// then all Roman steps grouped at the end (I < I.1 < II) — Arabic and Roman are
+// never interleaved. Plain `+a-+b` yields NaN for primed/lettered/Roman signs,
+// so always sort through this.
+export const compareSigns = (a, b) => {
+  const ra = ROMAN_RE_ANCHORED.test(a), rb = ROMAN_RE_ANCHORED.test(b);
+  if (ra !== rb) return ra ? 1 : -1;
+  return (signVal(a) - signVal(b)) || a.localeCompare(b);
+};
 
 // ── DISMISSAL KEYS ───────────────────────────────────────────────────────────
 // Single place that defines the "<prefix>:<id>" scheme used to identify a

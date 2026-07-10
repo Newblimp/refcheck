@@ -80,7 +80,7 @@ src/
 | `computeCrossRef()` | `logic/crossref.js` | Compares the Description and Claims buffers |
 | `isClaimNumber()` | `logic/constants.js` | Detects a line-leading Arabic claim number (`1.`, `1)`) |
 | `isSignToken()` | `logic/constants.js` | Single source of truth for what counts as a sign (Arabic **or** Roman-numeral step) |
-| `compareSigns()` | `logic/constants.js` | Value-then-suffix sign sort (handles `10'`, `10a`, and Roman `I`/`I.1`/`II`) |
+| `compareSigns()` | `logic/constants.js` | Sign sort: all Arabic first (value, then suffix — `10'`, `10a`), all Roman steps grouped at the end (`I`/`I.1`/`II`) |
 | `romanToInt()` / `signVal()` | `logic/constants.js` | Roman→integer conversion; numeric ordering value for any sign |
 | `buildRefList()` | `logic/reflist.js` | Builds the sorted sign → term numeral list |
 | `stemEn()` / `stemDe()` | `logic/stem.js` | Language-specific word stemming |
@@ -213,8 +213,14 @@ All access goes through `hooks/usePersistentState.js`.
 ### Sign Detection
 - The sign pattern is centralized in `constants.js` as `SIGN_RE` (Arabic) and
   `ROMAN_RE` (Roman steps); `isSignToken` accepts either, and the tokenizer and every
-  extraction site share them. Sort sign lists with `compareSigns` (which ranks via
-  `signVal`, so Arabic and Roman signs interleave by value — `I`/`I.1`/`2`/`II`/`10`/`X`).
+  extraction site share them. Sort sign lists with `compareSigns`: Arabic and Roman
+  signs are **never interleaved** — all Arabic signs come first (by value, then
+  suffix), all Roman steps are grouped at the end (`2`/`10`/`X`… then `I`/`I.1`/`II`).
+- [x] **Bracketed paragraph numbers are ignored**: a number with a square bracket
+      directly on either side (`[0012]`, `[0012]-[0015]`, `[18, 20]`) is a
+      paragraph-number construct, not a sign — skipped by the main scan, ordinal
+      detection and the range/list scan, and it does not satisfy a term for
+      bare-term purposes (see `isBracketed` in `extract.js`)
 - [x] Detects 1–5 digit numbers (1–99999) with optional trailing letter (`12a`) **and optional trailing prime (`10'`, `10′`)**; `10` and `10'` are distinct signs
 - [x] **Roman-numeral method steps**: uppercase Roman numerals (`I`, `II`, `IX`, up to
       3999) are detected as signs, plus **substeps** written as a Roman numeral, a dot and
@@ -270,7 +276,7 @@ Actions"** in Settings → Pages. The Vite `base` is `/refcheck/` (project-site 
 - Google Fonts: Space Grotesk, JetBrains Mono (loaded in `index.html`)
 
 ### Testing
-Run with `npm test` (currently **190 tests**). Logic tests run under the fast `node`
+Run with `npm test` (currently **197 tests**). Logic tests run under the fast `node`
 environment; only `*.ui.test.jsx` files run under `jsdom` (scoped via
 `environmentMatchGlobs` in `vite.config.js`, with `src/test/setup.js` providing the
 jest-dom matchers and `matchMedia`/`clipboard` stubs). Coverage by area:
@@ -279,8 +285,8 @@ jest-dom matchers and `matchMedia`/`clipboard` stubs). Coverage by area:
 |------|--------|
 | `tokenize.test.js` | word/number spans, trailing-letter (`12a`) & **prime (`10'`,`10′`)** signs, **Roman steps/substeps (`II`, `I.1`) + word-fallthrough (`In`, `Die`)**, German letters/hyphens, >5-digit runs, glued word+number, decimals, **CRLF spans**, repeat-call safety |
 | `stem.test.js` | EN Porter steps (`-s`/`-ies`/`-ing`/`-ed`/`-tion`, `-ss` retention, short words), DE Snowball (plurals, umlaut folding, case), dispatch + EN fallback |
-| `constants.test.js` | `likelySign`, `isClaimNumber` (terminators, indented, parens, mid-sentence, none, **Roman `I.` guard**, **CRLF**), `isSignToken` (prime/letter/range, **Roman + malformed rejection**), **`romanToInt`/`signVal`**, `compareSigns` (**Roman ordering**), article/ordinal helpers |
-| `extract.test.js` | sign/term consistency & inconsistencies, claims parentheses, claim-numbering (+ stable keys, CRLF), article errors (EN+DE), DE gender conflict, ordinal multi-word + `mwo` + `detectOrdStems` guards, bare terms, **prime signs**, **Roman step/substep signs + conflicts**, **ranges (to/bis/and/und/dash, EN+DE, with negatives)**, **`noTermSigns`**, **per-claim antecedent basis**, **claim dependency errors**, `getAllErrors` (five categories, dismissal keys) |
+| `constants.test.js` | `likelySign`, `isClaimNumber` (terminators, indented, parens, mid-sentence, none, **Roman `I.` guard**, **CRLF**), `isSignToken` (prime/letter/range, **Roman + malformed rejection**), **`romanToInt`/`signVal`**, `compareSigns` (**Roman ordering, Arabic-before-Roman grouping**), article/ordinal helpers |
+| `extract.test.js` | sign/term consistency & inconsistencies, claims parentheses, claim-numbering (+ stable keys, CRLF), article errors (EN+DE), DE gender conflict, ordinal multi-word + `mwo` + `detectOrdStems` guards, bare terms, **prime signs**, **Roman step/substep signs + conflicts**, **ranges (to/bis/and/und/dash, EN+DE, with negatives)**, **`noTermSigns`**, **bracketed paragraph numbers (`[0012]`)**, **per-claim antecedent basis**, **claim dependency errors**, `getAllErrors` (five categories, dismissal keys) |
 | `claims.test.js` | `segmentClaims` spans, `parseClaimRefs` (positions, offsets, lists, range expansion, DE, "preceding claims", trailing-comma negatives), `computeClaimGraph` (transitive ancestors, range/preceding ancestry, missing/forward/self typing, duplicate keys, acyclicity) |
 | `crossref.test.js` | null/agreement, missing-in-desc/claims, numeric sort, sign & term conflicts, **`notIntroducedInDesc`** |
 | `buildHtml.test.js` | empty input, warn/data-sign marks, numbering + dependency highlights, dismissed→`h-dis`, focus class, escaping, non-overlapping marks, **strip-marks ≡ esc(text) alignment invariant**; `findAtPos` |

@@ -130,6 +130,10 @@ describe('compareSigns', () => {
     const sorted = ['II', 'IX', 'I', 'I.1', 'X'].sort(compareSigns);
     expect(sorted).toEqual(['I', 'I.1', 'II', 'IX', 'X']);
   });
+  it('never interleaves Arabic and Roman signs: Arabic first, Roman grouped at the end', () => {
+    const sorted = ['I', '2', 'X', '10', 'I.1', "10'", 'II'].sort(compareSigns);
+    expect(sorted).toEqual(['2', '10', "10'", 'I', 'I.1', 'II', 'X']);
+  });
 });
 
 describe('article helpers', () => {
