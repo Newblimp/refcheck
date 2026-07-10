@@ -57,6 +57,28 @@ describe('tokenize', () => {
     expect(tokenize('—  ()  ,')).toEqual([]);
   });
 
+  it('captures an uppercase Roman-numeral step as one token', () => {
+    expect(tokenize('step II here').map(t => t.word)).toEqual(['step', 'II', 'here']);
+    expect(tokenize('the step IX begins').map(t => t.word)).toEqual(['the', 'step', 'IX', 'begins']);
+  });
+
+  it('captures a Roman substep (Roman + dot + Arabic) as one token', () => {
+    expect(tokenize('step I.1 here').map(t => t.word)).toEqual(['step', 'I.1', 'here']);
+    expect(tokenize('IV.3 then IX').map(t => t.word)).toEqual(['IV.3', 'then', 'IX']);
+  });
+
+  it('does not read Roman letters that merely begin a word as a numeral', () => {
+    // "In", "Die", "Vorrichtung" all start with Roman letters but are words: the
+    // trailing boundary makes the Roman branch fall through to the word branch.
+    expect(tokenize('In the housing').map(t => t.word)).toEqual(['In', 'the', 'housing']);
+    expect(tokenize('Die Vorrichtung').map(t => t.word)).toEqual(['Die', 'Vorrichtung']);
+  });
+
+  it('keeps a Roman step separate from a following sentence period', () => {
+    // "II." (step) — the '.' is only glued when an Arabic digit follows it.
+    expect(tokenize('II. Insert the pin.').map(t => t.word)).toEqual(['II', 'Insert', 'the', 'pin']);
+  });
+
   it('records correct spans for multiple tokens on a line', () => {
     const toks = tokenize('a cover 14.');
     expect(toks).toEqual([

@@ -35,14 +35,49 @@ export const likelySign = s => { const n = parseInt(s, 10); return n >= 1 && n <
 // the tokenizer's alternation and into an anchored test regex.
 export const SIGN_RE = "\\d{1,5}[a-z]?['′]?";
 export const SIGN_RE_ANCHORED = new RegExp('^(?:' + SIGN_RE + ')$');
-// A token is a sign if it has the right shape AND a numeric value in range.
-export const isSignToken = s => SIGN_RE_ANCHORED.test(s) && likelySign(s);
-// Order signs numerically, then by suffix (10 < 10' < 10a < 12). Plain `+a-+b`
-// yields NaN for primed/lettered signs, so always sort through this.
-export const compareSigns = (a, b) => (parseInt(a, 10) - parseInt(b, 10)) || a.localeCompare(b);
 
-// A numeric token that starts a line and is followed by '.' or ')' → claim number
+// ── ROMAN-NUMERAL STEP SIGNS ─────────────────────────────────────────────────
+// Method steps are labelled with UPPERCASE Roman numerals (I, II, IX, …) and
+// substeps append a dot and an Arabic numeral with no space (I.1, II.2, IX.3).
+// The leading (?=[IVXLCDM]) forces a non-empty match, so the fragment never
+// matches a zero-width token; the strict alternation only accepts a valid Roman
+// numeral (1–3999). ROMAN_RE is a bare fragment for interpolation, mirroring
+// SIGN_RE. Only capital letters match, so lowercase units (mm, cm) are safe.
+export const ROMAN_RE =
+  "(?=[IVXLCDM])M{0,3}(?:CM|CD|D?C{0,3})(?:XC|XL|L?X{0,3})(?:IX|IV|V?I{0,3})(?:\\.\\d{1,3})?";
+export const ROMAN_RE_ANCHORED = new RegExp('^(?:' + ROMAN_RE + ')$');
+
+// A token is a sign if it is an Arabic sign (right shape AND numeric value in
+// range) OR a Roman-numeral step/substep.
+export const isSignToken = s =>
+  (SIGN_RE_ANCHORED.test(s) && likelySign(s)) || ROMAN_RE_ANCHORED.test(s);
+
+// Value of a Roman-numeral string (e.g. "XIV" → 14). Assumes a valid numeral.
+const ROMAN_VAL = { I: 1, V: 5, X: 10, L: 50, C: 100, D: 500, M: 1000 };
+export function romanToInt(r) {
+  let n = 0;
+  for (let i = 0; i < r.length; i++) {
+    const cur = ROMAN_VAL[r[i]], nxt = ROMAN_VAL[r[i + 1]];
+    n += (nxt && cur < nxt) ? -cur : cur;
+  }
+  return n;
+}
+// Numeric value of a sign for ordering. Arabic → its integer (parseInt ignores a
+// trailing letter/prime). Roman "II" → 2; a Roman substep "II.3" → 2 + 3/1000 so
+// substeps cluster right after their parent step and before the next one.
+export function signVal(s) {
+  const m = /^([IVXLCDM]+)(?:\.(\d+))?$/.exec(s);
+  if (m) return romanToInt(m[1]) + (m[2] ? parseInt(m[2], 10) / 1000 : 0);
+  return parseInt(s, 10);
+}
+// Order signs by value, then by suffix (10 < 10' < 10a < 12; I < I.1 < II). Plain
+// `+a-+b` yields NaN for primed/lettered/Roman signs, so always sort through this.
+export const compareSigns = (a, b) => (signVal(a) - signVal(b)) || a.localeCompare(b);
+
+// A numeric token that starts a line and is followed by '.' or ')' → claim number.
+// Claim numbers are Arabic; a line-leading Roman step (e.g. "I.") is not one.
 export function isClaimNumber(text, tok) {
+  if (!/^\d/.test(tok.word)) return false;
   const after = text[tok.end];
   if (after !== '.' && after !== ')') return false;
   let k = tok.start - 1;

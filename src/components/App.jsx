@@ -3,6 +3,7 @@ import { T } from '../i18n.js';
 import { extractData, classify, getAllErrors } from '../logic/extract.js';
 import { buildHtml, findAtPos } from '../logic/buildHtml.js';
 import { computeCrossRef } from '../logic/crossref.js';
+import { compareSigns } from '../logic/constants.js';
 import { stem } from '../logic/stem.js';
 import { useDebounced } from '../hooks/useDebounced.js';
 import { CtxMenu } from './CtxMenu.jsx';
@@ -99,7 +100,7 @@ export function App(){
       }
       (classify(sign,sData,termData,mode)==='warn'?err:ok).push([sign,sData]);
     }
-    const byN=([a],[b])=>parseInt(a)-parseInt(b);
+    const byN=([a],[b])=>compareSigns(a,b);
     return{errSigns:err.sort(byN),okSigns:ok.sort(byN)};
   },[signData,termData,mode,search,dis]);
 
