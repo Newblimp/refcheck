@@ -87,4 +87,18 @@ describe('tokenize', () => {
       { word: '14', start: 8, end: 10 },
     ]);
   });
+
+  it('reports correct spans across CRLF (Windows) line endings', () => {
+    // Word pastes arrive with \r\n; every offset after a line break must still
+    // point at the right characters or the backdrop misaligns.
+    const text = 'housing 12\r\ncover 14\r\nscrew 18';
+    for (const tok of tokenize(text)) {
+      expect(text.slice(tok.start, tok.end)).toBe(tok.word);
+    }
+    expect(tokenize(text).map(t => t.word)).toEqual(['housing', '12', 'cover', '14', 'screw', '18']);
+  });
+
+  it('is safe to call repeatedly (module-level regex resets lastIndex)', () => {
+    expect(tokenize('housing 12')).toEqual(tokenize('housing 12'));
+  });
 });

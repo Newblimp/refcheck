@@ -60,6 +60,11 @@ describe('isClaimNumber', () => {
     const text = 'I. Insert the pin.';
     expect(isClaimNumber(text, tokFor(text, 'I'))).toBe(false);
   });
+
+  it('matches a claim number after a CRLF (Windows) line break', () => {
+    const text = '1. A device.\r\n2. The device.';
+    expect(isClaimNumber(text, tokFor(text, '2'))).toBe(true);
+  });
 });
 
 describe('isSignToken', () => {
