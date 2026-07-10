@@ -341,6 +341,39 @@ describe('extractData — sign ranges (endpoints only)', () => {
   });
 });
 
+describe('extractData — bracketed paragraph numbers ([0012])', () => {
+  it('does not treat a bracketed number as a sign', () => {
+    const res = extractData('[0012] The housing 12 is large.', 'en');
+    expect(Object.keys(res.signData)).toEqual(['12']);
+  });
+
+  it('ignores a bracketed number even directly after a term word', () => {
+    const res = extractData('As noted above [0023], the housing 12 is shown.', 'en');
+    expect(Object.keys(res.signData)).toEqual(['12']);
+    expect([...res.noTermSigns]).toEqual([]); // not even recorded as a bare sign
+  });
+
+  it('a bracketed number does not satisfy a term (bare-term flag still raised)', () => {
+    const res = extractData('The housing 12 is shown. The housing [0014] is metallic.', 'en');
+    expect(res.bareTerms.some(bt => bt.termStem.includes('hous'))).toBe(true);
+  });
+
+  it('a fully bracketed range/list registers no signs', () => {
+    expect(Object.keys(extractData('The screws [18-22] hold it.', 'en').signData)).toEqual([]);
+    expect(Object.keys(extractData('The screws [18, 20] hold it.', 'en').signData)).toEqual([]);
+  });
+
+  it('an unbracketed range next to bracketed paragraph numbers still works', () => {
+    const res = extractData('[0012] The screws 18 to 22 hold the plate.', 'en');
+    expect(Object.keys(res.signData).sort()).toEqual(['18', '22']);
+  });
+
+  it('ignores bracketed numbers in claims mode too', () => {
+    const res = extractData('1. A device (10), see paragraph [0012].', 'en', {}, true, true);
+    expect(Object.keys(res.signData)).toEqual(['10']);
+  });
+});
+
 describe('extractData — noTermSigns', () => {
   it('records a standalone sign that never gets a term', () => {
     const res = extractData('See (10) here.', 'en');

@@ -69,11 +69,18 @@ import { computeClaimGraph } from './claims.js';
  * @property {Set<string>} noTermSigns  Signs seen only without a term
  */
 
+// A number written in square brackets ([0012]) is a paragraph number, not a
+// reference sign — ignore it everywhere a sign could be detected. A bracket
+// directly on EITHER side counts, so every member of a bracketed group
+// ([0012]-[0015], [18, 20]) is caught, not just fully enclosed tokens.
+const isBracketed = (text, tok) => text[tok.start - 1] === '[' || text[tok.end] === ']';
+
 export function detectOrdStems(tokens, lang, text, isClaims) {
   const s = new Set();
   for (let i = 2; i < tokens.length; i++) {
     const t = tokens[i];
     if (!isSignToken(t.word)) continue;
+    if (isBracketed(text, t)) continue;
     if (isClaims && isClaimNumber(text, t)) continue;
     const p1 = tokens[i - 1], p2 = tokens[i - 2];
     if (!p1 || !p2) continue;
@@ -151,6 +158,7 @@ export function extractData(text, lang, mwo = {}, autoMW = true, isClaims = fals
   for (let i = 0; i < toks.length; i++) {
     const tok = toks[i];
     if (!isSignToken(tok.word)) continue;
+    if (isBracketed(text, tok)) continue; // [0012] — paragraph number, not a sign
     if (isClaims && isClaimNumber(text, tok)) {
       claimNums.push({ value: parseInt(tok.word, 10), start: tok.start, end: tok.end });
       continue;
@@ -177,6 +185,10 @@ export function extractData(text, lang, mwo = {}, autoMW = true, isClaims = fals
   const NUM_RE = new RegExp(SIGN_RE, 'g');
   let rm;
   while ((rm = LIST_RE.exec(text)) !== null) {
+    // A fully bracketed list/range ([12-14], [18, 20]) is a paragraph-number
+    // construct, not signs. (A separator can never cross a "]"/"[", so a list
+    // match cannot otherwise touch bracketed numbers.)
+    if (text[rm.index - 1] === '[' && text[rm.index + rm[0].length] === ']') continue;
     // Index of the first token at/after the list start; the shared term is
     // whatever precedes it (works whether or not the endpoints tokenized).
     let baseIdx = toks.findIndex(t => t.start >= rm.index);
@@ -301,9 +313,11 @@ export function extractData(text, lang, mwo = {}, autoMW = true, isClaims = fals
       for (const [ks, ke] of knownRanges) { if (tStart >= ks && tEnd <= ke) { coveredByKnown = true; break; } }
       if (coveredByKnown) break;
       if (bareSpans.has(`${tStart}-${tEnd}`)) break;
-      // Skip if immediately followed by a sign token
+      // Skip if immediately followed by a real sign token (a bracketed
+      // paragraph number is not a sign, so it does not satisfy the term)
       const nxt = toks[i + 1];
-      if (nxt && isSignToken(nxt.word) && !(isClaims && isClaimNumber(text, nxt))) break;
+      if (nxt && isSignToken(nxt.word) && !isBracketed(text, nxt) &&
+        !(isClaims && isClaimNumber(text, nxt))) break;
       const signs = Object.keys(termData[ts]?.signs || {});
       bareSpans.add(`${tStart}-${tEnd}`);
       bareTerms.push({
