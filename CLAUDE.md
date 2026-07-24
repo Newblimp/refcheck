@@ -41,7 +41,9 @@ src/
     claims.js           segmentClaims / parseClaimRefs / computeClaimGraph — claim
                         spans, dependency refs (single, lists, ranges, "preceding
                         claims", EN+DE), transitive ancestors, depErrors
-    buildHtml.js        esc, buildHtml, findAtPos
+    buildHtml.js        esc, buildHtml, findAtPos (buildHtml appends a trailing
+                        newline sentinel so the backdrop and textarea share a
+                        scrollHeight — see the trailing-newline note below)
     crossref.js         computeCrossRef (Description ↔ Claims comparison)
     reflist.js          buildRefList / toPlainText (reference numeral list)
     *.test.js           Vitest unit tests for the above
@@ -281,7 +283,7 @@ Actions"** in Settings → Pages. The Vite `base` is `/refcheck/` (project-site 
 - Google Fonts: Space Grotesk, JetBrains Mono (loaded in `index.html`)
 
 ### Testing
-Run with `npm test` (currently **199 tests**). Logic tests run under the fast `node`
+Run with `npm test` (currently **200 tests**). Logic tests run under the fast `node`
 environment; only `*.ui.test.jsx` files run under `jsdom` (scoped via
 `environmentMatchGlobs` in `vite.config.js`, with `src/test/setup.js` providing the
 jest-dom matchers and `matchMedia`/`clipboard` stubs). Coverage by area:
@@ -294,7 +296,7 @@ jest-dom matchers and `matchMedia`/`clipboard` stubs). Coverage by area:
 | `extract.test.js` | sign/term consistency & inconsistencies, claims parentheses, claim-numbering (+ stable keys, CRLF), article errors (EN+DE), DE gender conflict, ordinal multi-word + `mwo` + `detectOrdStems` guards, bare terms, **prime signs**, **Roman step/substep signs + conflicts**, **ranges (to/bis/and/und/dash, EN+DE, with negatives, figure-word exclusion)**, **`noTermSigns`**, **bracketed paragraph numbers (`[0012]`)**, **per-claim antecedent basis**, **claim dependency errors**, `getAllErrors` (five categories, dismissal keys) |
 | `claims.test.js` | `segmentClaims` spans, `parseClaimRefs` (positions, offsets, lists, range expansion, DE, "preceding claims", trailing-comma negatives), `computeClaimGraph` (transitive ancestors, range/preceding ancestry, missing/forward/self typing, duplicate keys, acyclicity) |
 | `crossref.test.js` | null/agreement, missing-in-desc/claims, numeric sort, sign & term conflicts, **`notIntroducedInDesc`** |
-| `buildHtml.test.js` | empty input, warn/data-sign marks, numbering + dependency highlights, dismissed→`h-dis`, focus class, escaping, non-overlapping marks, **strip-marks ≡ esc(text) alignment invariant**; `findAtPos` |
+| `buildHtml.test.js` | empty input, warn/data-sign marks, numbering + dependency highlights, dismissed→`h-dis`, focus class, escaping, non-overlapping marks, **strip-marks ≡ esc(text) + trailing-newline sentinel (alignment invariant)**, **trailing-newline sentinel appended (vertical alignment)**; `findAtPos` |
 | `reflist.test.js` | `buildRefList` (sort, dominant term, primes, empty), `toPlainText` |
 | `i18n.test.js` | EN/DE key parity + matching value types |
 | `perf.test.js` | extraction of a >100KB document stays well under a second (quadratic-regression guard) |
