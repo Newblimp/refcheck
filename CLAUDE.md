@@ -91,7 +91,7 @@ src/
 
 ### Modes
 - **Description Mode**: Validates sign-term consistency throughout the text; each mode maintains its own text buffer
-- **Claims Mode**: Additionally checks that signs are wrapped in parentheses `(10)`, validates claim numbering and dependencies, and switches article checking to per-claim antecedent basis
+- **Claims Mode**: Additionally checks that signs are wrapped in parentheses `(10)` — a grouped list such as `(6, 12; 13)` counts as parenthesised for every sign inside it — validates claim numbering and dependencies, and switches article checking to per-claim antecedent basis
 - Mode buttons show a dot indicator when their buffer contains text
 
 ### Claim dependencies (claims mode)
@@ -246,10 +246,17 @@ All access goes through `hooks/usePersistentState.js`.
       word (the usual sign-to-term rule), which is rare for these; document-position and
       the preceding-term requirement keep most out of the sign list
 - [x] **Sign ranges/lists** register every literally-listed sign under the shared preceding
-      term: `18 to 22`, `18 bis 22`, `18 and 22`, `18 und 22`, `18–22`, `18-22`, and comma
-      lists of 2+ signs `18, 20` / `18, 20 and 22` / `18, 20, and 22` (Oxford), EN + DE.
-      Digit-connector-digit adjacency keeps `a housing 12 and a cover 14` (distinct terms)
-      from being misread as a list. Ranges are endpoints-only (no invented intermediates)
+      term: `18 to 22`, `18 bis 22`, `18 and 22`, `18 und 22`, `18–22`, `18-22`, and comma or
+      **semicolon** lists of 2+ signs `18, 20` / `6, 12; 13` / `18, 20 and 22` / `18, 20, and 22`
+      (Oxford), EN + DE. Digit-connector-digit adjacency keeps `a housing 12 and a cover 14`
+      (distinct terms) from being misread as a list. Ranges are endpoints-only (no invented
+      intermediates)
+- [x] **Parenthesised sign groups**: a `(…)` (no nested parens) whose interior is only reference
+      signs separated by spaces, commas or semicolons — `(10)`, `(6, 12; 13)`, `(10a, 10b)` — is a
+      sign group. Every sign inside counts as written in parentheses for the claims-mode check
+      (so `(6, 12; 13)` is not flagged for missing brackets), even though a `,`/`;` sits between
+      the sign and the enclosing bracket. A group holding any non-sign word (`(see 10)`) does not
+      qualify. See `signGroups` / `inParensAt` in `extract.js`
 - [ ] Letter-prefix signs (A10, B12) are not yet supported
 - [ ] A trailing comma list makes a date a false positive: `January 3, 2020` registers `2020`
       (and `3`, which the main scan already records) under the preceding word
@@ -288,7 +295,7 @@ Actions"** in Settings → Pages. The Vite `base` is `/refcheck/` (project-site 
 - Google Fonts: Space Grotesk, JetBrains Mono (loaded in `index.html`)
 
 ### Testing
-Run with `npm test` (currently **202 tests**). Logic tests run under the fast `node`
+Run with `npm test` (currently **206 tests**). Logic tests run under the fast `node`
 environment; only `*.ui.test.jsx` files run under `jsdom` (scoped via
 `environmentMatchGlobs` in `vite.config.js`, with `src/test/setup.js` providing the
 jest-dom matchers and `matchMedia`/`clipboard` stubs). Coverage by area:
@@ -298,7 +305,7 @@ jest-dom matchers and `matchMedia`/`clipboard` stubs). Coverage by area:
 | `tokenize.test.js` | word/number spans, trailing-letter (`12a`) & **prime (`10'`,`10′`)** signs, **Roman steps/substeps (`II`, `I.1`) + word-fallthrough (`In`, `Die`)**, German letters/hyphens, >5-digit runs, glued word+number, decimals, **CRLF spans**, repeat-call safety |
 | `stem.test.js` | EN Porter steps (`-s`/`-ies`/`-ing`/`-ed`/`-tion`, `-ss` retention, short words), DE Snowball (plurals, umlaut folding, case), dispatch + EN fallback |
 | `constants.test.js` | `likelySign`, `isClaimNumber` (terminators, indented, parens, mid-sentence, none, **Roman `I.` guard**, **CRLF**), `isSignToken` (prime/letter/range, **Roman + malformed rejection**), **`romanToInt`/`signVal`**, `compareSigns` (**Roman ordering, Arabic-before-Roman grouping**), article/ordinal helpers |
-| `extract.test.js` | sign/term consistency & inconsistencies, claims parentheses, claim-numbering (+ stable keys, CRLF), article errors (EN+DE), DE gender conflict, ordinal multi-word + `mwo` + `detectOrdStems` guards, bare terms, **prime signs**, **Roman step/substep signs + conflicts**, **ranges (to/bis/and/und/dash, EN+DE, with negatives, figure-word exclusion, `bis`/`Ansprüchen` never a term)**, **`noTermSigns`**, **bracketed paragraph numbers (`[0012]`)**, **per-claim antecedent basis**, **claim dependency errors**, `getAllErrors` (five categories, dismissal keys) |
+| `extract.test.js` | sign/term consistency & inconsistencies, claims parentheses, claim-numbering (+ stable keys, CRLF), article errors (EN+DE), DE gender conflict, ordinal multi-word + `mwo` + `detectOrdStems` guards, bare terms, **prime signs**, **Roman step/substep signs + conflicts**, **ranges (to/bis/and/und/dash/semicolon, EN+DE, with negatives, figure-word exclusion, `bis`/`Ansprüchen` never a term)**, **parenthesised sign groups (`(6, 12; 13)` all in-parens, `(see 10)` excluded)**, **`noTermSigns`**, **bracketed paragraph numbers (`[0012]`)**, **per-claim antecedent basis**, **claim dependency errors**, `getAllErrors` (five categories, dismissal keys) |
 | `claims.test.js` | `segmentClaims` spans, `parseClaimRefs` (positions, offsets, lists, range expansion, DE, "preceding claims", trailing-comma negatives), `computeClaimGraph` (transitive ancestors, range/preceding ancestry, missing/forward/self typing, duplicate keys, acyclicity) |
 | `crossref.test.js` | null/agreement, missing-in-desc/claims, numeric sort, sign & term conflicts, **`notIntroducedInDesc`** |
 | `buildHtml.test.js` | empty input, warn/data-sign marks, numbering + dependency highlights, dismissed→`h-dis`, focus class, escaping, non-overlapping marks, **strip-marks ≡ esc(text) + trailing-newline sentinel (alignment invariant)**, **trailing-newline sentinel appended (vertical alignment)**; `findAtPos` |
