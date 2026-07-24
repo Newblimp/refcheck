@@ -45,6 +45,29 @@ describe('App (interactive)', () => {
     expect(container.querySelector('.nav-lbl').textContent).toMatch(/^2 \//);
   });
 
+  it('clicking a sign card cycles through its occurrences, then unfocuses', async () => {
+    const { container } = render(<App />);
+    typeInto('The housing 12 is the casing 12.');
+    const card = await waitFor(() => {
+      const c = container.querySelector('.sign-card');
+      if (!c) throw new Error('no sign card yet');
+      return c;
+    });
+    const ed = editor();
+    const first = ed.value.indexOf('12');
+    const second = ed.value.indexOf('12', first + 1);
+    expect(second).toBeGreaterThan(first);
+
+    fireEvent.click(card);                       // 1st click → first occurrence
+    expect(ed.selectionStart).toBe(first);
+    fireEvent.click(card);                       // 2nd click → next occurrence
+    expect(ed.selectionStart).toBe(second);
+    fireEvent.click(card);                       // past the last → unfocus
+    expect(container.querySelector('.sign-card.focused')).toBeFalsy();
+    fireEvent.click(card);                       // cycle restarts at the first
+    expect(ed.selectionStart).toBe(first);
+  });
+
   it('copies the reference list to the clipboard', async () => {
     const { container } = render(<App />);
     typeInto('The device 10 has a housing 12.');
