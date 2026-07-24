@@ -316,6 +316,15 @@ describe('extractData — sign ranges (endpoints only)', () => {
     const res = extractData('according to claims 1 to 5.', 'en');
     expect(Object.keys(res.signData)).toEqual([]);
   });
+  it('does NOT register a range preceded by a German figure word (Figuren 14 und 15)', () => {
+    const res = extractData('Wie in den Figuren 14 und 15 gezeigt.', 'de');
+    expect(Object.keys(res.signData)).toEqual([]);
+    expect(res.bareTerms).toEqual([]);
+  });
+  it('does NOT register a range preceded by an English figure word (figures 14 and 15)', () => {
+    const res = extractData('As shown in figures 14 and 15.', 'en');
+    expect(Object.keys(res.signData)).toEqual([]);
+  });
 
   it('registers all elements of a 3+ element comma list with a conjunction', () => {
     expect(endpointsOnly('The screws 18, 20 and 22 hold the plate.')).toEqual(['18', '20', '22']);
