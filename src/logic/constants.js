@@ -10,9 +10,10 @@ export const EXCL = new Set([
   'such', 'each', 'least', 'more', 'less', 'than', 'about', 'between', 'through', 'into',
   'according', 'further', 'also', 'only', 'each', 'any', 'all', 'both',
   // German
-  'figur', 'figuren', 'abbildung', 'abbildungen', 'abb', 'anspruch', 'ansprüche', 'absatz', 'seite', 'abschnitt', 'schritt',
+  'figur', 'figuren', 'abbildung', 'abbildungen', 'abb', 'anspruch', 'ansprüche', 'ansprüchen',
+  'anspruchs', 'anspruches', 'absatz', 'seite', 'abschnitt', 'schritt',
   'tabelle', 'bezugszeichen', 'ziffer', 'wobei', 'umfassend', 'aufweisend', 'gemäß',
-  'bei', 'nach', 'vor', 'über', 'unter', 'durch', 'für', 'von', 'mit', 'zu', 'an', 'am',
+  'bei', 'nach', 'vor', 'über', 'unter', 'durch', 'für', 'von', 'mit', 'zu', 'an', 'am', 'bis',
   'im', 'in', 'der', 'die', 'das', 'dem', 'den', 'des', 'ein', 'eine', 'einen', 'einem',
   'eines', 'einer', 'und', 'oder', 'ist', 'sind', 'war', 'waren', 'hat', 'haben', 'sich',
   'auch', 'nur', 'noch', 'bereits', 'dabei', 'hierbei', 'hierdurch', 'hierzu',

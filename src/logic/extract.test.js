@@ -288,6 +288,11 @@ describe('extractData — sign ranges (endpoints only)', () => {
   it('registers a German "bis" range', () => {
     expect(endpointsOnly('Die Schrauben 18 bis 22 halten die Platte.', 'de')).toEqual(['18', '22']);
   });
+  it('shares the noun across a German "bis" range — "bis" is never the term', () => {
+    const res = extractData('Die Schrauben 18 bis 22 halten die Platte.', 'de');
+    expect(Object.keys(res.signData['18'].terms)).toEqual(['schraub']);
+    expect(Object.keys(res.signData['22'].terms)).toEqual(['schraub']); // not "bis"
+  });
   it('registers an English "and" list of two signs', () => {
     expect(endpointsOnly('The screws 18 and 22 are shown.')).toEqual(['18', '22']);
   });
@@ -324,6 +329,12 @@ describe('extractData — sign ranges (endpoints only)', () => {
   it('does NOT register a range preceded by an English figure word (figures 14 and 15)', () => {
     const res = extractData('As shown in figures 14 and 15.', 'en');
     expect(Object.keys(res.signData)).toEqual([]);
+  });
+  it('does NOT register a German claim cross-reference (Ansprüche/Ansprüchen … bis)', () => {
+    // "Anspruch"/"Ansprüche"/"Ansprüchen" and the range word "bis" are all
+    // excluded, so no claim number is mistaken for a sign or a term.
+    expect(Object.keys(extractData('nach einem der Ansprüche 1 bis 4.', 'de').signData)).toEqual([]);
+    expect(Object.keys(extractData('gemäß den Ansprüchen 1 bis 4.', 'de').signData)).toEqual([]);
   });
 
   it('registers all elements of a 3+ element comma list with a conjunction', () => {
