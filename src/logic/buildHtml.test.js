@@ -73,8 +73,10 @@ describe('buildHtml', () => {
   });
 
   // The backdrop overlay only lines up with the textarea if buildHtml never
-  // adds, drops or reorders a character. This invariant is what every other
-  // highlighting feature silently depends on.
+  // adds, drops or reorders a character within the content. This invariant is
+  // what every other highlighting feature silently depends on. A single
+  // trailing "\n" sentinel is appended (see below) and stripped here before
+  // comparison — it carries no content, only backdrop height.
   it('stripping the marks reproduces the escaped input exactly (alignment invariant)', () => {
     const stripMarks = html => html.replace(/<\/?mark[^>]*>/g, '');
     const samples = [
@@ -88,9 +90,19 @@ describe('buildHtml', () => {
       for (const isClaims of [false, true]) {
         const r = extractData(text, 'en', {}, true, isClaims);
         const html = buildHtml(text, r, isClaims ? 'claims' : 'description', new Set(), null);
-        expect(stripMarks(html)).toBe(esc(text));
+        expect(stripMarks(html)).toBe(esc(text) + '\n');
       }
     }
+  });
+
+  // A textarea reserves an empty line for a trailing "\n" that a pre-wrap div
+  // drops; the appended sentinel newline keeps the backdrop the same height so
+  // the highlights do not drift below the text at the bottom of the buffer.
+  it('appends a trailing newline sentinel so the backdrop matches textarea height', () => {
+    expect(buildHtml('abc', EMPTY, 'description', new Set(), null)).toBe('abc\n');
+    expect(build('The housing 12 is large.\n', 'description', false).endsWith('\n')).toBe(true);
+    // Empty input stays empty (nothing to scroll, no backdrop content).
+    expect(buildHtml('', EMPTY, 'description', new Set(), null)).toBe('');
   });
 });
 

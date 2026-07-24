@@ -56,7 +56,14 @@ export function buildHtml(text, res, mode, dis, focusSign) {
     pos = sp.end;
   }
   if (pos < text.length) html += esc(text.slice(pos));
-  return html;
+  // Vertical-alignment sentinel. A <textarea> reserves an empty line box for a
+  // trailing "\n", but a white-space:pre-wrap div drops its final one — so a
+  // buffer ending in a newline leaves the backdrop one line shorter than the
+  // textarea, and scrolled to the bottom the highlights drift below the text
+  // ("double text"). Append a newline the div will drop: it restores the
+  // reserved line so both layers share one scrollHeight (a no-op when the text
+  // does not end in a newline, since the div drops it either way).
+  return html + '\n';
 }
 
 export function findAtPos(charPos, signData, artErrors) {
