@@ -37,6 +37,9 @@ export function App() {
   const [navIdx, setNavIdx] = useState(0);
   const [ctx, setCtx] = useState(null);
   const bdRef = useRef(null), taRef = useRef(null);
+  // Occurrence cursor for click-to-cycle on the sidebar error cards: which
+  // occurrence of the currently-focused error the next click should advance from.
+  const focusOcc = useRef({ id: null, idx: 0 });
   const t = T[lang];
 
   // Debounce the expensive extraction on large documents; the textarea value
@@ -140,20 +143,37 @@ export function App() {
     syncScroll();
   }
 
-  // Toggle focus on a card and jump the editor to its span.
-  function focusItem(type, key, start, end) {
-    setFocus(f => (f && f.type === type && f.key === key) ? null : { type, key });
-    if (start !== undefined) scrollTo(start, end);
+  // Click an error card: the first click focuses it and jumps to its first
+  // occurrence; each further click on the same card advances to the next
+  // occurrence (in document order); the click after the last one clears the
+  // focus. `occs` is the sorted [start, end] spans for the error, so a
+  // single-occurrence card (article/bare/numbering/dependency) simply toggles,
+  // exactly as before, while a multi-occurrence sign cycles through its marks.
+  function focusCycle(type, key, occs) {
+    if (!occs.length) return;
+    const id = type + ':' + key;
+    const cur = focusOcc.current;
+    // Only continue an existing cycle if this same error is still focused.
+    const advancing = !!focus && focus.type === type && focus.key === key && cur.id === id;
+    const idx = advancing ? cur.idx + 1 : 0;
+    if (advancing && idx >= occs.length) { // stepped past the last → unfocus
+      focusOcc.current = { id: null, idx: 0 };
+      setFocus(null);
+      return;
+    }
+    focusOcc.current = { id, idx };
+    setFocus({ type, key });
+    scrollTo(occs[idx][0], occs[idx][1]);
   }
   const onFocusSign = sign => {
-    const p = signData[sign]?.positions[0];
-    setFocus(f => (f && f.type === 'sign' && f.key === sign) ? null : { type: 'sign', key: sign });
-    if (p) scrollTo(p.signStart, p.signEnd);
+    const occs = (signData[sign]?.positions || [])
+      .map(p => [p.signStart, p.signEnd]).sort((a, b) => a[0] - b[0]);
+    focusCycle('sign', sign, occs);
   };
-  const onFocusArt = ae => focusItem('art', ae.artStart, ae.artStart, ae.artEnd);
-  const onFocusBare = bt => focusItem('bare', bt.termStart, bt.termStart, bt.termEnd);
-  const onFocusNum = ne => focusItem('num', ne.start, ne.start, ne.end);
-  const onFocusDep = de => focusItem('dep', de.start, de.start, de.end);
+  const onFocusArt = ae => focusCycle('art', ae.artStart, [[ae.artStart, ae.artEnd]]);
+  const onFocusBare = bt => focusCycle('bare', bt.termStart, [[bt.termStart, bt.termEnd]]);
+  const onFocusNum = ne => focusCycle('num', ne.start, [[ne.start, ne.end]]);
+  const onFocusDep = de => focusCycle('dep', de.start, [[de.start, de.end]]);
 
   function navigate(dir) {
     if (!allErrors.length) return;
@@ -162,6 +182,7 @@ export function App() {
     const e = allErrors[next];
     scrollTo(e.start, e.end);
     setFocus({ type: e.type, key: e.type === 'sign' ? e.sign : e.start });
+    focusOcc.current = { id: null, idx: 0 }; // arrows drive their own cursor; restart card-cycling
   }
 
   function toggleDis(key) { setDis(d => { const n = new Set(d); n.has(key) ? n.delete(key) : n.add(key); return n; }); }
