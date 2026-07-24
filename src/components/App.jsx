@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback, useEffect, useMemo } from 'react';
+import { useState, useRef, useCallback, useEffect, useLayoutEffect, useMemo } from 'react';
 import { T } from '../i18n.js';
 import { extractData, classify, getAllErrors } from '../logic/extract.js';
 import { buildHtml, findAtPos } from '../logic/buildHtml.js';
@@ -12,6 +12,10 @@ import { CtxMenu } from './CtxMenu.jsx';
 import { Sidebar } from './Sidebar.jsx';
 
 const EMPTY_RESULT = { signData: {}, termData: {}, artErrors: [], bareTerms: [], numErrors: [], depErrors: [], noTermSigns: new Set() };
+
+// useLayoutEffect on the client (runs before paint, so no highlight flash); plain
+// useEffect on the server so the render smoke test logs no SSR warning.
+const useIsoLayoutEffect = typeof window !== 'undefined' ? useLayoutEffect : useEffect;
 
 // ── APP ─────────────────────────────────────────────────────────────────────
 export function App() {
@@ -55,6 +59,14 @@ export function App() {
   const html = useMemo(() => buildHtml(debText, res, mode, dis, focusSign), [debText, res, mode, dis, focusSign]);
 
   const syncScroll = useCallback(() => { if (taRef.current && bdRef.current) bdRef.current.scrollTop = taRef.current.scrollTop; }, []);
+
+  // Re-mirror the scroll position whenever the backdrop's highlight content
+  // (re-)renders. On a large paste the textarea scrolls to the caret at once,
+  // but the backdrop html is debounced (≥5000 chars) — so the single scroll
+  // event that fired synced against stale, short content and clamped, leaving
+  // the highlights shifted until the next manual scroll. Re-syncing after the
+  // content commits realigns the two layers before the browser paints.
+  useIsoLayoutEffect(() => { syncScroll(); }, [html, syncScroll]);
 
   // Editor hover → sidebar-card highlight. elementFromPoint forces a synchronous
   // hit-test, so throttle to one lookup per animation frame instead of running
