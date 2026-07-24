@@ -155,6 +155,22 @@ export function extractData(text, lang, mwo = {}, autoMW = true, isClaims = fals
     }
   }
 
+  // Parenthesized sign groups: a "(…)" (no nested parens) whose interior is only
+  // reference signs separated by spaces, commas or semicolons — "(10)",
+  // "(6, 12; 13)". Every sign inside such a group counts as written in
+  // parentheses for the claims-mode check, even though a "," or ";" sits between
+  // it and the enclosing brackets. A group holding any non-sign word ("(see 10)")
+  // does not qualify, so signs there stay unparenthesised.
+  const signGroups = [];
+  const GROUP_RE = /\(([^()]*)\)/g;
+  let gmatch;
+  while ((gmatch = GROUP_RE.exec(text)) !== null) {
+    const parts = gmatch[1].split(/[\s,;]+/).filter(Boolean);
+    if (parts.length && parts.every(isSignToken))
+      signGroups.push({ start: gmatch.index, end: gmatch.index + gmatch[0].length });
+  }
+  const inParensAt = (s, e) => signGroups.some(g => s > g.start && e < g.end);
+
   for (let i = 0; i < toks.length; i++) {
     const tok = toks[i];
     if (!isSignToken(tok.word)) continue;
@@ -165,7 +181,7 @@ export function extractData(text, lang, mwo = {}, autoMW = true, isClaims = fals
     }
     const sign = tok.word;
     const signStart = tok.start, signEnd = tok.end;
-    const inParens = signStart > 0 && text[signStart - 1] === '(' && text[signEnd] === ')';
+    const inParens = inParensAt(signStart, signEnd);
 
     const { allTT, artTok } = collectTermToks(toks, i, lang);
     if (allTT.length === 0) { noTermSigns.add(sign); continue; }
@@ -174,13 +190,13 @@ export function extractData(text, lang, mwo = {}, autoMW = true, isClaims = fals
 
   // ── Sign ranges / lists ──
   // "18 to 22", "18 bis 22", "18 and 22", "18 und 22", "18–22", "18-22",
-  // "18, 20" and longer comma lists "18, 20 and 22" / "18, 20, and 22" (Oxford),
-  // EN + DE. Every literally-listed sign is registered under the single shared
-  // term preceding the list. The digit-connector-digit adjacency (each separator
-  // sits directly between two numbers) keeps "a housing 12 and a cover 14"
-  // (distinct terms, with a word between the connector and the second number)
-  // from being misread as a list.
-  const SEP = `\\s*(?:,\\s*(?:and|und|to|bis)?|and|und|to|bis|[-–—])\\s*`;
+  // comma/semicolon lists "18, 20" / "6, 12; 13" and longer ones "18, 20 and 22"
+  // / "18, 20, and 22" (Oxford), EN + DE. Every literally-listed sign is
+  // registered under the single shared term preceding the list. The
+  // digit-connector-digit adjacency (each separator sits directly between two
+  // numbers) keeps "a housing 12 and a cover 14" (distinct terms, with a word
+  // between the connector and the second number) from being misread as a list.
+  const SEP = `\\s*(?:[,;]\\s*(?:and|und|to|bis)?|and|und|to|bis|[-–—])\\s*`;
   const LIST_RE = new RegExp(`(${SIGN_RE})(?:${SEP}(?:${SIGN_RE}))+`, 'gi');
   const NUM_RE = new RegExp(SIGN_RE, 'g');
   let rm;
@@ -202,7 +218,7 @@ export function extractData(text, lang, mwo = {}, autoMW = true, isClaims = fals
       const sign = nm[0];
       if (!isSignToken(sign)) continue;
       const start = rm.index + nm.index;
-      if (!signData[sign]) recordOccurrence(sign, start, start + sign.length, allTT, null, false);
+      if (!signData[sign]) recordOccurrence(sign, start, start + sign.length, allTT, null, inParensAt(start, start + sign.length));
     }
   }
 

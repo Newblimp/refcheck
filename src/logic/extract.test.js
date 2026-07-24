@@ -50,6 +50,36 @@ describe('extractData — claims mode parentheses', () => {
   });
 });
 
+describe('extractData — parenthesised sign groups "(6, 12; 13)"', () => {
+  it('registers every sign in the group under the shared term, all in parentheses', () => {
+    const res = extractData('Klemme (6, 12; 13)', 'de', {}, true, true);
+    // All three signs are captured (the ";" no longer swallows 13)…
+    expect(Object.keys(res.signData).sort()).toEqual(['12', '13', '6']);
+    // …under the one preceding term…
+    for (const s of ['6', '12', '13']) expect(Object.keys(res.signData[s].terms)).toEqual(['klemm']);
+    // …and every one counts as written in parentheses (inPC === count).
+    for (const s of ['6', '12', '13']) expect(res.signData[s].inPC).toBe(res.signData[s].count);
+  });
+
+  it('does not treat a group containing a non-sign word as parenthesised (see 10)', () => {
+    const res = extractData('the plate (see 10) and the cover 14.', 'en', {}, true, true);
+    // "(see 10)" is not a pure sign group, so 10 is not registered as a bracketed sign.
+    expect(res.signData['10']).toBeUndefined();
+  });
+
+  it('a semicolon between independent clauses is not merged into one list', () => {
+    const res = extractData('The plate 12; a cover 14 is shown.', 'en');
+    expect(Object.keys(res.signData['12'].terms)).toEqual(['plate']);
+    expect(Object.keys(res.signData['14'].terms)).toEqual(['cover']);
+  });
+
+  it('a single-sign group (10) still counts as parenthesised', () => {
+    const res = extractData('A device (10).', 'en', {}, true, true);
+    expect(res.signData['10'].inPC).toBe(1);
+    expect(classify('10', res.signData['10'], res.termData, 'claims')).toBe('ok');
+  });
+});
+
 describe('extractData — claim numbering', () => {
   const claims =
     '1. A device comprising a first component (1) and a second component (2).\n' +
