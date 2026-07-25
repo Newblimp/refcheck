@@ -49,6 +49,7 @@ export const T = {
     refListCopied: "Copied",
     refListColSign: "Sign", refListColTerm: "Term", refListColCount: "Count",
     resetConfirm: "Clear all text and settings?",
+    themeLight: "Light", themeSystem: "System", themeDark: "Dark",
   },
   de: {
     appTitle: "BezZeichen", appSub: "Prüfer", modeDesc: "Beschreibung", modeClaims: "Ansprüche",
@@ -99,5 +100,6 @@ export const T = {
     refListCopied: "Kopiert",
     refListColSign: "Zeichen", refListColTerm: "Begriff", refListColCount: "Anzahl",
     resetConfirm: "Allen Text und Einstellungen löschen?",
+    themeLight: "Hell", themeSystem: "System", themeDark: "Dunkel",
   }
 };

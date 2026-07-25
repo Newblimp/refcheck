@@ -199,7 +199,7 @@ All access goes through `hooks/usePersistentState.js`.
 - [ ] Focus management in context menu needs work
 
 ### Theming
-- [ ] Theme toggle labels ("Light", "System", "Dark") are not localized
+- [x] Theme toggle is icon-only (sun/monitor/moon) with localized `title`/`aria-label` text (`themeLight`/`themeSystem`/`themeDark` in `i18n.js`)
 - [ ] "All consistent" message is hardcoded in English
 
 ### Performance

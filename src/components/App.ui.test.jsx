@@ -153,7 +153,7 @@ describe('App (interactive)', () => {
 
   it('theme toggle applies data-theme and persists', async () => {
     render(<App />);
-    fireEvent.click(screen.getByText('Light'));
+    fireEvent.click(screen.getByLabelText('Light'));
     await waitFor(() => expect(document.documentElement.getAttribute('data-theme')).toBe('light'));
     expect(localStorage.getItem('rsc_theme')).toBe('light');
   });
