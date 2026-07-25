@@ -258,9 +258,23 @@ export function App() {
       </div>
       <div className="spacer" />
       <div className="theme-toggle">
-        <button className={theme === 'light' ? 'active' : ''} onClick={() => setTheme('light')}>Light</button>
-        <button className={theme === 'system' ? 'active' : ''} onClick={() => setTheme('system')}>System</button>
-        <button className={theme === 'dark' ? 'active' : ''} onClick={() => setTheme('dark')}>Dark</button>
+        <button className={theme === 'light' ? 'active' : ''} onClick={() => setTheme('light')} title={t.themeLight} aria-label={t.themeLight}>
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="12" cy="12" r="4" />
+            <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41" />
+          </svg>
+        </button>
+        <button className={theme === 'system' ? 'active' : ''} onClick={() => setTheme('system')} title={t.themeSystem} aria-label={t.themeSystem}>
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <rect x="2" y="4" width="20" height="13" rx="1.5" />
+            <path d="M8 20h8M12 17v3" />
+          </svg>
+        </button>
+        <button className={theme === 'dark' ? 'active' : ''} onClick={() => setTheme('dark')} title={t.themeDark} aria-label={t.themeDark}>
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M20 12.5A8 8 0 1 1 11.5 4a6.5 6.5 0 0 0 8.5 8.5z" />
+          </svg>
+        </button>
       </div>
       <div className="pill-toggle">
         <button className={mode === 'description' ? 'active' : ''} onClick={() => { setMode('description'); setFocus(null); }}>{t.modeDesc}{descText && <span className="buf-dot" />}</button>
