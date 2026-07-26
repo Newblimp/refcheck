@@ -20,13 +20,23 @@ Patent documents must maintain strict consistency between reference signs (numer
 A React 18 + Vite project. The UI (JSX components) is separated from the pure
 parsing/validation logic so the logic can be unit-tested in Node with no DOM.
 Styling uses CSS custom properties for theming. The production bundle is built to
-`dist/` and published to GitHub Pages by `.github/workflows/deploy.yml`.
+`dist/` and published to GitHub Pages by `.github/workflows/deploy.yml`. The app
+runs fully client-side and is self-contained after the first load — see Offline
+Support below.
 
 ```
-index.html              Vite entry (HTML shell; sets initial theme to avoid FOUC)
+index.html              Vite entry (HTML shell; sets initial theme to avoid FOUC;
+                        links manifest.webmanifest + icon.svg)
+public/
+  sw.js                 Hand-rolled service worker: caches the app shell so the
+                        tool keeps working offline after the first load
+  manifest.webmanifest  PWA manifest (installable / Add to Home Screen)
+  icon.svg              App icon, reused as favicon + manifest icon
 src/
-  main.jsx              Mounts <App/> and imports styles.css
-  styles.css            All styles
+  main.jsx              Mounts <App/>, imports styles.css, registers sw.js (prod only)
+  styles.css            All styles + self-hosted @font-face declarations
+  fonts/                 Space Grotesk / JetBrains Mono .woff2 files (self-hosted,
+                        no CDN dependency — bundled + hashed by Vite like any asset)
   i18n.js               English/German UI strings (T)
   logic/                Pure, framework-free logic (unit-tested)
     constants.js        EXCL list, article/ordinal sets, likelySign, isClaimNumber,
@@ -129,6 +139,13 @@ src/
 - All persistence goes through the `usePersistentState` hook (one place for the localStorage try/catch and codecs)
 - Extraction is **debounced** for large documents (≥5000 chars) via `useDebounced`; the textarea stays immediate and the highlight backdrop is built from the same debounced buffer so spans never misalign
 - The textarea and the highlight backdrop are two scroll-synced layers (`syncScroll` mirrors `scrollTop` on the textarea's `onScroll`). Because the backdrop content is debounced, a large **paste** scrolls the textarea to the caret before the taller backdrop has rendered, so the one scroll event syncs against stale, short content and the highlights sit shifted until the next manual scroll. An `useIsoLayoutEffect(() => syncScroll(), [html])` in `App.jsx` re-mirrors the scroll position after the backdrop content commits, realigning the layers before paint. `buildHtml` also appends a trailing-newline sentinel so a buffer ending in `\n` keeps both layers the same height (see Sign Detection / `buildHtml.js`)
+
+### Offline Support
+- The app runs entirely client-side (no backend calls), so once loaded it needs the network only for the initial fetch. Two things used to break that:
+  - The UI fonts (Space Grotesk, JetBrains Mono) were pulled from the Google Fonts CDN on every load. They're now **self-hosted** — the `.woff2` files live in `src/fonts/` and are `@font-face`-declared with relative `url()`s in `styles.css`, so Vite hashes and bundles them like any other asset (no CDN request, no external dependency at all)
+  - Nothing cached the app shell itself, so a page reload with no connection would just fail. `public/sw.js` is a small hand-rolled service worker (registered from `main.jsx`, production builds only) that caches the shell: navigations go network-first with a cached-shell fallback, and hashed assets (JS/CSS/fonts) are cache-first, since a content hash never changes meaning under the same URL
+  - `public/manifest.webmanifest` + `public/icon.svg` make the page installable (Add to Home Screen / desktop PWA install), which is the most reliable way to keep using it with no connection at all
+- Net effect: after the first successful load, the tool keeps working fully offline — including on a hard refresh — since both the shell and its assets are already cached and no external requests remain
 
 ### Multi-word Terms
 - Auto-detects ordinal patterns ("first bearing", "second bearing")
@@ -292,7 +309,7 @@ Actions"** in Settings → Pages. The Vite `base` is `/refcheck/` (project-site 
 - React / ReactDOM 18.3.1 (bundled, not CDN)
 - Vite + @vitejs/plugin-react (build)
 - Vitest (tests); jsdom + @testing-library/react + user-event + jest-dom (UI tests)
-- Google Fonts: Space Grotesk, JetBrains Mono (loaded in `index.html`)
+- Space Grotesk, JetBrains Mono — self-hosted `.woff2` in `src/fonts/`, no CDN (see Offline Support)
 
 ### Testing
 Run with `npm test` (currently **207 tests**). Logic tests run under the fast `node`
