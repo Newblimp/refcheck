@@ -1,4 +1,13 @@
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+/* Self-hosted (no external CDN request, so the app works fully offline).
+   Relative url()s so Vite's asset pipeline hashes/copies them and rewrites
+   the path under the configured `base` for us. */
+@font-face{font-family:'Space Grotesk';font-style:normal;font-weight:400;font-display:swap;src:url('./fonts/space-grotesk-400.woff2') format('woff2')}
+@font-face{font-family:'Space Grotesk';font-style:normal;font-weight:500;font-display:swap;src:url('./fonts/space-grotesk-500.woff2') format('woff2')}
+@font-face{font-family:'Space Grotesk';font-style:normal;font-weight:600;font-display:swap;src:url('./fonts/space-grotesk-600.woff2') format('woff2')}
+@font-face{font-family:'Space Grotesk';font-style:normal;font-weight:700;font-display:swap;src:url('./fonts/space-grotesk-700.woff2') format('woff2')}
+@font-face{font-family:'JetBrains Mono';font-style:normal;font-weight:400;font-display:swap;src:url('./fonts/jetbrains-mono-400.woff2') format('woff2')}
+@font-face{font-family:'JetBrains Mono';font-style:normal;font-weight:500;font-display:swap;src:url('./fonts/jetbrains-mono-500.woff2') format('woff2')}
 :root{
   --font-ui:'Space Grotesk',sans-serif; --font-mono:'JetBrains Mono',monospace;
 }

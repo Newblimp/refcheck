@@ -11,6 +11,11 @@ claims-parentheses issues, and non-sequential claim numbering.
 Served via GitHub Pages — just open the link, nothing to install:
 <https://newblimp.github.io/refcheck/>
 
+It runs entirely in the browser (no backend, no account) and works fully offline
+after the first visit — a service worker caches the app shell and the fonts are
+self-hosted, so no network requests remain once it's loaded. You can also install
+it (Add to Home Screen / desktop PWA install) for a standalone offline app.
+
 ## Development
 
 The app is a React + Vite project. Source lives in `src/`; the production site is built
@@ -33,8 +38,11 @@ npm run preview  # serve the production build locally
 | Path | Purpose |
 |------|---------|
 | `index.html` | Vite entry (HTML shell, sets the initial theme) |
-| `src/main.jsx` | Mounts the React app |
-| `src/styles.css` | All styles (CSS custom properties for theming) |
+| `public/sw.js` | Service worker — caches the app shell for offline use |
+| `public/manifest.webmanifest` | PWA manifest (installable / Add to Home Screen) |
+| `src/main.jsx` | Mounts the React app, registers the service worker |
+| `src/styles.css` | All styles (CSS custom properties for theming) + self-hosted `@font-face` |
+| `src/fonts/` | Self-hosted font files (no external CDN dependency) |
 | `src/i18n.js` | English/German UI strings |
 | `src/logic/` | Pure, framework-free logic (tokenizer, stemming, extraction, cross-reference, HTML builder, reference list) — covered by tests |
 | `src/hooks/` | React hooks (`useDebounced`) |

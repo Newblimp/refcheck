@@ -1,0 +1,13 @@
+{
+  "name": "Reference Sign Checker",
+  "short_name": "RefSign Checker",
+  "description": "Validate reference sign consistency in patent applications.",
+  "start_url": ".",
+  "scope": ".",
+  "display": "standalone",
+  "background_color": "#282828",
+  "theme_color": "#282828",
+  "icons": [
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ]
+}
