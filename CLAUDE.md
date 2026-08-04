@@ -126,6 +126,7 @@ src/
 - **Light / Dark / System**: Theme preference stored in `localStorage` (`rsc_theme`)
 
 ### Error Management
+- Every card section in the sidebar (Inconsistencies, Article Errors, Missing Signs, Claim numbering, Claim Dependencies, Consistent, Dismissed, Cross-reference) is **collapsible**, styled like the Reference list's own header (▾/▸ arrow, icon, label, count). Click the header to toggle; a section hides itself entirely when its count is 0 rather than being unmounted by the caller, so a toggle survives the count dropping to 0 and back. `Section` (a local helper in `Sidebar.jsx`) owns the open/closed state, defaulting to open
 - Click an error card in the sidebar to jump to its occurrence in the text; clicking the **same card again cycles to the next occurrence** (document order), and the click after the last one clears the focus. A single-occurrence card (article/bare/numbering/dependency) therefore just toggles, while a multi-occurrence sign steps through all its marks. `focusCycle` in `App.jsx` owns this, keyed by an occurrence cursor (`focusOcc` ref)
 - Hover a sign number in the editor to highlight its sidebar card; hover a card to highlight its marks in the editor
 - Use arrow buttons in status bar to cycle through errors
@@ -312,7 +313,7 @@ Actions"** in Settings → Pages. The Vite `base` is `/refcheck/` (project-site 
 - Space Grotesk, JetBrains Mono — self-hosted `.woff2` in `src/fonts/`, no CDN (see Offline Support)
 
 ### Testing
-Run with `npm test` (currently **216 tests**). Logic tests run under the fast `node`
+Run with `npm test` (currently **217 tests**). Logic tests run under the fast `node`
 environment; only `*.ui.test.jsx` files run under `jsdom` (scoped via
 `environmentMatchGlobs` in `vite.config.js`, with `src/test/setup.js` providing the
 jest-dom matchers and `matchMedia`/`clipboard` stubs). Coverage by area:
@@ -329,7 +330,7 @@ jest-dom matchers and `matchMedia`/`clipboard` stubs). Coverage by area:
 | `reflist.test.js` | `buildRefList` (sort, dominant term, primes, empty), `toPlainText` |
 | `i18n.test.js` | EN/DE key parity + matching value types |
 | `perf.test.js` | extraction of a >100KB document stays well under a second (quadratic-regression guard) |
-| `App.ui.test.jsx` | (jsdom) typing populates sidebar, dismiss removes warning, nav cycles, **click-to-cycle through a sign's occurrences (+ unfocus after last)**, RefList copy, persistence restore + reset, mode switching preserves buffers, cross-ref section, dependency card + dismissal, context-menu term extension, language/theme toggles + persistence, dismissed-error restore |
+| `App.ui.test.jsx` | (jsdom) typing populates sidebar, dismiss removes warning, **collapsible card section toggles open/closed**, nav cycles, **click-to-cycle through a sign's occurrences (+ unfocus after last)**, RefList copy, persistence restore + reset, mode switching preserves buffers, cross-ref section, dependency card + dismissal, context-menu term extension, language/theme toggles + persistence, dismissed-error restore |
 
 Manual smoke test — `npm run dev`, then paste into Description mode:
 
