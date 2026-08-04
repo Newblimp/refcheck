@@ -2,7 +2,7 @@
 // Words that, when they precede a number, should NOT be treated as the term for
 // that reference sign (articles, prepositions, cross-reference words, etc.).
 export const EXCL = new Set([
-  'figure', 'figures', 'fig', 'figs', 'claim', 'claims', 'page',
+  'figure', 'figures', 'fig', 'figs', 'claim', 'claims', 'paragraph', 'page',
   'table', 'equation', 'reference', 'numeral', 'number', 'no', 'nr', 'see', 'note',
   'wherein', 'whereby', 'comprising', 'having', 'including', 'being', 'said', 'respective',
   'at', 'in', 'of', 'on', 'to', 'by', 'as', 'an', 'a', 'the', 'with', 'from', 'via', 'and', 'or',
