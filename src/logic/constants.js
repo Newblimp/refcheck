@@ -2,7 +2,7 @@
 // Words that, when they precede a number, should NOT be treated as the term for
 // that reference sign (articles, prepositions, cross-reference words, etc.).
 export const EXCL = new Set([
-  'figure', 'figures', 'fig', 'figs', 'claim', 'claims', 'paragraph', 'page', 'section',
+  'figure', 'figures', 'fig', 'figs', 'claim', 'claims', 'page',
   'table', 'equation', 'reference', 'numeral', 'number', 'no', 'nr', 'see', 'note',
   'wherein', 'whereby', 'comprising', 'having', 'including', 'being', 'said', 'respective',
   'at', 'in', 'of', 'on', 'to', 'by', 'as', 'an', 'a', 'the', 'with', 'from', 'via', 'and', 'or',
@@ -12,7 +12,7 @@ export const EXCL = new Set([
   'according', 'further', 'also', 'only', 'each', 'any', 'all', 'both',
   // German
   'figur', 'figuren', 'abbildung', 'abbildungen', 'abb', 'anspruch', 'ansprüche', 'ansprüchen',
-  'anspruchs', 'anspruches', 'absatz', 'seite', 'abschnitt', 'schritt',
+  'anspruchs', 'anspruches', 'seite', 'schritt',
   'tabelle', 'bezugszeichen', 'ziffer', 'wobei', 'umfassend', 'aufweisend', 'gemäß',
   'bei', 'nach', 'vor', 'über', 'unter', 'durch', 'für', 'von', 'mit', 'zu', 'an', 'am', 'bis',
   'um', 'ca', 'circa', 'etwa', 'ungefähr', 'wesentlichen', 'maximal', 'minimal',
