@@ -366,6 +366,24 @@ describe('extractData — sign ranges (endpoints only)', () => {
     expect(Object.keys(extractData('nach einem der Ansprüche 1 bis 4.', 'de').signData)).toEqual([]);
     expect(Object.keys(extractData('gemäß den Ansprüchen 1 bis 4.', 'de').signData)).toEqual([]);
   });
+  it('does NOT register "um" as a term (German, "um 10 mm nach oben")', () => {
+    const res = extractData('Das Element wird um 10 mm verschoben.', 'de');
+    expect(Object.keys(res.signData)).toEqual([]);
+  });
+  it('does NOT register English approximation words as terms (about/approximately/around/roughly)', () => {
+    expect(Object.keys(extractData('The gap is about 10 mm.', 'en').signData)).toEqual([]);
+    expect(Object.keys(extractData('The gap is approximately 10 mm.', 'en').signData)).toEqual([]);
+    expect(Object.keys(extractData('The gap is around 10 mm.', 'en').signData)).toEqual([]);
+    expect(Object.keys(extractData('The gap is roughly 10 mm.', 'en').signData)).toEqual([]);
+  });
+  it('does NOT register "wesentlichen" as a term (German, "im Wesentlichen 10")', () => {
+    const res = extractData('Das Bauteil ist im Wesentlichen 10 mm lang.', 'de');
+    expect(Object.keys(res.signData)).toEqual([]);
+  });
+  it('does NOT register "substantially" as a term (English)', () => {
+    const res = extractData('The part is substantially 10 mm long.', 'en');
+    expect(Object.keys(res.signData)).toEqual([]);
+  });
 
   it('registers all elements of a 3+ element comma list with a conjunction', () => {
     expect(endpointsOnly('The screws 18, 20 and 22 hold the plate.')).toEqual(['18', '20', '22']);
