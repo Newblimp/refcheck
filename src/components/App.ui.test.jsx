@@ -166,6 +166,45 @@ describe('App (interactive)', () => {
     expect(container.querySelector('.bee-bubble').textContent).toBe('§ 961 BGB! Ich bin frei!!');
   });
 
+  it('keeps the bee flying while the user carries on typing', async () => {
+    // Regression: onDone used to be a fresh closure each render, so every
+    // keystroke tore down the animation effect and respawned the bee just
+    // off-screen — it never flew in.
+    const { container } = render(<App />);
+    typeInto('a bee ');
+    await waitFor(() => expect(container.querySelector('.bee-wrap')).toBeTruthy());
+    const first = container.querySelector('.bee-wrap');
+    typeInto('a bee and the housing 12 keeps being typed');
+    typeInto('a bee and the housing 12 keeps being typed further');
+    // Same element instance — the flight was never restarted.
+    expect(container.querySelector('.bee-wrap')).toBe(first);
+  });
+
+  it('still summons a bee on an explicit request under prefers-reduced-motion', async () => {
+    // The setting suppresses the RANDOM appearances, but typing "bee" is an
+    // explicit by-name request; silently doing nothing just looks broken.
+    const mm = window.matchMedia;
+    window.matchMedia = q => ({
+      matches: /prefers-reduced-motion/.test(q),
+      addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {},
+    });
+    try {
+      const { container } = render(<App />);
+      typeInto('This should spawn a bee');
+      await waitFor(() => expect(container.querySelector('.bee-wrap')).toBeTruthy());
+    } finally {
+      window.matchMedia = mm;
+    }
+  });
+
+  it('typing "bee" twice summons two bees', async () => {
+    const { container } = render(<App />);
+    typeInto('a bee');
+    await waitFor(() => expect(container.querySelectorAll('.bee-wrap')).toHaveLength(1));
+    typeInto('a bee and another bee');
+    await waitFor(() => expect(container.querySelectorAll('.bee-wrap')).toHaveLength(2));
+  });
+
   it('does not summon a bee just for restoring a buffer that already says "bee"', async () => {
     localStorage.setItem('rsc_desc', 'The bee 12 is large.');
     const { container } = render(<App />);

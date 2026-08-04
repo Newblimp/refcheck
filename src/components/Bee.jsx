@@ -14,6 +14,12 @@ export function Bee({ t, onDone }) {
   const imgRef = useRef(null);
   const [near, setNear] = useState(false);
   const nearRef = useRef(false);
+  // The flight must survive App re-renders. onDone is a fresh closure on every
+  // render, so depending on it would tear down the rAF loop and respawn the bee
+  // off-screen on every keystroke — it would never get to fly in. Hold it in a
+  // ref and run the effect exactly once instead.
+  const doneRef = useRef(onDone);
+  doneRef.current = onDone;
 
   useEffect(() => {
     const el = wrapRef.current;
@@ -48,7 +54,7 @@ export function Bee({ t, onDone }) {
       const hit = Math.hypot(mouse.x - bee.x, mouse.y - bee.y) < 34;
       if (hit !== nearRef.current) { nearRef.current = hit; setNear(hit); }
 
-      if (beeGone(bee, w(), h())) { onDone?.(); return; }
+      if (beeGone(bee, w(), h())) { doneRef.current?.(); return; }
       raf = requestAnimationFrame(frame);
     };
     raf = requestAnimationFrame(frame);
@@ -58,7 +64,7 @@ export function Bee({ t, onDone }) {
       cancelAnimationFrame(raf);
       window.removeEventListener('mousemove', onMove);
     };
-  }, [onDone]);
+  }, []);
 
   return (
     <div className="bee-wrap" ref={wrapRef} aria-hidden="true">

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { countBees } from '../logic/beeFlight.js';
 
 // Decides WHEN a bee shows up. Two triggers:
@@ -11,41 +11,53 @@ import { countBees } from '../logic/beeFlight.js';
 
 const TICK_MS = 10_000;
 const MEAN_MS = 5 * 60_000;
+const MAX_BEES = 5;
 
 const prefersReducedMotion = () =>
   typeof window !== 'undefined'
   && typeof window.matchMedia === 'function'
-  && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  && !!window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 /**
  * @param {string} watchText Text whose "bee" count triggers a flight. Pass BOTH
  *   buffers concatenated, so switching modes never looks like new text.
- * @returns {[boolean, () => void]} whether a bee is flying, and a done callback
+ * @returns {[number[], (id:number)=>void]} ids of the bees in flight, and the
+ *   callback a bee calls when it has left the screen.
  */
 export function useBee(watchText) {
-  const [flying, setFlying] = useState(false);
-  const flyingRef = useRef(false);
-  flyingRef.current = flying;
+  const [bees, setBees] = useState([]);
+  const nextId = useRef(1);
 
-  // Random appearances.
+  const add = useCallback(() => {
+    setBees(list => (list.length >= MAX_BEES ? list : [...list, nextId.current++]));
+  }, []);
+  // Stable identity: Bee holds this for the lifetime of its flight.
+  const done = useCallback(id => setBees(list => list.filter(x => x !== id)), []);
+
+  // Random appearances. Unrequested motion, so this one honours the OS setting.
   useEffect(() => {
     if (typeof window === 'undefined' || prefersReducedMotion()) return;
     const id = setInterval(() => {
-      if (!flyingRef.current && Math.random() < TICK_MS / MEAN_MS) setFlying(true);
+      if (Math.random() < TICK_MS / MEAN_MS) add();
     }, TICK_MS);
     return () => clearInterval(id);
-  }, []);
+  }, [add]);
 
-  // Typing "bee". Triggers when the count RISES, so typing it a second time
-  // summons a second bee, while restoring a saved buffer that already contains
-  // the word on first load does not.
+  // Typing "bee". Fires when the count RISES, so typing it twice summons two
+  // bees, while merely restoring a saved buffer that already contains the word
+  // summons none.
+  //
+  // Deliberately NOT gated on prefers-reduced-motion: this is an explicit,
+  // by-name request from the user, and silently doing nothing just looks broken.
+  // The setting still suppresses the random appearances above, which is the
+  // motion someone asking to reduce motion actually did not ask for.
   const seen = useRef(null);
   useEffect(() => {
     const n = countBees(watchText);
     if (seen.current === null) { seen.current = n; return; }
-    if (n > seen.current && !prefersReducedMotion()) setFlying(true);
+    if (n > seen.current) add();
     seen.current = n;
-  }, [watchText]);
+  }, [watchText, add]);
 
-  return [flying, () => setFlying(false)];
+  return [bees, done];
 }
