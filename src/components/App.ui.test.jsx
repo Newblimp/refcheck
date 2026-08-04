@@ -35,6 +35,18 @@ describe('App (interactive)', () => {
     await waitFor(() => expect(container.querySelector('.badge.warn')).toBeFalsy());
   });
 
+  it('collapses and re-expands a sidebar card section on header click', async () => {
+    const { container } = render(<App />);
+    typeInto('The housing 12 is the casing 12.');
+    await waitFor(() => expect(container.querySelector('.sign-card')).toBeTruthy());
+    const hdr = sidebar(container).getByText(/Inconsistencies/);
+    expect(container.querySelector('.sidebar-section .sign-card')).toBeTruthy();
+    fireEvent.click(hdr);
+    expect(container.querySelector('.sidebar-section .sign-card')).toBeFalsy();
+    fireEvent.click(hdr);
+    expect(container.querySelector('.sidebar-section .sign-card')).toBeTruthy();
+  });
+
   it('navigation buttons cycle through errors', async () => {
     const { container } = render(<App />);
     typeInto('The housing 12 is the casing 12.');

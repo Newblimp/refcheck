@@ -1,9 +1,27 @@
+import { useState } from 'react';
 import { SignCard } from './SignCard.jsx';
 import { ArtCard } from './ArtCard.jsx';
 import { BareCard } from './BareCard.jsx';
 import { NumCard } from './NumCard.jsx';
 import { DepCard } from './DepCard.jsx';
 import { RefList } from './RefList.jsx';
+
+// A collapsible card-list section, styled like RefList's own header. Hides
+// itself when count is 0 rather than being conditionally mounted by the
+// caller, so its open/closed state survives the count dropping to 0 and
+// back up (e.g. while the user is mid-edit).
+function Section({ icon, label, color, count, children }) {
+  const [open, setOpen] = useState(true);
+  if (!count) return null;
+  return (
+    <div className="sidebar-section">
+      <div className="sec-lbl sec-lbl-toggle" style={{ color }} onClick={() => setOpen(o => !o)}>
+        {open ? '▾' : '▸'} {icon} {label} ({count})
+      </div>
+      {open && children}
+    </div>
+  );
+}
 
 // ── SIDEBAR (overview pane) ─────────────────────────────────────────────────
 // Purely presentational: App owns all state and the search/dismissal filtering;
@@ -42,60 +60,56 @@ export function Sidebar({
           </div>
         ) : (
           <>
-            {errSignsActive.length > 0 && <>
-              <div className="sec-lbl" style={{ color: 'var(--warn)' }}>⚠ {t.gErr}</div>
+            <Section icon="⚠" label={t.gErr} color="var(--warn)" count={errSignsActive.length}>
               {errSignsActive.map(([sign, sData]) => (
                 <SignCard key={sign} sign={sign} sData={sData} focused={focus?.type === 'sign' && focus.key === sign} {...signCardProps} />
               ))}
-            </>}
-            {visArtActive.length > 0 && <>
-              <div className="sec-lbl" style={{ color: 'var(--art)' }}>◈ {t.gArt}</div>
+            </Section>
+            <Section icon="◈" label={t.gArt} color="var(--art)" count={visArtActive.length}>
               {visArtActive.map((ae, i) => (
                 <ArtCard key={i} ae={ae} focused={focus?.type === 'art' && focus.key === ae.artStart}
                   t={t} dis={dis} onFocus={onFocusArt} onDismiss={onDismiss} />
               ))}
-            </>}
-            {visBareActive.length > 0 && <>
-              <div className="sec-lbl" style={{ color: 'var(--bare)' }}>∅ {t.gBare}</div>
+            </Section>
+            <Section icon="∅" label={t.gBare} color="var(--bare)" count={visBareActive.length}>
               {visBareActive.map((bt, i) => (
                 <BareCard key={i} bt={bt} focused={focus?.type === 'bare' && focus.key === bt.termStart}
                   t={t} dis={dis} onFocus={onFocusBare} onDismiss={onDismiss} />
               ))}
-            </>}
-            {visNumActive.length > 0 && <>
-              <div className="sec-lbl" style={{ color: 'var(--num)' }}>⌗ {t.numberingLbl}</div>
+            </Section>
+            <Section icon="⌗" label={t.numberingLbl} color="var(--num)" count={visNumActive.length}>
               {visNumActive.map((ne, i) => (
                 <NumCard key={i} ne={ne} focused={focus?.type === 'num' && focus.key === ne.start}
                   t={t} dis={dis} onFocus={onFocusNum} onDismiss={onDismiss} />
               ))}
-            </>}
-            {visDepActive.length > 0 && <>
-              <div className="sec-lbl" style={{ color: 'var(--dep)' }}>↷ {t.gDep}</div>
+            </Section>
+            <Section icon="↷" label={t.gDep} color="var(--dep)" count={visDepActive.length}>
               {visDepActive.map((de, i) => (
                 <DepCard key={i} de={de} focused={focus?.type === 'dep' && focus.key === de.start}
                   t={t} dis={dis} onFocus={onFocusDep} onDismiss={onDismiss} />
               ))}
-            </>}
-            {okSigns.length > 0 && <>
-              <div className="sec-lbl" style={{ color: 'var(--ok)' }}>✓ {t.gOk}</div>
+            </Section>
+            <Section icon="✓" label={t.gOk} color="var(--ok)" count={okSigns.length}>
               {okSigns.map(([sign, sData]) => (
                 <SignCard key={sign} sign={sign} sData={sData} focused={focus?.type === 'sign' && focus.key === sign} {...signCardProps} />
               ))}
-            </>}
-            {errSignsDismissed.length > 0 && <>
-              <div className="sec-lbl" style={{ color: 'var(--text-dim)' }}>↩ {t.gDis}</div>
+            </Section>
+            <Section icon="↩" label={t.gDis} color="var(--text-dim)" count={errSignsDismissed.length}>
               {errSignsDismissed.map(([sign, sData]) => (
                 <SignCard key={sign} sign={sign} sData={sData} focused={false} {...signCardProps} />
               ))}
-            </>}
+            </Section>
             {disCt > 0 && <div className="dis-section">
               <div className="dis-hdr">
                 <span>↩ {t.disCt(disCt)}</span>
                 <button className="ra-btn" onClick={onRestoreAll}>{t.restoreAll}</button>
               </div>
             </div>}
-            {orphaned && <>
-              <div className="sec-lbl" style={{ color: 'var(--text-muted)' }}>⇄ {t.crossRefLbl}</div>
+            {orphaned && <Section icon="⇄" label={t.crossRefLbl} color="var(--text-muted)" count={
+              orphaned.signConflicts.length + orphaned.termConflicts.length +
+              orphaned.missingInDesc.length + orphaned.missingInClaims.length +
+              orphaned.notIntroducedInDesc.length
+            }>
               {orphaned.signConflicts.map(({ sign, descTerms, claimsTerms }) => (
                 <div className="orphan-card" key={'sc' + sign}>
                   <span className="orphan-sign">{sign}</span>
@@ -126,7 +140,7 @@ export function Sidebar({
                   <span className="orphan-msg">{t.notIntroducedInDesc}</span>
                 </div>
               ))}
-            </>}
+            </Section>}
             <RefList signData={signData} termData={termData} t={t} lang={lang} />
           </>
         )}
