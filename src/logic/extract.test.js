@@ -384,6 +384,16 @@ describe('extractData — sign ranges (endpoints only)', () => {
     const res = extractData('The part is substantially 10 mm long.', 'en');
     expect(Object.keys(res.signData)).toEqual([]);
   });
+  it('does NOT register "maximal"/"minimal" as terms (German)', () => {
+    expect(Object.keys(extractData('Der Abstand beträgt maximal 10 mm.', 'de').signData)).toEqual([]);
+    expect(Object.keys(extractData('Der Abstand beträgt minimal 10 mm.', 'de').signData)).toEqual([]);
+  });
+  it('does NOT register "maximum"/"minimum"/"maximal"/"minimal" as terms (English)', () => {
+    expect(Object.keys(extractData('The gap is maximum 10 mm.', 'en').signData)).toEqual([]);
+    expect(Object.keys(extractData('The gap is minimum 10 mm.', 'en').signData)).toEqual([]);
+    expect(Object.keys(extractData('The gap is maximal 10 mm.', 'en').signData)).toEqual([]);
+    expect(Object.keys(extractData('The gap is minimal 10 mm.', 'en').signData)).toEqual([]);
+  });
 
   it('registers all elements of a 3+ element comma list with a conjunction', () => {
     expect(endpointsOnly('The screws 18, 20 and 22 hold the plate.')).toEqual(['18', '20', '22']);
