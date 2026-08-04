@@ -303,7 +303,7 @@ export function App() {
 
   const dragging = useFileDrop(handleFile);
   // Watch both buffers at once, so switching modes never looks like new text.
-  const [bees, beeDone] = useBee(`${descText}\n${claimsText}`);
+  const [bees, beeDone] = useBee(`${descText}\n${claimsText}`, lang);
 
   function undoImport() {
     const u = undoRef.current;

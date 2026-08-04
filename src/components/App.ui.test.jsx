@@ -205,6 +205,25 @@ describe('App (interactive)', () => {
     await waitFor(() => expect(container.querySelectorAll('.bee-wrap')).toHaveLength(2));
   });
 
+  it('typing "Biene" summons a bee when German is active', async () => {
+    localStorage.setItem('rsc_lang', 'de');
+    const { container } = render(<App />);
+    typeInto('Eine Biene sitzt auf dem Gehäuse 12.');
+    await waitFor(() => expect(container.querySelector('.bee-wrap')).toBeTruthy());
+    expect(container.querySelector('.bee-bubble').textContent).toBe('§ 961 BGB! Ich bin frei!!');
+  });
+
+  it('"Biene" does nothing in English, and switching language does not summon one', async () => {
+    const { container } = render(<App />);
+    typeInto('Eine Biene sitzt auf dem Gehäuse 12.');
+    await waitFor(() => expect(sidebar(container).getByText('12')).toBeInTheDocument());
+    expect(container.querySelector('.bee-wrap')).toBeFalsy();
+    // Flipping to German re-baselines rather than reading the jump as a request.
+    fireEvent.click(screen.getByText('DE'));
+    await waitFor(() => expect(screen.getByText('Ansprüche')).toBeInTheDocument());
+    expect(container.querySelector('.bee-wrap')).toBeFalsy();
+  });
+
   it('does not summon a bee just for restoring a buffer that already says "bee"', async () => {
     localStorage.setItem('rsc_desc', 'The bee 12 is large.');
     const { container } = render(<App />);

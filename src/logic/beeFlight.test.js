@@ -151,4 +151,17 @@ describe('countBees', () => {
     expect(countBees('')).toBe(0);
     expect(countBees(null)).toBe(0);
   });
+  it('counts "Biene" only when German is active', () => {
+    expect(countBees('eine Biene', 'de')).toBe(1);
+    expect(countBees('zwei Bienen und eine Biene', 'de')).toBe(2);
+    expect(countBees('BIENE', 'de')).toBe(1);
+    expect(countBees('eine Biene', 'en')).toBe(0);
+    expect(countBees('eine Biene')).toBe(0);
+  });
+  it('still counts "bee" in German', () => {
+    expect(countBees('a bee and eine Biene', 'de')).toBe(2);
+  });
+  it('does not fire on a German compound containing "Biene"', () => {
+    expect(countBees('Bienenstock Bienenwachs Bienenkorb', 'de')).toBe(0);
+  });
 });

@@ -191,9 +191,16 @@ src/
 - A bee occasionally flies across the window. Two triggers: a rare random draw
   (`useBee.js` runs a Bernoulli trial every 10s with p = tick/mean, so the wait is
   geometric — *memoryless*, averaging one bee every 5 minutes, rather than a fixed
-  countdown), and typing the word **bee** into either buffer. The typed trigger fires
-  when the *count* rises, so typing it twice summons two bees while merely restoring a
-  saved buffer that already contains the word summons none
+  countdown), and typing the word **bee** into either buffer — or **Biene**/**Bienen**
+  when the language is German. The typed trigger fires when the *count* rises, so
+  typing it twice summons two bees while merely restoring a saved buffer that already
+  contains the word summons none. Switching language **re-baselines** the count instead
+  of firing, so flipping to DE with "Biene" already in the buffer (or a `.docx` import,
+  which changes text and language together) does not summon one
+- The count is taken from **debounced** text (`SETTLE_MS`), because a mid-word keystroke
+  is momentarily a complete word: typing `Bienenstock` passes through `Biene` and
+  `beetle` through `bee`. Sampling only settled text means just what the user left
+  standing counts
 - `logic/beeFlight.js` is the pure motion model (unit-tested): the bee spawns just
   outside a random edge, steers toward a waypoint that is replaced every ~0.2–0.7s, and
   leaves through any edge after `LIFESPAN`. Roughly a quarter of waypoints are a
@@ -417,7 +424,7 @@ Actions"** in Settings → Pages. The Vite `base` is `/refcheck/` (project-site 
 - Space Grotesk, JetBrains Mono — self-hosted `.woff2` in `src/fonts/`, no CDN (see Offline Support)
 
 ### Testing
-Run with `npm test` (currently **330 tests**). Logic tests run under the fast `node`
+Run with `npm test` (currently **335 tests**). Logic tests run under the fast `node`
 environment; only `*.ui.test.jsx` files run under `jsdom` (scoped via
 `environmentMatchGlobs` in `vite.config.js`, with `src/test/setup.js` providing the
 jest-dom matchers and `matchMedia`/`clipboard` stubs). Coverage by area:
@@ -438,10 +445,10 @@ jest-dom matchers and `matchMedia`/`clipboard` stubs). Coverage by area:
 | `docx/write.test.js` | `alignLines` (same/changed/deleted/appended/inserted), `planEdits` no-op on unchanged text, round trip: edit applied, **untouched paragraphs and other zip parts byte-identical**, pPr/rPr preserved, **synthesized claim numbers stripped**, XML escaping, `<w:br/>` paragraphs, appended paragraphs, re-import equals the edit, `createDocx` |
 | `detectLang.test.js` | EN/DE prose, umlaut signal, empty input, **headings beat text**, text fallback |
 | `importDoc.test.js` | `fileKind` (`.docx`/`.docm`/legacy `.doc`/other), import returns buffers+lang+provenance, round-trip vs fresh export, DE fresh export heading |
-| `beeFlight.test.js` | spawn off each of the four edges, entering/`entered`, jagged path (heading reversals), bounded speed, lifespan → `leaving`, exit through any side, hard age cap, `countBees` (word boundary, plural, `beetle` negative) |
+| `beeFlight.test.js` | spawn off each of the four edges, entering/`entered`, jagged path (heading reversals), bounded speed, lifespan → `leaving`, exit through any side, hard age cap, `countBees` (word boundary, plural, `beetle` negative, DE `Biene`/`Bienen` gated on language, `Bienenstock` negative) |
 | `i18n.test.js` | EN/DE key parity + matching value types |
 | `perf.test.js` | extraction of a >100KB document stays well under a second (quadratic-regression guard) |
-| `App.ui.test.jsx` | (jsdom) typing populates sidebar, dismiss removes warning, **collapsible card section toggles open/closed**, nav cycles, **click-to-cycle through a sign's occurrences (+ unfocus after last)**, RefList copy, persistence restore + reset, mode switching preserves buffers, cross-ref section, dependency card + dismissal, context-menu term extension, language/theme toggles + persistence, dismissed-error restore, **dropped `.docx` fills both buffers + switches language + reconstructs claim numbers**, **warnings render in the newly-detected language**, **import undo**, **legacy `.doc` rejection**, **typing "bee" summons the bee + EN/DE bubble text + no bee for a restored buffer + flight survives continued typing + explicit request beats reduced-motion + two bees** |
+| `App.ui.test.jsx` | (jsdom) typing populates sidebar, dismiss removes warning, **collapsible card section toggles open/closed**, nav cycles, **click-to-cycle through a sign's occurrences (+ unfocus after last)**, RefList copy, persistence restore + reset, mode switching preserves buffers, cross-ref section, dependency card + dismissal, context-menu term extension, language/theme toggles + persistence, dismissed-error restore, **dropped `.docx` fills both buffers + switches language + reconstructs claim numbers**, **warnings render in the newly-detected language**, **import undo**, **legacy `.doc` rejection**, **typing "bee" summons the bee + EN/DE bubble text + no bee for a restored buffer + flight survives continued typing + explicit request beats reduced-motion + two bees + DE "Biene" + no bee on language switch** |
 
 Manual smoke test — `npm run dev`, then paste into Description mode:
 
