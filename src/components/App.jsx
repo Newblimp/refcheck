@@ -8,8 +8,12 @@ import { stem } from '../logic/stem.js';
 import { useDebounced } from '../hooks/useDebounced.js';
 import { usePersistentState, jsonCodec, setCodec, oneOf } from '../hooks/usePersistentState.js';
 import { useTheme } from '../hooks/useTheme.js';
+import { useFileDrop } from '../hooks/useFileDrop.js';
+import { fileKind, importPatentDoc, exportPatentDoc } from '../logic/importDoc.js';
 import { CtxMenu } from './CtxMenu.jsx';
 import { Sidebar } from './Sidebar.jsx';
+import { DropOverlay } from './DropOverlay.jsx';
+import { ImportBanner } from './ImportBanner.jsx';
 
 const EMPTY_RESULT = { signData: {}, termData: {}, artErrors: [], bareTerms: [], numErrors: [], depErrors: [], noTermSigns: new Set() };
 
@@ -36,6 +40,14 @@ export function App() {
   const [search, setSearch] = useState('');
   const [navIdx, setNavIdx] = useState(0);
   const [ctx, setCtx] = useState(null);
+  // .docx import/export. `imported` holds the parsed source document and the
+  // paragraph provenance that round-trip export needs. It is deliberately NOT
+  // persisted — a 200 KB document would blow the localStorage quota alongside
+  // the text buffers — so a refresh keeps the text but drops round-trip export.
+  const [imported, setImported] = useState(null);
+  const [report, setReport] = useState(null);
+  const undoRef = useRef(null);
+  const fileRef = useRef(null);
   const bdRef = useRef(null), taRef = useRef(null);
   // Occurrence cursor for click-to-cycle on the sidebar error cards: which
   // occurrence of the currently-focused error the next click should advance from.
@@ -237,6 +249,88 @@ export function App() {
     setMwo({});
     setDescText('');
     setClaimsText('');
+    setImported(null);
+    setReport(null);
+    undoRef.current = null;
+  }
+
+  // ── .docx import ──────────────────────────────────────────────────────────
+  const handleFile = useCallback(async file => {
+    const kind = fileKind(file?.name);
+    if (kind !== 'ok') {
+      setReport({ kind: 'error', messageKey: kind === 'legacyDoc' ? 'impErrLegacy' : 'impErrUnsupported' });
+      return;
+    }
+    let result;
+    try {
+      result = importPatentDoc(await file.arrayBuffer());
+    } catch {
+      setReport({ kind: 'error', messageKey: 'impErrRead' });
+      return;
+    }
+    // Filling the buffers discards whatever is in them — same stance doReset takes.
+    if ((descText || claimsText) && typeof window !== 'undefined' && !window.confirm(t.impConfirm)) return;
+
+    undoRef.current = { desc: descText, claims: claimsText, lang, mode };
+    const { split, lang: detectedLang } = result;
+    result.fileName = file.name;
+    setDescText(split.description);
+    setClaimsText(split.claims);
+    setLang(detectedLang);
+    setImported(result);
+    setFocus(null);
+
+    // Warnings are stored as i18n KEYS, not resolved strings: the import may
+    // have just switched the language, and `t` here is still the outgoing one.
+    // Resolving in ImportBanner also keeps the banner correct if the user
+    // toggles EN/DE afterwards.
+    const warnings = [];
+    const d = split.detected;
+    if (!d.description) warnings.push({ key: 'impNoDesc' });
+    if (!d.claims) warnings.push({ key: 'impNoClaims' });
+    if (d.synthesizedClaimNumbers) warnings.push({ key: 'impRenumbered', arg: d.synthesizedClaimNumbers });
+    if (d.unusualNumbering) warnings.push({ key: 'impUnusualNum' });
+    setReport({
+      kind: warnings.length ? 'warn' : 'ok',
+      descChars: split.description.length,
+      claimsChars: split.claims.length,
+      lang: detectedLang,
+      warnings,
+    });
+  }, [descText, claimsText, lang, mode, t, setDescText, setClaimsText, setLang]);
+
+  const dragging = useFileDrop(handleFile);
+
+  function undoImport() {
+    const u = undoRef.current;
+    if (!u) return;
+    setDescText(u.desc);
+    setClaimsText(u.claims);
+    setLang(u.lang);
+    setImported(null);
+    setReport(null);
+    undoRef.current = null;
+  }
+
+  function pickFile(e) {
+    const file = e.target.files?.[0];
+    e.target.value = ''; // re-selecting the same file must fire change again
+    if (file) handleFile(file);
+  }
+
+  function doExport() {
+    const { bytes } = exportPatentDoc(imported, { description: descText, claims: claimsText },
+      { claimsHeading: lang === 'de' ? 'Patentansprüche' : 'Claims' });
+    const base = imported?.fileName ? imported.fileName.replace(/\.docm?x?$/i, '') : 'refcheck';
+    const blob = new Blob([bytes], { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${base}-checked.docx`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 0);
   }
 
   const chip = (count, color, label) => count > 0 && (
@@ -247,6 +341,7 @@ export function App() {
 
   return (<>
     {ctx && <CtxMenu menu={ctx} onClose={() => setCtx(null)} onAction={handleCtxAction} />}
+    <DropOverlay visible={dragging} t={t} />
 
     <div className="topbar">
       <div className="logo">
@@ -257,6 +352,17 @@ export function App() {
         <span>RefSign<em> Checker</em></span>
       </div>
       <div className="spacer" />
+      <div className="file-actions">
+        <input ref={fileRef} type="file" accept=".docx,.docm" onChange={pickFile}
+          style={{ display: 'none' }} data-testid="file-input" />
+        <button className="file-btn" onClick={() => fileRef.current?.click()}>{t.impBtn}</button>
+        {(descText || claimsText) && (
+          <button className="file-btn" onClick={doExport}
+            title={imported ? t.expTitleRound : t.expTitleFresh}>
+            {imported ? t.expBtn : t.expFresh}
+          </button>
+        )}
+      </div>
       <div className="theme-toggle">
         <button className={theme === 'light' ? 'active' : ''} onClick={() => setTheme('light')} title={t.themeLight} aria-label={t.themeLight}>
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -285,6 +391,10 @@ export function App() {
         <button className={lang === 'de' ? 'active' : ''} onClick={() => setLang('de')}>DE</button>
       </div>
     </div>
+
+    <ImportBanner report={report} t={t}
+      onUndo={undoRef.current && report?.kind !== 'error' ? undoImport : null}
+      onDismiss={() => setReport(null)} />
 
     <div className="main">
       <div className="editor-pane">

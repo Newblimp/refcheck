@@ -39,6 +39,14 @@ src/
                         no CDN dependency — bundled + hashed by Vite like any asset)
   i18n.js               English/German UI strings (T)
   logic/                Pure, framework-free logic (unit-tested)
+    headings.js         SECTION_KINDS + the EN/DE heading dictionary (DATA) and
+                        matchHeading — drives .docx section detection
+    docSplit.js         splitPatentDoc (document model → Description/Claims buffers)
+    detectLang.js       detectLang / detectLangFromText (headings first, words second)
+    importDoc.js        fileKind / importPatentDoc / exportPatentDoc (UI seam)
+    docx/read.js        docxXmlToParagraphs, readDocx — the ONLY OOXML-aware reader
+    docx/write.js       alignLines, planEdits, writeDocx, createDocx (round-trip export)
+    docx/fixture.js     Test helper: builds real .docx bytes in memory
     constants.js        EXCL list, article/ordinal sets, likelySign, isClaimNumber,
                         SIGN_RE / ROMAN_RE / isSignToken / compareSigns (sign +
                         Roman-numeral-step pattern, romanToInt/signVal + sort),
@@ -62,6 +70,8 @@ src/
                         0 passes the value through with zero extra renders)
     usePersistentState.js  useState + localStorage (codecs: jsonCodec/setCodec/oneOf)
     useTheme.js         Theme preference + <html data-theme> application
+    useFileDrop.js      Window-level file drag/drop (preventDefault on dragover +
+                        drop, or the browser opens the file instead of the app)
   test/
     setup.js            Vitest setup (jest-dom + matchMedia/clipboard stubs)
   components/           React components
@@ -74,6 +84,9 @@ src/
     DepCard.jsx         Claim-dependency errors
     RefList.jsx         Collapsible reference numeral list + copy
     CtxMenu.jsx         Right-click context menu
+    DropOverlay.jsx     Drag-over affordance (pointer-events:none — the editor
+                        hit-tests with elementFromPoint)
+    ImportBanner.jsx    Import result + warnings + one-step Undo
     App.smoke.test.jsx  Server-render smoke test (node env)
     App.ui.test.jsx     Interactive DOM tests (jsdom env)
 ```
@@ -96,6 +109,12 @@ src/
 | `romanToInt()` / `signVal()` | `logic/constants.js` | Roman→integer conversion; numeric ordering value for any sign |
 | `buildRefList()` | `logic/reflist.js` | Builds the sorted sign → term numeral list |
 | `stemEn()` / `stemDe()` | `logic/stem.js` | Language-specific word stemming |
+| `matchHeading()` | `logic/headings.js` | Classifies a line as a section heading → `{kind, lang}` (whole-line match, then short-line prefix) |
+| `splitPatentDoc()` | `logic/docSplit.js` | Document model → Description/Claims buffers + `detected` report |
+| `detectLang()` | `logic/detectLang.js` | Heading-derived language, falling back to stopword scoring |
+| `readDocx()` / `docxXmlToParagraphs()` | `logic/docx/read.js` | `.docx` → paragraph model (the only OOXML-aware code) |
+| `writeDocx()` / `planEdits()` | `logic/docx/write.js` | Writes edits back into the original file, rewriting only changed paragraphs |
+| `importPatentDoc()` / `exportPatentDoc()` | `logic/importDoc.js` | The seam App.jsx calls; hides read/split/detect and round-trip-vs-fresh |
 
 ## Features
 
@@ -113,6 +132,53 @@ src/
 ### Cross-reference
 - When both Description and Claims buffers have content, a **Cross-reference** section appears in the sidebar listing signs present in one buffer but absent from the other
 - Also reports **sign/term conflicts** across buffers and a `notIntroducedInDesc` category — claims signs that *do* appear in the description but only ever **bare** (without a term), i.e. never properly introduced. This is mutually exclusive with `missingInDesc` (absent entirely)
+
+### Word (.docx) import and export
+- **Drag a `.docx` anywhere onto the window**, or use the **Import .docx** button. The
+  drag handlers live on `window` (`hooks/useFileDrop.js`) and `preventDefault` on both
+  `dragover` and `drop` — without that the browser opens the dropped file instead,
+  because the editor is a `<textarea>`. The drop overlay is `pointer-events:none` so it
+  never interferes with the editor's `elementFromPoint` hover hit-testing
+- **Sections are found by dedicated heading lines**, never guessed from surrounding
+  prose. A paragraph qualifies only when its *entire* text is a heading (after
+  stripping a leading `III.`/`B)` label and a trailing colon), which is what stops a
+  sentence merely mentioning "Ansprüche" from moving a boundary. Description = after a
+  `detailedDesc` heading up to the claims/sign-list; Claims = after a `claims` heading
+  up to the sign-list/abstract. The abstract, figure listing and Bezugszeichenliste are
+  therefore excluded by construction
+- The dictionary in `logic/headings.js` is **data**: adding French means adding an `fr`
+  key to each entry, with no control-flow change. Exact whole-line matches cannot
+  collide, so `Brief description of the drawings` (figure listing) and `Description of
+  the drawings` (detailed description) coexist; the ordered prefix fallback for the
+  long tail is longest-first for the same reason, and only applies to short lines
+- **Language is derived from the matched headings** — a `Patentansprüche` heading *is*
+  the DE signal. The claims heading wins if the two disagree; stopword scoring
+  (`detectLang.js`) only runs when no heading matched at all
+- **Word auto-numbered claims are reconstructed.** Numbers created by Word's list
+  numbering live in `numbering.xml`, not in the text, so such claims import as
+  `A device comprising…` with no `1.` — and since `isClaimNumber` needs a literal
+  line-leading digit, claim segmentation, numbering, dependencies *and* antecedent
+  basis would all silently go dead. `docSplit.js` synthesizes `N. ` for
+  `<w:numPr>` paragraphs (single-level decimal; deeper levels are flagged, not
+  guessed) and records the prefix on the provenance handle so export strips it again
+- Headers, footers, comments and footnotes are separate ZIP parts and are excluded for
+  free; **text boxes** (`<w:txbxContent>`) are inline in `document.xml` and are skipped
+  explicitly. Tracked insertions are kept and deletions dropped (an "all changes
+  accepted" view). Legacy binary `.doc` is detected and rejected with a clear message
+- **Export writes back into the original file.** Only paragraphs the user actually
+  changed are rewritten (line-level diff in `docx/write.js`); every other paragraph and
+  every other ZIP part stays byte-identical, so the abstract and figure listing survive
+  untouched. A rewritten paragraph collapses to a single run carrying the first
+  original run's `<w:rPr>`, so intra-paragraph formatting is lost **in edited
+  paragraphs only** — the export button's tooltip says so. With no imported source
+  (hand-pasted text) the button generates a fresh minimal `.docx` instead
+- The import fills both buffers without a confirm step, but overwriting non-empty
+  buffers asks first (same stance as **Reset all**), and a dismissible banner reports
+  what was detected plus a one-step **Undo**. Banner messages are stored as i18n *keys*
+  and resolved at render time, since the import may have just changed the language
+- `imported` (the source bytes + paragraph provenance) is deliberately **not**
+  persisted to `localStorage` — a 200 KB document would blow the quota alongside the
+  text buffers — so a refresh keeps the text but drops round-trip export
 
 ### Reference numeral list
 - A collapsible **Reference list** section in the sidebar shows the active buffer's signs in a numerically sorted `sign → term → count` table (dominant term per sign)
@@ -199,7 +265,7 @@ All access goes through `hooks/usePersistentState.js`.
 ### Data Persistence
 - [x] Text content persists to `localStorage` (`rsc_desc`, `rsc_claims`) and restores on refresh
 - [x] Language, mode and dismissed errors persist (`rsc_lang`, `rsc_mode`, `rsc_dis`)
-- [ ] Consider file save/load (no import/export to disk yet)
+- [x] Word `.docx` import (drag-and-drop + file picker) and round-trip export
 
 ### Export Features
 - [x] Reference numeral list with copy-to-clipboard (plain text)
@@ -308,12 +374,13 @@ Actions"** in Settings → Pages. The Vite `base` is `/refcheck/` (project-site 
 
 ### Dependencies
 - React / ReactDOM 18.3.1 (bundled, not CDN)
+- fflate (zip read/write for `.docx`; bundled, ~8KB gzipped — the only non-React runtime dep)
 - Vite + @vitejs/plugin-react (build)
 - Vitest (tests); jsdom + @testing-library/react + user-event + jest-dom (UI tests)
 - Space Grotesk, JetBrains Mono — self-hosted `.woff2` in `src/fonts/`, no CDN (see Offline Support)
 
 ### Testing
-Run with `npm test` (currently **217 tests**). Logic tests run under the fast `node`
+Run with `npm test` (currently **304 tests**). Logic tests run under the fast `node`
 environment; only `*.ui.test.jsx` files run under `jsdom` (scoped via
 `environmentMatchGlobs` in `vite.config.js`, with `src/test/setup.js` providing the
 jest-dom matchers and `matchMedia`/`clipboard` stubs). Coverage by area:
@@ -328,9 +395,15 @@ jest-dom matchers and `matchMedia`/`clipboard` stubs). Coverage by area:
 | `crossref.test.js` | null/agreement, missing-in-desc/claims, numeric sort, sign & term conflicts, **`notIntroducedInDesc`** |
 | `buildHtml.test.js` | empty input, warn/data-sign marks, numbering + dependency highlights, dismissed→`h-dis`, focus class, escaping, non-overlapping marks, **strip-marks ≡ esc(text) + trailing-newline sentinel (alignment invariant)**, **trailing-newline sentinel appended (vertical alignment)**; `findAtPos` |
 | `reflist.test.js` | `buildRefList` (sort, dominant term, primes, empty), `toPlainText` |
+| `headings.test.js` | normalization (leading `III.`/`B)` labels, trailing colon, NBSP, the `I claim` guard), every dictionary entry round-tripping to its own kind, the **`BRIEF DESCRIPTION` vs `DESCRIPTION OF THE DRAWINGS` collision**, and negatives — a sentence mentioning "Ansprüche" and an over-long line must NOT match |
+| `docx/read.test.js` | entity decoding, **run joining with no separator** (`hous`+`ing`), `xml:space="preserve"`, tab/br, empty paragraphs, pStyle/numPr/bold (incl. `w:val="0"`), **text-box exclusion**, **tracked insertions kept / deletions dropped**, xml spans + pPr/rPr capture, header/footer/comment parts excluded, `notZip`/`noDocument` errors |
+| `docSplit.test.js` | EN + DE slicing, abstract/figure-listing/Bezugszeichenliste exclusion, heading-derived language, **auto-number synthesis** (per-`numId` counters, already-numbered left alone, multi-level flagged), no-heading and claims-only fallbacks, blank-edge trimming, and a description whose prose mentions "Ansprüchen" |
+| `docx/write.test.js` | `alignLines` (same/changed/deleted/appended/inserted), `planEdits` no-op on unchanged text, round trip: edit applied, **untouched paragraphs and other zip parts byte-identical**, pPr/rPr preserved, **synthesized claim numbers stripped**, XML escaping, `<w:br/>` paragraphs, appended paragraphs, re-import equals the edit, `createDocx` |
+| `detectLang.test.js` | EN/DE prose, umlaut signal, empty input, **headings beat text**, text fallback |
+| `importDoc.test.js` | `fileKind` (`.docx`/`.docm`/legacy `.doc`/other), import returns buffers+lang+provenance, round-trip vs fresh export, DE fresh export heading |
 | `i18n.test.js` | EN/DE key parity + matching value types |
 | `perf.test.js` | extraction of a >100KB document stays well under a second (quadratic-regression guard) |
-| `App.ui.test.jsx` | (jsdom) typing populates sidebar, dismiss removes warning, **collapsible card section toggles open/closed**, nav cycles, **click-to-cycle through a sign's occurrences (+ unfocus after last)**, RefList copy, persistence restore + reset, mode switching preserves buffers, cross-ref section, dependency card + dismissal, context-menu term extension, language/theme toggles + persistence, dismissed-error restore |
+| `App.ui.test.jsx` | (jsdom) typing populates sidebar, dismiss removes warning, **collapsible card section toggles open/closed**, nav cycles, **click-to-cycle through a sign's occurrences (+ unfocus after last)**, RefList copy, persistence restore + reset, mode switching preserves buffers, cross-ref section, dependency card + dismissal, context-menu term extension, language/theme toggles + persistence, dismissed-error restore, **dropped `.docx` fills both buffers + switches language + reconstructs claim numbers**, **warnings render in the newly-detected language**, **import undo**, **legacy `.doc` rejection** |
 
 Manual smoke test — `npm run dev`, then paste into Description mode:
 

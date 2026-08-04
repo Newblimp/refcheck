@@ -1,6 +1,16 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import { App } from './App.jsx';
+import { makeDocx, DE_BODY } from '../logic/docx/fixture.js';
+
+// jsdom's File has no arrayBuffer() in this version, so provide the bytes the
+// import path actually reads.
+const docxFile = (body, name = 'application.docx') => {
+  const bytes = makeDocx(body);
+  const file = new File([bytes], name);
+  file.arrayBuffer = () => Promise.resolve(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength));
+  return file;
+};
 
 // DOM-level tests for the interactive layer (runs under jsdom via the
 // *.ui.test.jsx glob in vite.config.js).
@@ -88,6 +98,46 @@ describe('App (interactive)', () => {
     fireEvent.click(container.querySelector('.reflist-section .restore-btn')); // copy
     expect(navigator.clipboard.writeText).toHaveBeenCalledWith('10\tdevice\n12\thousing');
     expect(await within(container.querySelector('.reflist-section')).findByText('Copied')).toBeInTheDocument();
+  });
+
+  it('imports a dropped .docx into both buffers and sets the language', async () => {
+    const { container } = render(<App />);
+    const file = docxFile(DE_BODY);
+    fireEvent.drop(window, { dataTransfer: { types: ['Files'], files: [file] } });
+
+    await waitFor(() => expect(editor().value).toContain('Die Vorrichtung 10 umfasst ein Gehäuse 12.'));
+    // Only the detailed description — not the abstract, figure listing or sign list.
+    expect(editor().value).not.toContain('Die Erfindung betrifft');
+    expect(editor().value).not.toContain('Fig. 1 zeigt');
+    expect(editor().value).not.toContain('10 Vorrichtung');
+    // Language switched to German off the "Patentansprüche" heading.
+    await waitFor(() =>
+      expect(container.querySelector('.lang-toggle button.active').textContent).toBe('DE'));
+    // Warnings render in the language the import just switched TO, not the one
+    // that was active when the file was dropped.
+    expect(await screen.findByText(/automatisch nummerierte Ansprüche/)).toBeInTheDocument();
+    // Claims landed in the other buffer, with auto-numbering reconstructed.
+    fireEvent.click(screen.getByText('Ansprüche'));
+    expect(editor().value).toMatch(/^1\. Vorrichtung \(10\)/);
+  });
+
+  it('undo restores the buffers that the import replaced', async () => {
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    const { container } = render(<App />);
+    typeInto('The housing 12 is large.');
+    fireEvent.drop(window, { dataTransfer: { types: ['Files'], files: [docxFile(DE_BODY)] } });
+    await waitFor(() => expect(editor().value).toContain('Gehäuse 12'));
+
+    fireEvent.click(await screen.findByText(/Rückgängig|Undo/));
+    await waitFor(() => expect(editor().value).toBe('The housing 12 is large.'));
+  });
+
+  it('reports a clear error for a legacy .doc instead of importing garbage', async () => {
+    render(<App />);
+    const file = new File([new Uint8Array([0xd0, 0xcf, 0x11, 0xe0])], 'old.doc');
+    fireEvent.drop(window, { dataTransfer: { types: ['Files'], files: [file] } });
+    expect(await screen.findByText(/Legacy \.doc/)).toBeInTheDocument();
+    expect(editor().value).toBe('');
   });
 
   it('restores persisted text on load and clears it on reset', async () => {
