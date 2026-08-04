@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { countBees } from '../logic/beeFlight.js';
+import { useDebounced } from './useDebounced.js';
 
 // Decides WHEN a bee shows up. Two triggers:
 //   • a rare random chance, tuned to roughly one bee every MEAN_MS
@@ -12,6 +13,7 @@ import { countBees } from '../logic/beeFlight.js';
 const TICK_MS = 10_000;
 const MEAN_MS = 5 * 60_000;
 const MAX_BEES = 5;
+const SETTLE_MS = 400;   // pause after typing before the trigger word is counted
 
 const prefersReducedMotion = () =>
   typeof window !== 'undefined'
@@ -21,10 +23,11 @@ const prefersReducedMotion = () =>
 /**
  * @param {string} watchText Text whose "bee" count triggers a flight. Pass BOTH
  *   buffers concatenated, so switching modes never looks like new text.
+ * @param {'en'|'de'} [lang] Active language; in German "Biene" triggers too.
  * @returns {[number[], (id:number)=>void]} ids of the bees in flight, and the
  *   callback a bee calls when it has left the screen.
  */
-export function useBee(watchText) {
+export function useBee(watchText, lang) {
   const [bees, setBees] = useState([]);
   const nextId = useRef(1);
 
@@ -51,13 +54,26 @@ export function useBee(watchText) {
   // by-name request from the user, and silently doing nothing just looks broken.
   // The setting still suppresses the random appearances above, which is the
   // motion someone asking to reduce motion actually did not ask for.
+  // Count only settled text. Mid-word keystrokes are momentarily complete words
+  // — typing "Bienenstock" passes through "Biene", and "beetle" through "bee" —
+  // so sampling every keystroke summons bees for words that merely start alike.
+  // Waiting for a pause means only what the user actually left standing counts.
+  const settled = useDebounced(watchText, SETTLE_MS);
+
   const seen = useRef(null);
+  const prevLang = useRef(lang);
   useEffect(() => {
-    const n = countBees(watchText);
-    if (seen.current === null) { seen.current = n; return; }
+    const n = countBees(settled, lang);
+    // Switching language changes which words count, so re-baseline instead of
+    // reading the jump as a request — flipping to German with "Biene" already
+    // in the buffer (or a .docx import, which changes text and language at
+    // once) must not summon a bee on its own.
+    const langChanged = prevLang.current !== lang;
+    prevLang.current = lang;
+    if (seen.current === null || langChanged) { seen.current = n; return; }
     if (n > seen.current) add();
     seen.current = n;
-  }, [watchText, add]);
+  }, [settled, lang, add]);
 
   return [bees, done];
 }

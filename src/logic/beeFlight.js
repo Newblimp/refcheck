@@ -110,8 +110,20 @@ export function beeGone(b, w, h) {
     || b.y < -GONE_MARGIN || b.y > h + GONE_MARGIN;
 }
 
-/** How many times the word "bee" appears (the typed trigger). */
-export function countBees(text) {
+/**
+ * How many times the trigger word appears (the typed trigger).
+ *
+ * "bee" always counts; "Biene"/"Bienen" counts as well when German is the
+ * active language. Word boundaries keep compounds out — "beetle" and
+ * "Bienenstock" are not the user asking for a bee.
+ *
+ * @param {string} text
+ * @param {'en'|'de'} [lang]
+ */
+export function countBees(text, lang) {
   if (!text) return 0;
-  return (String(text).match(/\bbees?\b/gi) || []).length;
+  const s = String(text);
+  let n = (s.match(/\bbees?\b/gi) || []).length;
+  if (lang === 'de') n += (s.match(/\bbienen?\b/gi) || []).length;
+  return n;
 }
