@@ -394,9 +394,11 @@ describe('extractData — sign ranges (endpoints only)', () => {
     expect(Object.keys(extractData('The gap is maximal 10 mm.', 'en').signData)).toEqual([]);
     expect(Object.keys(extractData('The gap is minimal 10 mm.', 'en').signData)).toEqual([]);
   });
-  it('DOES register "section"/"paragraph" as terms (English, no longer excluded)', () => {
+  it('DOES register "section" as a term (English, no longer excluded)', () => {
     expect(Object.keys(extractData('See section 10 for details.', 'en').signData)).toEqual(['10']);
-    expect(Object.keys(extractData('See paragraph 10 for details.', 'en').signData)).toEqual(['10']);
+  });
+  it('does NOT register "paragraph" as a term (English, still excluded)', () => {
+    expect(Object.keys(extractData('See paragraph 10 for details.', 'en').signData)).toEqual([]);
   });
   it('DOES register "Abschnitt"/"Absatz" as terms (German, no longer excluded)', () => {
     expect(Object.keys(extractData('Siehe Abschnitt 10 für Details.', 'de').signData)).toEqual(['10']);

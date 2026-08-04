@@ -242,9 +242,9 @@ All access goes through `hooks/usePersistentState.js`.
       detection and the range/list scan, and it does not satisfy a term for
       bare-term purposes (see `isBracketed` in `extract.js`)
 - [x] **Cross-reference words are excluded as terms**: a number preceded by a figure/
-      claim cross-reference word (`figure 14`, `figures 14 and 15`, DE
+      claim/paragraph cross-reference word (`figure 14`, `figures 14 and 15`, DE
       `Figur 14`, `Figuren 14 und 15`, `Abbildung`/`Abbildungen`/`Abb.`, `claim`,
-      DE claim inflections `Anspruch`/`Ansprüche`/`Ansprüchen`/`Anspruchs`,
+      `paragraph`, DE claim inflections `Anspruch`/`Ansprüche`/`Ansprüchen`/`Anspruchs`,
       …) is not registered under that word — the word is in `EXCL` (`constants.js`),
       so the main scan and the range/list scan skip it. The range connectors are
       excluded too (`to` and its German parallel `bis`), so the second endpoint of
@@ -312,7 +312,7 @@ Actions"** in Settings → Pages. The Vite `base` is `/refcheck/` (project-site 
 - Space Grotesk, JetBrains Mono — self-hosted `.woff2` in `src/fonts/`, no CDN (see Offline Support)
 
 ### Testing
-Run with `npm test` (currently **215 tests**). Logic tests run under the fast `node`
+Run with `npm test` (currently **216 tests**). Logic tests run under the fast `node`
 environment; only `*.ui.test.jsx` files run under `jsdom` (scoped via
 `environmentMatchGlobs` in `vite.config.js`, with `src/test/setup.js` providing the
 jest-dom matchers and `matchMedia`/`clipboard` stubs). Coverage by area:
