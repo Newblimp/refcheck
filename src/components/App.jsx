@@ -303,7 +303,7 @@ export function App() {
 
   const dragging = useFileDrop(handleFile);
   // Watch both buffers at once, so switching modes never looks like new text.
-  const [beeFlying, beeDone] = useBee(`${descText}\n${claimsText}`);
+  const [bees, beeDone] = useBee(`${descText}\n${claimsText}`);
 
   function undoImport() {
     const u = undoRef.current;
@@ -346,7 +346,7 @@ export function App() {
   return (<>
     {ctx && <CtxMenu menu={ctx} onClose={() => setCtx(null)} onAction={handleCtxAction} />}
     <DropOverlay visible={dragging} t={t} />
-    {beeFlying && <Bee t={t} onDone={beeDone} />}
+    {bees.map(id => <Bee key={id} t={t} onDone={() => beeDone(id)} />)}
 
     <div className="topbar">
       <div className="logo">

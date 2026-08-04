@@ -207,8 +207,15 @@ src/
   disturb the editor's `elementFromPoint` hover hit-testing; the hover speech bubble is
   therefore triggered *geometrically*, by comparing the pointer position to the bee's
 - Position is written straight to the DOM node each frame — a 60fps `setState` would
-  re-render the whole app, and re-renders are the expensive part. `prefers-reduced-motion`
-  suppresses the bee entirely
+  re-render the whole app, and re-renders are the expensive part. For the same reason
+  `Bee` holds `onDone` in a **ref** and runs its flight effect with `[]` deps: `onDone`
+  is a fresh closure every App render, so depending on it tore the rAF loop down and
+  respawned the bee off-screen on every keystroke — it never flew in while you typed
+- `prefers-reduced-motion` suppresses the **random** appearances, which are the motion
+  nobody asked for. Typing "bee" is an explicit by-name request and still works —
+  silently doing nothing there just reads as broken
+- Up to `MAX_BEES` (5) fly at once; `useBee` tracks a list of ids rather than a boolean,
+  which is what makes "type it twice, get two bees" actually true
 
 ### Reference numeral list
 - A collapsible **Reference list** section in the sidebar shows the active buffer's signs in a numerically sorted `sign → term → count` table (dominant term per sign)
@@ -410,7 +417,7 @@ Actions"** in Settings → Pages. The Vite `base` is `/refcheck/` (project-site 
 - Space Grotesk, JetBrains Mono — self-hosted `.woff2` in `src/fonts/`, no CDN (see Offline Support)
 
 ### Testing
-Run with `npm test` (currently **327 tests**). Logic tests run under the fast `node`
+Run with `npm test` (currently **330 tests**). Logic tests run under the fast `node`
 environment; only `*.ui.test.jsx` files run under `jsdom` (scoped via
 `environmentMatchGlobs` in `vite.config.js`, with `src/test/setup.js` providing the
 jest-dom matchers and `matchMedia`/`clipboard` stubs). Coverage by area:
@@ -434,7 +441,7 @@ jest-dom matchers and `matchMedia`/`clipboard` stubs). Coverage by area:
 | `beeFlight.test.js` | spawn off each of the four edges, entering/`entered`, jagged path (heading reversals), bounded speed, lifespan → `leaving`, exit through any side, hard age cap, `countBees` (word boundary, plural, `beetle` negative) |
 | `i18n.test.js` | EN/DE key parity + matching value types |
 | `perf.test.js` | extraction of a >100KB document stays well under a second (quadratic-regression guard) |
-| `App.ui.test.jsx` | (jsdom) typing populates sidebar, dismiss removes warning, **collapsible card section toggles open/closed**, nav cycles, **click-to-cycle through a sign's occurrences (+ unfocus after last)**, RefList copy, persistence restore + reset, mode switching preserves buffers, cross-ref section, dependency card + dismissal, context-menu term extension, language/theme toggles + persistence, dismissed-error restore, **dropped `.docx` fills both buffers + switches language + reconstructs claim numbers**, **warnings render in the newly-detected language**, **import undo**, **legacy `.doc` rejection**, **typing "bee" summons the bee + EN/DE bubble text + no bee for a restored buffer** |
+| `App.ui.test.jsx` | (jsdom) typing populates sidebar, dismiss removes warning, **collapsible card section toggles open/closed**, nav cycles, **click-to-cycle through a sign's occurrences (+ unfocus after last)**, RefList copy, persistence restore + reset, mode switching preserves buffers, cross-ref section, dependency card + dismissal, context-menu term extension, language/theme toggles + persistence, dismissed-error restore, **dropped `.docx` fills both buffers + switches language + reconstructs claim numbers**, **warnings render in the newly-detected language**, **import undo**, **legacy `.doc` rejection**, **typing "bee" summons the bee + EN/DE bubble text + no bee for a restored buffer + flight survives continued typing + explicit request beats reduced-motion + two bees** |
 
 Manual smoke test — `npm run dev`, then paste into Description mode:
 
