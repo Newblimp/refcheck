@@ -70,6 +70,7 @@ export const T = {
     expTitleRound: "Writes your edits back into the imported file; only changed paragraphs are rewritten",
     expTitleFresh: "No imported file in this session — generates a new .docx from the two buffers",
     expDone: "Exported",
+    beeSays: "§ 961 BGB! I'm free!!",
   },
   de: {
     appTitle: "BezZeichen", appSub: "Prüfer", modeDesc: "Beschreibung", modeClaims: "Ansprüche",
@@ -141,5 +142,6 @@ export const T = {
     expTitleRound: "Schreibt die Änderungen in die importierte Datei zurück; nur geänderte Absätze werden neu geschrieben",
     expTitleFresh: "Keine importierte Datei in dieser Sitzung — erzeugt eine neue .docx aus beiden Feldern",
     expDone: "Exportiert",
+    beeSays: "§ 961 BGB! Ich bin frei!!",
   }
 };
