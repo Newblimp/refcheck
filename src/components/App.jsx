@@ -9,11 +9,13 @@ import { useDebounced } from '../hooks/useDebounced.js';
 import { usePersistentState, jsonCodec, setCodec, oneOf } from '../hooks/usePersistentState.js';
 import { useTheme } from '../hooks/useTheme.js';
 import { useFileDrop } from '../hooks/useFileDrop.js';
+import { useBee } from '../hooks/useBee.js';
 import { fileKind, importPatentDoc, exportPatentDoc } from '../logic/importDoc.js';
 import { CtxMenu } from './CtxMenu.jsx';
 import { Sidebar } from './Sidebar.jsx';
 import { DropOverlay } from './DropOverlay.jsx';
 import { ImportBanner } from './ImportBanner.jsx';
+import { Bee } from './Bee.jsx';
 
 const EMPTY_RESULT = { signData: {}, termData: {}, artErrors: [], bareTerms: [], numErrors: [], depErrors: [], noTermSigns: new Set() };
 
@@ -300,6 +302,8 @@ export function App() {
   }, [descText, claimsText, lang, mode, t, setDescText, setClaimsText, setLang]);
 
   const dragging = useFileDrop(handleFile);
+  // Watch both buffers at once, so switching modes never looks like new text.
+  const [beeFlying, beeDone] = useBee(`${descText}\n${claimsText}`);
 
   function undoImport() {
     const u = undoRef.current;
@@ -342,6 +346,7 @@ export function App() {
   return (<>
     {ctx && <CtxMenu menu={ctx} onClose={() => setCtx(null)} onAction={handleCtxAction} />}
     <DropOverlay visible={dragging} t={t} />
+    {beeFlying && <Bee t={t} onDone={beeDone} />}
 
     <div className="topbar">
       <div className="logo">

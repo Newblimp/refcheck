@@ -88,6 +88,15 @@ html,body,#root{height:100%;background:var(--bg);color:var(--text);font-family:v
 .imp-x{background:none;border:none;color:var(--text-dim);cursor:pointer;font-size:16px;line-height:1;padding:2px 6px;border-radius:4px}
 .imp-x:hover{color:var(--text);background:var(--surface2)}
 
+/* BEE (easter egg). pointer-events:none throughout — the bee must never swallow
+   a click or disturb the editor's elementFromPoint hover hit-testing, so hover
+   is detected geometrically in Bee.jsx instead. */
+.bee-wrap{position:fixed;top:0;left:0;z-index:70;width:34px;height:34px;margin:-17px 0 0 -17px;pointer-events:none;will-change:transform}
+.bee-img{display:block;width:34px;height:34px;user-select:none}
+.bee-bubble{position:absolute;bottom:34px;left:50%;transform:translate(-50%,4px);white-space:nowrap;background:var(--surface);color:var(--text);border:1px solid var(--border2);border-radius:9px;padding:5px 10px;font-size:11.5px;font-weight:600;font-family:var(--font-ui);box-shadow:0 4px 14px rgba(0,0,0,.35);opacity:0;transition:opacity .13s,transform .13s;pointer-events:none}
+.bee-bubble.show{opacity:1;transform:translate(-50%,0)}
+.bee-bubble::after{content:"";position:absolute;top:100%;left:50%;margin-left:-5px;border:5px solid transparent;border-top-color:var(--border2)}
+
 /* LAYOUT */
 .main{display:grid;grid-template-columns:1fr clamp(260px,30%,360px);flex:1;overflow:hidden}
 

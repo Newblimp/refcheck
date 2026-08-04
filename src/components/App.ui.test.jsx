@@ -140,6 +140,39 @@ describe('App (interactive)', () => {
     expect(editor().value).toBe('');
   });
 
+  it('typing "bee" sends a bee across the screen, which shows its bubble on hover', async () => {
+    const { container } = render(<App />);
+    expect(container.querySelector('.bee-wrap')).toBeFalsy();
+
+    typeInto('The bee 12 is large.');
+    const bee = await waitFor(() => {
+      const el = container.querySelector('.bee-wrap');
+      expect(el).toBeTruthy();
+      return el;
+    });
+    // The bubble carries the joke, and is hidden until the pointer is near.
+    const bubble = bee.querySelector('.bee-bubble');
+    expect(bubble.textContent).toBe("§ 961 BGB! I'm free!!");
+    expect(bubble.className).not.toContain('show');
+    // The bee must never intercept pointer events from the editor.
+    expect(bee.getAttribute('aria-hidden')).toBe('true');
+  });
+
+  it('shows the German bubble text when the UI is German', async () => {
+    localStorage.setItem('rsc_lang', 'de');
+    const { container } = render(<App />);
+    typeInto('Die Biene bee 12.');
+    await waitFor(() => expect(container.querySelector('.bee-bubble')).toBeTruthy());
+    expect(container.querySelector('.bee-bubble').textContent).toBe('§ 961 BGB! Ich bin frei!!');
+  });
+
+  it('does not summon a bee just for restoring a buffer that already says "bee"', async () => {
+    localStorage.setItem('rsc_desc', 'The bee 12 is large.');
+    const { container } = render(<App />);
+    await waitFor(() => expect(editor().value).toContain('bee'));
+    expect(container.querySelector('.bee-wrap')).toBeFalsy();
+  });
+
   it('restores persisted text on load and clears it on reset', async () => {
     localStorage.setItem('rsc_desc', 'The housing 12 is large.');
     const { container } = render(<App />);

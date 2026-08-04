@@ -37,6 +37,8 @@ src/
   styles.css            All styles + self-hosted @font-face declarations
   fonts/                 Space Grotesk / JetBrains Mono .woff2 files (self-hosted,
                         no CDN dependency — bundled + hashed by Vite like any asset)
+  assets/bee.svg        Noto Color Emoji bee (Google, Apache-2.0), vendored so the
+                        easter egg needs no CDN either
   i18n.js               English/German UI strings (T)
   logic/                Pure, framework-free logic (unit-tested)
     headings.js         SECTION_KINDS + the EN/DE heading dictionary (DATA) and
@@ -64,6 +66,8 @@ src/
                         scrollHeight — see the trailing-newline note below)
     crossref.js         computeCrossRef (Description ↔ Claims comparison)
     reflist.js          buildRefList / toPlainText (reference numeral list)
+    beeFlight.js        spawnBee / stepBee / beeGone / countBees — the easter-egg
+                        bee's motion model, pure so it is unit-testable
     *.test.js           Vitest unit tests for the above
   hooks/
     useDebounced.js     Debounce hook (defers extraction on large docs; a delay of
@@ -72,6 +76,7 @@ src/
     useTheme.js         Theme preference + <html data-theme> application
     useFileDrop.js      Window-level file drag/drop (preventDefault on dragover +
                         drop, or the browser opens the file instead of the app)
+    useBee.js           Decides when a bee appears (rare random draw + typing "bee")
   test/
     setup.js            Vitest setup (jest-dom + matchMedia/clipboard stubs)
   components/           React components
@@ -87,6 +92,7 @@ src/
     DropOverlay.jsx     Drag-over affordance (pointer-events:none — the editor
                         hit-tests with elementFromPoint)
     ImportBanner.jsx    Import result + warnings + one-step Undo
+    Bee.jsx             The easter-egg bee (rAF loop writing transforms directly)
     App.smoke.test.jsx  Server-render smoke test (node env)
     App.ui.test.jsx     Interactive DOM tests (jsdom env)
 ```
@@ -115,6 +121,7 @@ src/
 | `readDocx()` / `docxXmlToParagraphs()` | `logic/docx/read.js` | `.docx` → paragraph model (the only OOXML-aware code) |
 | `writeDocx()` / `planEdits()` | `logic/docx/write.js` | Writes edits back into the original file, rewriting only changed paragraphs |
 | `importPatentDoc()` / `exportPatentDoc()` | `logic/importDoc.js` | The seam App.jsx calls; hides read/split/detect and round-trip-vs-fresh |
+| `spawnBee()` / `stepBee()` / `beeGone()` | `logic/beeFlight.js` | Easter-egg bee flight: spawn off a random edge, dart around, leave |
 
 ## Features
 
@@ -179,6 +186,29 @@ src/
 - `imported` (the source bytes + paragraph provenance) is deliberately **not**
   persisted to `localStorage` — a 200 KB document would blow the quota alongside the
   text buffers — so a refresh keeps the text but drops round-trip export
+
+### Easter egg: the bee
+- A bee occasionally flies across the window. Two triggers: a rare random draw
+  (`useBee.js` runs a Bernoulli trial every 10s with p = tick/mean, so the wait is
+  geometric — *memoryless*, averaging one bee every 5 minutes, rather than a fixed
+  countdown), and typing the word **bee** into either buffer. The typed trigger fires
+  when the *count* rises, so typing it twice summons two bees while merely restoring a
+  saved buffer that already contains the word summons none
+- `logic/beeFlight.js` is the pure motion model (unit-tested): the bee spawns just
+  outside a random edge, steers toward a waypoint that is replaced every ~0.2–0.7s, and
+  leaves through any edge after `LIFESPAN`. Roughly a quarter of waypoints are a
+  **hover** (stay put and buzz on the spot). The jitter is a real acceleration of the
+  same order as the steering term — that balance is what makes the track twitch and
+  overshoot instead of curving smoothly. Measured in-browser: ~5 direction reversals/s,
+  ~3 turns sharper than 45°/s, speed swinging 6→190 px/s, ~18% of frames hovering
+- The sprite is the **Noto Color Emoji** bee, vendored into `src/assets/bee.svg` rather
+  than loaded from Google, so the offline guarantee still holds
+- The element is `pointer-events:none` throughout, so it can never swallow a click or
+  disturb the editor's `elementFromPoint` hover hit-testing; the hover speech bubble is
+  therefore triggered *geometrically*, by comparing the pointer position to the bee's
+- Position is written straight to the DOM node each frame — a 60fps `setState` would
+  re-render the whole app, and re-renders are the expensive part. `prefers-reduced-motion`
+  suppresses the bee entirely
 
 ### Reference numeral list
 - A collapsible **Reference list** section in the sidebar shows the active buffer's signs in a numerically sorted `sign → term → count` table (dominant term per sign)
@@ -380,7 +410,7 @@ Actions"** in Settings → Pages. The Vite `base` is `/refcheck/` (project-site 
 - Space Grotesk, JetBrains Mono — self-hosted `.woff2` in `src/fonts/`, no CDN (see Offline Support)
 
 ### Testing
-Run with `npm test` (currently **304 tests**). Logic tests run under the fast `node`
+Run with `npm test` (currently **327 tests**). Logic tests run under the fast `node`
 environment; only `*.ui.test.jsx` files run under `jsdom` (scoped via
 `environmentMatchGlobs` in `vite.config.js`, with `src/test/setup.js` providing the
 jest-dom matchers and `matchMedia`/`clipboard` stubs). Coverage by area:
@@ -401,9 +431,10 @@ jest-dom matchers and `matchMedia`/`clipboard` stubs). Coverage by area:
 | `docx/write.test.js` | `alignLines` (same/changed/deleted/appended/inserted), `planEdits` no-op on unchanged text, round trip: edit applied, **untouched paragraphs and other zip parts byte-identical**, pPr/rPr preserved, **synthesized claim numbers stripped**, XML escaping, `<w:br/>` paragraphs, appended paragraphs, re-import equals the edit, `createDocx` |
 | `detectLang.test.js` | EN/DE prose, umlaut signal, empty input, **headings beat text**, text fallback |
 | `importDoc.test.js` | `fileKind` (`.docx`/`.docm`/legacy `.doc`/other), import returns buffers+lang+provenance, round-trip vs fresh export, DE fresh export heading |
+| `beeFlight.test.js` | spawn off each of the four edges, entering/`entered`, jagged path (heading reversals), bounded speed, lifespan → `leaving`, exit through any side, hard age cap, `countBees` (word boundary, plural, `beetle` negative) |
 | `i18n.test.js` | EN/DE key parity + matching value types |
 | `perf.test.js` | extraction of a >100KB document stays well under a second (quadratic-regression guard) |
-| `App.ui.test.jsx` | (jsdom) typing populates sidebar, dismiss removes warning, **collapsible card section toggles open/closed**, nav cycles, **click-to-cycle through a sign's occurrences (+ unfocus after last)**, RefList copy, persistence restore + reset, mode switching preserves buffers, cross-ref section, dependency card + dismissal, context-menu term extension, language/theme toggles + persistence, dismissed-error restore, **dropped `.docx` fills both buffers + switches language + reconstructs claim numbers**, **warnings render in the newly-detected language**, **import undo**, **legacy `.doc` rejection** |
+| `App.ui.test.jsx` | (jsdom) typing populates sidebar, dismiss removes warning, **collapsible card section toggles open/closed**, nav cycles, **click-to-cycle through a sign's occurrences (+ unfocus after last)**, RefList copy, persistence restore + reset, mode switching preserves buffers, cross-ref section, dependency card + dismissal, context-menu term extension, language/theme toggles + persistence, dismissed-error restore, **dropped `.docx` fills both buffers + switches language + reconstructs claim numbers**, **warnings render in the newly-detected language**, **import undo**, **legacy `.doc` rejection**, **typing "bee" summons the bee + EN/DE bubble text + no bee for a restored buffer** |
 
 Manual smoke test — `npm run dev`, then paste into Description mode:
 
