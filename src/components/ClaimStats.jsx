@@ -6,14 +6,17 @@ import { memo } from 'react';
 function ClaimStatsImpl({ stats, t }) {
   if (!stats) return null;
 
+  // Nothing in this panel is a validation error — a multiply-dependent claim is
+  // a legitimate drafting choice with a fee attached, not a mistake. So these
+  // read as information (ⓘ) rather than borrowing the warning triangle the real
+  // error cards use, which would otherwise imply something needs fixing.
   const notes = [];
   if (stats.multipleDependent.length) notes.push(t.csMultiple(stats.multipleDependent));
   if (stats.dependsOnMultiple.length) notes.push(t.csOnMultiple(stats.dependsOnMultiple));
   for (const flag of stats.flags) {
-    if (flag === 'epoExcessClaims') notes.push(t.csEpoExcess(stats.total));
+    if (flag === 'dpmaExcessClaims') notes.push(t.csDpmaExcess(stats.total));
+    else if (flag === 'epoExcessClaims') notes.push(t.csEpoExcess(stats.total));
     else if (flag === 'epoHighExcessClaims') notes.push(t.csEpoHighExcess(stats.total));
-    else if (flag === 'usptoTotalClaims') notes.push(t.csUsptoTotal(stats.total));
-    else if (flag === 'usptoIndependentClaims') notes.push(t.csUsptoIndep(stats.independent));
   }
 
   const cell = (n, label, warn) => (
@@ -35,7 +38,10 @@ function ClaimStatsImpl({ stats, t }) {
       </div>
       {notes.map((n) => (
         <div className="cs-note" key={n}>
-          ⚠ {n}
+          <span className="cs-note-icon" aria-hidden="true">
+            ⓘ
+          </span>
+          {n}
         </div>
       ))}
     </div>

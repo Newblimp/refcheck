@@ -61,33 +61,35 @@
   --surface2: #3c3836;
   --border: #504945;
   --border2: #665c54;
-  --text: #ebdbb2;
-  --text-muted: #a89984;
-  --text-dim: #7c6f64;
-  --accent: #f18934;
-  --accent-glow: rgba(241, 137, 52, 0.15);
+  --text: #f4e8cd;
+  --text-muted: #c6b89f;
+  --text-dim: #ada197;
+  --accent: #f59b4a;
+  --accent-glow: rgba(245, 155, 74, 0.15);
   --warn: #fabd2f;
   --warn-bg: rgba(250, 189, 47, 0.13);
   --warn-u: rgba(250, 189, 47, 0.75);
-  --art: #8ec07c;
-  --art-bg: rgba(142, 192, 124, 0.12);
-  --art-u: rgba(142, 192, 124, 0.75);
-  --ok: #b8bb26;
-  --ok-bg: rgba(184, 187, 38, 0.1);
+  --art: #9ecb8b;
+  --art-bg: rgba(158, 203, 139, 0.12);
+  --art-u: rgba(158, 203, 139, 0.75);
+  --ok: #c3c637;
+  --ok-bg: rgba(195, 198, 55, 0.1);
   --warn-border: rgba(250, 189, 47, 0.5);
-  --ok-border: rgba(184, 187, 38, 0.4);
+  --ok-border: rgba(195, 198, 55, 0.4);
   --warn-wt-bg: rgba(250, 189, 47, 0.07);
   --warn-wt: rgba(250, 189, 47, 0.85);
   --warn-wt-bd: rgba(250, 189, 47, 0.5);
-  --bare: #fb4934;
-  --bare-bg: rgba(251, 73, 52, 0.13);
-  --bare-u: rgba(251, 73, 52, 0.75);
-  --num: #83a598;
-  --num-bg: rgba(131, 165, 152, 0.14);
-  --num-u: rgba(131, 165, 152, 0.75);
-  --dep: #d3869b;
-  --dep-bg: rgba(211, 134, 155, 0.14);
-  --dep-u: rgba(211, 134, 155, 0.75);
+  --bare: #fd8271;
+  --bare-bg: rgba(253, 130, 113, 0.13);
+  --bare-u: rgba(253, 130, 113, 0.75);
+  --num: #93b3a7;
+  --num-bg: rgba(147, 179, 167, 0.14);
+  --num-u: rgba(147, 179, 167, 0.75);
+  --dep: #dd97a9;
+  --dep-bg: rgba(221, 151, 169, 0.14);
+  --dep-u: rgba(221, 151, 169, 0.75);
+  /* Informational, not a problem: the claim-set panel. */
+  --info: #8fbfe0;
 }
 /* LIGHT THEME — high contrast */
 :root[data-theme='light'] {
@@ -96,23 +98,23 @@
   --surface2: #e0ddd7;
   --border: #c4bfb8;
   --border2: #a8a49c;
-  --text: #1c1917;
-  --text-muted: #3d3a36;
-  --text-dim: #78716c;
-  --accent: #d97706;
-  --accent-glow: rgba(217, 119, 6, 0.15);
-  --warn: #92400e;
-  --warn-bg: rgba(146, 64, 14, 0.13);
-  --warn-u: #92400e;
-  --art: #166534;
-  --art-bg: rgba(22, 101, 52, 0.13);
-  --art-u: #166534;
-  --ok: #3f6212;
-  --ok-bg: rgba(63, 98, 18, 0.11);
-  --warn-border: rgba(146, 64, 14, 0.45);
-  --ok-border: rgba(63, 98, 18, 0.4);
-  --warn-wt-bg: rgba(146, 64, 14, 0.08);
-  --warn-wt: rgba(146, 64, 14, 0.9);
+  --text: #17130f;
+  --text-muted: #332f2b;
+  --text-dim: #5e5854;
+  --accent: #8f4d03;
+  --accent-glow: rgba(143, 77, 3, 0.15);
+  --warn: #8a3c0c;
+  --warn-bg: rgba(138, 60, 12, 0.13);
+  --warn-u: #8a3c0c;
+  --art: #145c2f;
+  --art-bg: rgba(20, 92, 47, 0.13);
+  --art-u: #145c2f;
+  --ok: #3a5a10;
+  --ok-bg: rgba(58, 90, 16, 0.11);
+  --warn-border: rgba(138, 60, 12, 0.45);
+  --ok-border: rgba(58, 90, 16, 0.4);
+  --warn-wt-bg: rgba(138, 60, 12, 0.08);
+  --warn-wt: rgba(138, 60, 12, 0.9);
   --warn-wt-bd: rgba(146, 64, 14, 0.5);
   --bare: #991b1b;
   --bare-bg: rgba(153, 27, 27, 0.11);
@@ -123,6 +125,8 @@
   --dep: #9d2450;
   --dep-bg: rgba(157, 36, 80, 0.11);
   --dep-u: #9d2450;
+  /* Informational, not a problem: the claim-set panel. */
+  --info: #1d5878;
 }
 html,
 body,
@@ -1190,8 +1194,19 @@ mark.h-hover {
 }
 
 .cs-note {
+  display: flex;
+  gap: 6px;
+  align-items: baseline;
   font-size: 11px;
-  color: var(--warn);
+  /* Informational, not a warning: these are fee and structure facts about a
+     legitimate claim set, so they must not read like the error cards. */
+  color: var(--text-muted);
   padding: 3px 0;
   line-height: 1.5;
+}
+
+.cs-note-icon {
+  color: var(--info);
+  flex-shrink: 0;
+  font-size: 12px;
 }

@@ -112,10 +112,9 @@ export const T = {
     csMultiple: (nums) =>
       `multiple dependency: claim${nums.length > 1 ? 's' : ''} ${nums.join(', ')}`,
     csOnMultiple: (nums) => `depends on a multiply-dependent claim: ${nums.join(', ')}`,
-    csEpoExcess: (n) => `${n} claims — EPO excess-claim fees apply from the 16th`,
+    csDpmaExcess: (n) => `${n} claims — DPMA claim fees apply from the 11th`,
+    csEpoExcess: (n) => `${n} claims — EPO claim fees apply from the 16th`,
     csEpoHighExcess: (n) => `${n} claims — the higher EPO rate applies from the 51st`,
-    csUsptoTotal: (n) => `${n} claims — USPTO excess-claim fees apply past 20`,
-    csUsptoIndep: (n) => `${n} independent claims — USPTO fees apply past 3`,
     beeSays: "§ 961 BGB! I'm free!!",
   },
   de: {
@@ -230,10 +229,9 @@ export const T = {
     csDepth: 'Max. Tiefe',
     csMultiple: (nums) => `Mehrfachabhängigkeit: Anspruch ${nums.join(', ')}`,
     csOnMultiple: (nums) => `hängt von mehrfach abhängigem Anspruch ab: ${nums.join(', ')}`,
+    csDpmaExcess: (n) => `${n} Ansprüche — DPMA-Anspruchsgebühren ab dem 11.`,
     csEpoExcess: (n) => `${n} Ansprüche — EPA-Anspruchsgebühren ab dem 16.`,
     csEpoHighExcess: (n) => `${n} Ansprüche — höherer EPA-Satz ab dem 51.`,
-    csUsptoTotal: (n) => `${n} Ansprüche — USPTO-Gebühren ab dem 21.`,
-    csUsptoIndep: (n) => `${n} unabhängige Ansprüche — USPTO-Gebühren ab dem 4.`,
     beeSays: '§ 961 BGB! Ich bin frei!!',
   },
 };

@@ -131,18 +131,38 @@ describe('claimStats', () => {
     expect(s.flags).not.toContain('epoExcessClaims');
   });
 
-  it('flags the USPTO total and independent thresholds', () => {
-    const lines = [];
-    for (let n = 1; n <= THRESHOLDS.usptoIndependentClaims + 1; n++)
-      lines.push(`${n}. A device comprising a housing of type ${n}.`);
-    let n = lines.length + 1;
-    while (lines.length <= THRESHOLDS.usptoTotalClaims) {
+  it('flags the DPMA excess-claims threshold', () => {
+    const lines = ['1. A device comprising a housing.'];
+    for (let n = 2; n <= THRESHOLDS.dpmaExcessClaims + 1; n++)
       lines.push(`${n}. The device of claim 1, wherein feature ${n} applies.`);
-      n++;
-    }
     const s = statsFor(claimSet(...lines));
-    expect(s.flags).toContain('usptoTotalClaims');
-    expect(s.flags).toContain('usptoIndependentClaims');
+    expect(s.total).toBe(THRESHOLDS.dpmaExcessClaims + 1);
+    expect(s.flags).toContain('dpmaExcessClaims');
+    // Still under the EPO limit — the two offices are reported independently.
+    expect(s.flags).not.toContain('epoExcessClaims');
+  });
+
+  it('does not flag a claim set at the DPMA threshold', () => {
+    const lines = ['1. A device comprising a housing.'];
+    for (let n = 2; n <= THRESHOLDS.dpmaExcessClaims; n++)
+      lines.push(`${n}. The device of claim 1, wherein feature ${n} applies.`);
+    expect(statsFor(claimSet(...lines)).flags).not.toContain('dpmaExcessClaims');
+  });
+
+  it('reports both offices once the EPO limit is passed too', () => {
+    const lines = ['1. A device comprising a housing.'];
+    for (let n = 2; n <= THRESHOLDS.epoExcessClaims + 1; n++)
+      lines.push(`${n}. The device of claim 1, wherein feature ${n} applies.`);
+    const s = statsFor(claimSet(...lines));
+    expect(s.flags).toContain('dpmaExcessClaims');
+    expect(s.flags).toContain('epoExcessClaims');
+  });
+
+  it('reports no USPTO thresholds — this tool targets EP/DE practice', () => {
+    const lines = [];
+    for (let n = 1; n <= 25; n++) lines.push(`${n}. A device comprising a housing ${n}.`);
+    const s = statsFor(claimSet(...lines));
+    expect(s.flags.join(' ')).not.toMatch(/uspto/i);
   });
 
   it('uses the steeper EPO band past 50 claims instead of both', () => {

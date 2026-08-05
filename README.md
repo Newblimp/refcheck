@@ -7,7 +7,7 @@ flags inconsistent sign↔term mappings, article-usage errors (antecedent basis 
 mode), missing/orphaned signs, claims-parentheses issues, claim numbering and dependency
 errors. It also reconciles the draft's own list of reference signs against the text, and
 reports claim-set statistics — independent/dependent counts, multiple dependency, and the
-claim-count thresholds that attract EPO/USPTO fees.
+claim-count thresholds that attract DPMA and EPO fees.
 
 Word `.docx` files can be dragged straight in; description and claims are found by their
 headings, and edits can be written back into the original file.
