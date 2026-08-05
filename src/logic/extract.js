@@ -84,6 +84,26 @@ import { computeClaimGraph } from './claims.js';
 // ([0012]-[0015], [18, 20]) is caught, not just fully enclosed tokens.
 const isBracketed = (text, tok) => text[tok.start - 1] === '[' || text[tok.end] === ']';
 
+// Scanning regexes live at module scope: none of them depend on an argument, and
+// extractData runs twice per debounced keystroke, so rebuilding them per call was
+// pure waste. They carry the /g flag and are driven by exec loops, so every user
+// MUST reset lastIndex before looping (same contract as TOKEN_RE in tokenize.js).
+
+// A "(…)" with no nested parens — candidate parenthesised sign group.
+const GROUP_RE = /\(([^()]*)\)/g;
+// Separator inside a sign range/list: "18 to 22", "18, 20 and 22", "18–22".
+const SEP = `\\s*(?:[,;]\\s*(?:and|und|to|bis)?|and|und|to|bis|[-–—])\\s*`;
+// A run of 2+ signs joined by SEP, each separator sitting directly between two
+// numbers (that adjacency is what keeps "a housing 12 and a cover 14" out).
+const LIST_RE = new RegExp(`(${SIGN_RE})(?:${SEP}(?:${SIGN_RE}))+`, 'gi');
+// Pulls the individual signs back out of a LIST_RE match.
+const NUM_RE = new RegExp(SIGN_RE, 'g');
+// Interior of a candidate sign group splits on these.
+const GROUP_SPLIT_RE = /[\s,;]+/;
+
+// German nominative definite articles, for the gender-consistency check.
+const DE_NOM_DEF = new Set(['der', 'die', 'das']);
+
 export function detectOrdStems(tokens, lang, text, isClaims) {
   const s = new Set();
   for (let i = 2; i < tokens.length; i++) {
@@ -201,14 +221,31 @@ export function extractData(text, lang, mwo = {}, autoMW = true, isClaims = fals
   // it and the enclosing brackets. A group holding any non-sign word ("(see 10)")
   // does not qualify, so signs there stay unparenthesised.
   const signGroups = [];
-  const GROUP_RE = /\(([^()]*)\)/g;
+  GROUP_RE.lastIndex = 0;
   let gmatch;
   while ((gmatch = GROUP_RE.exec(text)) !== null) {
-    const parts = gmatch[1].split(/[\s,;]+/).filter(Boolean);
+    const parts = gmatch[1].split(GROUP_SPLIT_RE).filter(Boolean);
     if (parts.length && parts.every(isSignToken))
       signGroups.push({ start: gmatch.index, end: gmatch.index + gmatch[0].length });
   }
-  const inParensAt = (s, e) => signGroups.some((g) => s > g.start && e < g.end);
+  // signGroups is built in ascending `start` order and groups cannot nest (the
+  // pattern excludes inner parens), so the only candidate containing [s,e) is the
+  // last group starting before s — binary-search for it instead of scanning all.
+  // In claims mode nearly every sign sits in a group, so the linear form was
+  // effectively O(signs²).
+  const inParensAt = (s, e) => {
+    let lo = 0,
+      hi = signGroups.length - 1,
+      cand = null;
+    while (lo <= hi) {
+      const mid = (lo + hi) >> 1;
+      if (signGroups[mid].start < s) {
+        cand = signGroups[mid];
+        lo = mid + 1;
+      } else hi = mid - 1;
+    }
+    return cand !== null && e < cand.end;
+  };
 
   for (let i = 0; i < toks.length; i++) {
     const tok = toks[i];
@@ -239,10 +276,14 @@ export function extractData(text, lang, mwo = {}, autoMW = true, isClaims = fals
   // digit-connector-digit adjacency (each separator sits directly between two
   // numbers) keeps "a housing 12 and a cover 14" (distinct terms, with a word
   // between the connector and the second number) from being misread as a list.
-  const SEP = `\\s*(?:[,;]\\s*(?:and|und|to|bis)?|and|und|to|bis|[-–—])\\s*`;
-  const LIST_RE = new RegExp(`(${SIGN_RE})(?:${SEP}(?:${SIGN_RE}))+`, 'gi');
-  const NUM_RE = new RegExp(SIGN_RE, 'g');
+  LIST_RE.lastIndex = 0;
   let rm;
+  // LIST_RE matches arrive in ascending rm.index and `toks` is sorted by start,
+  // so the "first token at/after the list start" only ever moves forward. A
+  // monotonic cursor makes the whole loop O(tokens + matches); the previous
+  // toks.findIndex restarted from 0 for every match, which made a list-heavy
+  // 103KB document take ~133ms against ~34ms for a comparable one without lists.
+  let listCur = 0;
   while ((rm = LIST_RE.exec(text)) !== null) {
     // A fully bracketed list/range ([12-14], [18, 20]) is a paragraph-number
     // construct, not signs. (A separator can never cross a "]"/"[", so a list
@@ -250,8 +291,8 @@ export function extractData(text, lang, mwo = {}, autoMW = true, isClaims = fals
     if (text[rm.index - 1] === '[' && text[rm.index + rm[0].length] === ']') continue;
     // Index of the first token at/after the list start; the shared term is
     // whatever precedes it (works whether or not the endpoints tokenized).
-    let baseIdx = toks.findIndex((t) => t.start >= rm.index);
-    if (baseIdx < 0) baseIdx = toks.length;
+    while (listCur < toks.length && toks[listCur].start < rm.index) listCur++;
+    const baseIdx = listCur;
     const { allTT } = collectTermToks(toks, baseIdx, lang);
     if (allTT.length === 0) continue; // no shared term (e.g. "claims 1, 2 and 3") → skip
     // Pull every sign out of the matched span (connector words carry no digits).
@@ -306,17 +347,37 @@ export function extractData(text, lang, mwo = {}, autoMW = true, isClaims = fals
     occs.sort((a, b) => a.artStart - b.artStart);
     if (claimGraph) {
       const positions = termPositions[ts] || [];
+      // Locate each position's claim ONCE rather than re-running the claimAt
+      // binary search for every (occurrence, position) pair — that inner lookup
+      // made a frequently-repeated term cost O(occurrences² · log claims).
+      const posClaimNum = new Array(positions.length);
+      for (let i = 0; i < positions.length; i++) {
+        const pc = claimAt(positions[i]);
+        posClaimNum[i] = pc === null ? null : pc.num;
+      }
       for (const occ of occs) {
         const c = claimAt(occ.termStart);
         const anc = c ? claimGraph.ancestors.get(c.num) : null;
-        const introduced = positions.some((p) => {
-          if (p === occ.termStart) return false;
-          const pc = claimAt(p);
-          if (pc === null) return true; // preamble introduces globally
-          if (c === null) return p < occ.termStart; // both in preamble → by position
-          if (pc.num === c.num) return p < occ.termStart; // earlier in the same claim
-          return anc ? anc.has(pc.num) : false; // anywhere in an ancestor claim
-        });
+        let introduced = false;
+        for (let i = 0; i < positions.length; i++) {
+          const p = positions[i];
+          if (p === occ.termStart) continue;
+          const pcNum = posClaimNum[i];
+          const hit =
+            pcNum === null
+              ? true // preamble introduces globally
+              : c === null
+                ? p < occ.termStart // both in preamble → by position
+                : pcNum === c.num
+                  ? p < occ.termStart // earlier in the same claim
+                  : anc
+                    ? anc.has(pcNum) // anywhere in an ancestor claim
+                    : false;
+          if (hit) {
+            introduced = true;
+            break;
+          }
+        }
         if (occ.type === 'def' && !introduced) artErrors.push({ ...occ, errType: 'first-def' });
         else if (occ.type === 'indef' && introduced)
           artErrors.push({ ...occ, errType: 'repeat-indef' });
@@ -332,7 +393,7 @@ export function extractData(text, lang, mwo = {}, autoMW = true, isClaims = fals
     }
     // German gender consistency: flag if nominative def articles conflict
     if (lang === 'de') {
-      const nomDef = occs.filter((o) => ['der', 'die', 'das'].includes(o.article));
+      const nomDef = occs.filter((o) => DE_NOM_DEF.has(o.article));
       if (new Set(nomDef.map((o) => o.article)).size > 1) {
         const seen = new Set();
         for (const occ of nomDef) {
@@ -361,10 +422,43 @@ export function extractData(text, lang, mwo = {}, autoMW = true, isClaims = fals
   for (const k of Object.keys(baseToTerms))
     baseToTerms[k].sort((a, b) => b.split(' ').length - a.split(' ').length);
 
-  // Collect all term ranges already associated with a sign
-  const knownRanges = [];
-  for (const sData of Object.values(signData))
-    for (const p of sData.positions) knownRanges.push([p.termStart, p.termEnd]);
+  // Every term range already associated with a sign. A bare-term candidate that
+  // falls entirely inside one of these is not bare — it IS the sign's term.
+  //
+  // The lookup used to scan this whole array (thousands of entries on a real
+  // document) for every candidate, which is the O(occurrences²) cost perf.test.js
+  // was written to watch. Sorting by start and carrying a prefix maximum of the
+  // end offsets turns it into a binary search: "is there a range starting at or
+  // before tStart whose end reaches tEnd?" is exactly `maxEndUpTo[idx] >= tEnd`.
+  // (A coverage bitmap would be simpler still, but it would also treat two
+  // adjacent ranges as covering a span that neither one contains.)
+  const rangeStarts = [];
+  const maxEndUpTo = [];
+  {
+    const ranges = [];
+    for (const sData of Object.values(signData))
+      for (const p of sData.positions) ranges.push([p.termStart, p.termEnd]);
+    ranges.sort((a, b) => a[0] - b[0]);
+    let running = -1;
+    for (const [ks, ke] of ranges) {
+      rangeStarts.push(ks);
+      running = running > ke ? running : ke;
+      maxEndUpTo.push(running);
+    }
+  }
+  const coveredByKnownRange = (tStart, tEnd) => {
+    let lo = 0,
+      hi = rangeStarts.length - 1,
+      idx = -1;
+    while (lo <= hi) {
+      const mid = (lo + hi) >> 1;
+      if (rangeStarts[mid] <= tStart) {
+        idx = mid;
+        lo = mid + 1;
+      } else hi = mid - 1;
+    }
+    return idx >= 0 && maxEndUpTo[idx] >= tEnd;
+  };
 
   // Every token's stem, computed once — the candidate loop below indexes into
   // this instead of re-stemming the same tokens for each overlapping term.
@@ -389,15 +483,11 @@ export function extractData(text, lang, mwo = {}, autoMW = true, isClaims = fals
       if (!match) continue;
       const tStart = toks[i - (wc - 1)].start,
         tEnd = toks[i].end;
-      let coveredByKnown = false;
-      for (const [ks, ke] of knownRanges) {
-        if (tStart >= ks && tEnd <= ke) {
-          coveredByKnown = true;
-          break;
-        }
-      }
-      if (coveredByKnown) break;
-      if (bareSpans.has(`${tStart}-${tEnd}`)) break;
+      if (coveredByKnownRange(tStart, tEnd)) break;
+      // Numeric span key: text is far shorter than 2^26 chars, so start<<26|end
+      // is collision-free here and avoids a string allocation per candidate.
+      const spanKey = tStart * 67108864 + tEnd;
+      if (bareSpans.has(spanKey)) break;
       // Skip if immediately followed by a real sign token (a bracketed
       // paragraph number is not a sign, so it does not satisfy the term)
       const nxt = toks[i + 1];
@@ -409,7 +499,7 @@ export function extractData(text, lang, mwo = {}, autoMW = true, isClaims = fals
       )
         break;
       const signs = Object.keys(termData[ts]?.signs || {});
-      bareSpans.add(`${tStart}-${tEnd}`);
+      bareSpans.add(spanKey);
       bareTerms.push({
         termStart: tStart,
         termEnd: tEnd,

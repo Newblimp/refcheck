@@ -248,10 +248,10 @@ export const DE_ORD = new Set([
 
 export const isArt = (w, l) => (l === 'de' ? DE_ART : EN_ART).has(w.toLowerCase());
 export const isOrd = (w, l) => (l === 'de' ? DE_ORD : EN_ORD).has(w.toLowerCase());
-export const artType = (w) =>
-  ['a', 'an', 'ein', 'eine', 'einer', 'eines', 'einem', 'einen'].includes(w.toLowerCase())
-    ? 'indef'
-    : 'def';
+// Indefinite articles, EN + DE. A module-level Set: artType runs once per
+// article occurrence, and the array literal was rebuilt on every call.
+const INDEF_ARTS = new Set(['a', 'an', 'ein', 'eine', 'einer', 'eines', 'einem', 'einen']);
+export const artType = (w) => (INDEF_ARTS.has(w.toLowerCase()) ? 'indef' : 'def');
 export const likelySign = (s) => {
   const n = parseInt(s, 10);
   return n >= 1 && n <= 99999;

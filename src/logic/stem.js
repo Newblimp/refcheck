@@ -1,33 +1,94 @@
 // ── STEMMING ── Porter (EN) + Snowball (DE) ────────────────────────────────
+//
+// Everything constant lives at module scope. These helpers and suffix tables
+// used to be rebuilt inside stemEn/stemDe on every call — five closures and 45
+// array literals per word. The memo cache below hid most of that cost, but not
+// on cache misses, and not for the DE character sets.
+
+const EN_VOWEL_RE = /[aeiou]/;
+const isv = (s, i) => (s[i] === 'y' ? i > 0 && !isv(s, i - 1) : EN_VOWEL_RE.test(s[i]));
+// Porter's measure: the number of vowel→consonant transitions.
+const mg = (s) => {
+  let n = 0,
+    v = false;
+  for (let i = 0; i < s.length; i++) {
+    if (isv(s, i)) {
+      if (!v) v = true;
+    } else if (v) {
+      n++;
+      v = false;
+    }
+  }
+  return n;
+};
+const hv = (s) => {
+  for (let i = 0; i < s.length; i++) if (isv(s, i)) return true;
+  return false;
+};
+const dbl = (s) => {
+  const n = s.length;
+  return n >= 2 && s[n - 1] === s[n - 2] && !isv(s, n - 1);
+};
+const cvc = (s) => {
+  const n = s.length;
+  return n >= 3 && !isv(s, n - 1) && !'wxy'.includes(s[n - 1]) && isv(s, n - 2) && !isv(s, n - 3);
+};
+
+const EN_STEP2 = [
+  ['ational', 'ate'],
+  ['tional', 'tion'],
+  ['enci', 'ence'],
+  ['anci', 'ance'],
+  ['izer', 'ize'],
+  ['abli', 'able'],
+  ['alli', 'al'],
+  ['entli', 'ent'],
+  ['eli', 'e'],
+  ['ousli', 'ous'],
+  ['ization', 'ize'],
+  ['ation', 'ate'],
+  ['ator', 'ate'],
+  ['alism', 'al'],
+  ['iveness', 'ive'],
+  ['fulness', 'ful'],
+  ['ousness', 'ous'],
+  ['aliti', 'al'],
+  ['iviti', 'ive'],
+  ['biliti', 'ble'],
+];
+const EN_STEP3 = [
+  ['icate', 'ic'],
+  ['ative', ''],
+  ['alize', 'al'],
+  ['iciti', 'ic'],
+  ['ical', 'ic'],
+  ['ful', ''],
+  ['ness', ''],
+];
+const EN_STEP4 = [
+  'ement',
+  'ment',
+  'ance',
+  'ence',
+  'able',
+  'ible',
+  'ant',
+  'ent',
+  'ism',
+  'ate',
+  'iti',
+  'ous',
+  'ive',
+  'ize',
+  'al',
+  'er',
+  'ic',
+  'ou',
+];
+
 export function stemEn(w) {
   w = w.toLowerCase();
   if (w.length <= 2) return w;
-  const isv = (s, i) => (s[i] === 'y' ? i > 0 && !isv(s, i - 1) : /[aeiou]/.test(s[i]));
-  const mg = (s) => {
-    let n = 0,
-      v = false;
-    for (let i = 0; i < s.length; i++) {
-      if (isv(s, i)) {
-        if (!v) v = true;
-      } else if (v) {
-        n++;
-        v = false;
-      }
-    }
-    return n;
-  };
-  const hv = (s) => {
-    for (let i = 0; i < s.length; i++) if (isv(s, i)) return true;
-    return false;
-  };
-  const dbl = (s) => {
-    const n = s.length;
-    return n >= 2 && s[n - 1] === s[n - 2] && !isv(s, n - 1);
-  };
-  const cvc = (s) => {
-    const n = s.length;
-    return n >= 3 && !isv(s, n - 1) && !'wxy'.includes(s[n - 1]) && isv(s, n - 2) && !isv(s, n - 3);
-  };
   // 1a
   if (w.endsWith('sses')) w = w.slice(0, -2);
   else if (w.endsWith('ies')) w = w.slice(0, -2);
@@ -53,28 +114,7 @@ export function stemEn(w) {
   // 1c
   if (w.length > 2 && w.endsWith('y') && hv(w.slice(0, -1))) w = w.slice(0, -1) + 'i';
   // 2
-  for (const [s, r] of [
-    ['ational', 'ate'],
-    ['tional', 'tion'],
-    ['enci', 'ence'],
-    ['anci', 'ance'],
-    ['izer', 'ize'],
-    ['abli', 'able'],
-    ['alli', 'al'],
-    ['entli', 'ent'],
-    ['eli', 'e'],
-    ['ousli', 'ous'],
-    ['ization', 'ize'],
-    ['ation', 'ate'],
-    ['ator', 'ate'],
-    ['alism', 'al'],
-    ['iveness', 'ive'],
-    ['fulness', 'ful'],
-    ['ousness', 'ous'],
-    ['aliti', 'al'],
-    ['iviti', 'ive'],
-    ['biliti', 'ble'],
-  ]) {
+  for (const [s, r] of EN_STEP2) {
     if (w.endsWith(s)) {
       const t = w.slice(0, -s.length);
       if (mg(t) > 0) {
@@ -84,15 +124,7 @@ export function stemEn(w) {
     }
   }
   // 3
-  for (const [s, r] of [
-    ['icate', 'ic'],
-    ['ative', ''],
-    ['alize', 'al'],
-    ['iciti', 'ic'],
-    ['ical', 'ic'],
-    ['ful', ''],
-    ['ness', ''],
-  ]) {
+  for (const [s, r] of EN_STEP3) {
     if (w.endsWith(s)) {
       const t = w.slice(0, -s.length);
       if (mg(t) > 0) {
@@ -103,26 +135,7 @@ export function stemEn(w) {
   }
   // 4
   let m4 = false;
-  for (const s of [
-    'ement',
-    'ment',
-    'ance',
-    'ence',
-    'able',
-    'ible',
-    'ant',
-    'ent',
-    'ism',
-    'ate',
-    'iti',
-    'ous',
-    'ive',
-    'ize',
-    'al',
-    'er',
-    'ic',
-    'ou',
-  ]) {
+  for (const s of EN_STEP4) {
     if (w.endsWith(s)) {
       const t = w.slice(0, -s.length);
       if (mg(t) > 1) {
@@ -146,23 +159,33 @@ export function stemEn(w) {
   return w;
 }
 
+const DE_VOWEL_RE = /[aeiouyäöü]/;
+const deIsv = (c) => DE_VOWEL_RE.test(c);
+// Valid s-ending / st-ending predecessors (Snowball German).
+const DE_VS = new Set([...'bdfghklmnrt']);
+const DE_VST = new Set([...'bdfghklmnt']);
+const DE_STEP1 = ['ern', 'em', 'er', 'en', 'es', 'e'];
+const DE_STEP2 = ['est', 'en', 'er'];
+const DE_ESZETT_RE = /ß/g;
+const DE_A_RE = /ä/g,
+  DE_O_RE = /ö/g,
+  DE_U_RE = /ü/g;
+
+function deR1p(s) {
+  for (let i = 1; i < s.length; i++) if (deIsv(s[i - 1]) && !deIsv(s[i])) return Math.max(3, i + 1);
+  return s.length;
+}
+
 export function stemDe(w) {
-  w = w.toLowerCase().replace(/ß/g, 'ss');
+  w = w.toLowerCase().replace(DE_ESZETT_RE, 'ss');
   if (w.length <= 2) return w;
-  const isv = (c) => /[aeiouyäöü]/.test(c);
-  function r1p(s) {
-    for (let i = 1; i < s.length; i++) if (isv(s[i - 1]) && !isv(s[i])) return Math.max(3, i + 1);
-    return s.length;
-  }
-  const p1 = r1p(w),
-    p2 = p1 + r1p(w.slice(p1));
+  const p1 = deR1p(w),
+    p2 = p1 + deR1p(w.slice(p1));
   const ir1 = (n) => n >= p1,
     ir2 = (n) => n >= p2;
-  const VS = new Set([...'bdfghklmnrt']),
-    VST = new Set([...'bdfghklmnt']);
   // Step 1 – noun inflections
   let found = false;
-  for (const s of ['ern', 'em', 'er', 'en', 'es', 'e']) {
+  for (const s of DE_STEP1) {
     const p = w.length - s.length;
     if (w.endsWith(s) && ir1(p)) {
       w = w.slice(0, p);
@@ -172,11 +195,11 @@ export function stemDe(w) {
   }
   if (!found) {
     const p = w.length - 1;
-    if (w.endsWith('s') && ir1(p) && p > 0 && VS.has(w[p - 1])) w = w.slice(0, p);
+    if (w.endsWith('s') && ir1(p) && p > 0 && DE_VS.has(w[p - 1])) w = w.slice(0, p);
   }
   // Step 2 – verb inflections
   found = false;
-  for (const s of ['est', 'en', 'er']) {
+  for (const s of DE_STEP2) {
     const p = w.length - s.length;
     if (w.endsWith(s) && ir1(p)) {
       w = w.slice(0, p);
@@ -186,7 +209,7 @@ export function stemDe(w) {
   }
   if (!found) {
     const p = w.length - 2;
-    if (w.endsWith('st') && ir1(p) && p > 0 && VST.has(w[p - 1])) w = w.slice(0, p);
+    if (w.endsWith('st') && ir1(p) && p > 0 && DE_VST.has(w[p - 1])) w = w.slice(0, p);
   }
   // Step 3 – derivational suffixes in R2
   const wl = w.length;
@@ -213,7 +236,7 @@ export function stemDe(w) {
   } else if (w.endsWith('ig') && ir2(wl - 2) && w[wl - 3] !== 'e') {
     w = w.slice(0, -2);
   }
-  return w.replace(/ä/g, 'a').replace(/ö/g, 'o').replace(/ü/g, 'u');
+  return w.replace(DE_A_RE, 'a').replace(DE_O_RE, 'o').replace(DE_U_RE, 'u');
 }
 
 // Memoized dispatcher. Patent prose has a tiny vocabulary relative to its
@@ -222,14 +245,19 @@ export function stemDe(w) {
 // from ~half of extractData's cost into noise. The cap only guards against
 // pathological input; normal documents never come close.
 const CACHE_MAX = 50000;
-const cache = new Map();
+// One cache per language, keyed on the raw word. A single shared cache needed a
+// "de:"/"en:" prefix concatenated onto every lookup — one string allocation per
+// call, and stem() is called roughly three times per token.
+const cacheEn = new Map();
+const cacheDe = new Map();
 export function stem(w, l) {
-  const key = (l === 'de' ? 'd:' : 'e:') + w;
-  let s = cache.get(key);
+  const de = l === 'de';
+  const cache = de ? cacheDe : cacheEn;
+  let s = cache.get(w);
   if (s === undefined) {
-    s = l === 'de' ? stemDe(w) : stemEn(w);
+    s = de ? stemDe(w) : stemEn(w);
     if (cache.size >= CACHE_MAX) cache.clear();
-    cache.set(key, s);
+    cache.set(w, s);
   }
   return s;
 }

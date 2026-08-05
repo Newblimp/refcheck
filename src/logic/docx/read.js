@@ -61,8 +61,18 @@ export function decodeXml(s) {
   });
 }
 
+// Attribute lookup, called from the inner tag loop for a handful of fixed names
+// (w:val, w:numId, w:ilvl, …) — thousands of times per import. Compiling the
+// regex per call was the bulk of that; only a few distinct names ever occur, so
+// cache them.
+const ATTR_RE_CACHE = new Map();
 const attr = (attrs, name) => {
-  const m = new RegExp(`${name}="([^"]*)"`).exec(attrs);
+  let re = ATTR_RE_CACHE.get(name);
+  if (re === undefined) {
+    re = new RegExp(`${name}="([^"]*)"`);
+    ATTR_RE_CACHE.set(name, re);
+  }
+  const m = re.exec(attrs);
   return m ? m[1] : null;
 };
 

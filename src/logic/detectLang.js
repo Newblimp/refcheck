@@ -51,6 +51,9 @@ const EN_WORDS = new Set([
   'shown',
 ]);
 
+// Characters that occur in German but not English.
+const UMLAUTS = new Set([...'äöüßÄÖÜ']);
+
 /**
  * Score text as English or German by function-word frequency.
  * @param {string} text
@@ -59,7 +62,10 @@ const EN_WORDS = new Set([
 export function detectLangFromText(text) {
   if (!text) return 'en';
   // Characters that only occur in German carry a lot of signal on their own.
-  const umlauts = (text.match(/[äöüßÄÖÜ]/g) || []).length;
+  // Counted with a loop rather than text.match(…).length, which materialised an
+  // array holding every umlaut in the document just to read its size.
+  let umlauts = 0;
+  for (let i = 0; i < text.length; i++) if (UMLAUTS.has(text[i])) umlauts++;
   let de = umlauts * 2,
     en = 0;
   for (const tok of tokenize(text)) {
