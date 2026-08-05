@@ -4,6 +4,8 @@ import { extractData, classify } from '../logic/extract.js';
 import { getAllErrors } from '../logic/errorSpans.js';
 import { buildHtml, findAtPos } from '../logic/buildHtml.js';
 import { computeCrossRef } from '../logic/crossref.js';
+import { reconcileRefList } from '../logic/reconcile.js';
+import { claimStats } from '../logic/claimStats.js';
 import { compareSigns, disKey } from '../logic/constants.js';
 import { stem } from '../logic/stem.js';
 import { useDebounced } from '../hooks/useDebounced.js';
@@ -33,6 +35,7 @@ const EMPTY_RESULT = {
   numErrors: [],
   depErrors: [],
   noTermSigns: new Set(),
+  claimGraph: null,
 };
 
 // useLayoutEffect on the client (runs before paint, so no highlight flash); plain
@@ -64,6 +67,9 @@ export function App() {
   );
   const [descText, setDescText] = usePersistentState('rsc_desc', '', undefined, textOpts);
   const [claimsText, setClaimsText] = usePersistentState('rsc_claims', '', undefined, textOpts);
+  // The drafter's own reference-sign list, checked against the active buffer.
+  // Small enough not to need the debounce the text buffers use.
+  const [refListText, setRefListText] = usePersistentState('rsc_reflist', '');
   const [mwo, setMwo] = usePersistentState('rsc_mwo', {}, jsonCodec);
   const [dis, setDis] = usePersistentState('rsc_dis', new Set(), setCodec);
   const [theme, setTheme] = useTheme();
@@ -113,6 +119,15 @@ export function App() {
   );
 
   const allErrors = useMemo(() => getAllErrors(res, mode, dis), [res, mode, dis]);
+
+  // The reference list describes the invention as a whole, so it is checked
+  // against the description when there is one and the claims otherwise.
+  const refListTarget = descResult || claimsResult;
+  const reconciled = useMemo(
+    () => reconcileRefList(refListText, refListTarget, lang),
+    [refListText, refListTarget, lang]
+  );
+  const claimSetStats = useMemo(() => claimStats(claimsResult?.claimGraph), [claimsResult]);
 
   useEffect(() => setNavIdx(0), [allErrors.length]);
 
@@ -461,6 +476,7 @@ export function App() {
     setMwo({});
     setDescText('');
     setClaimsText('');
+    setRefListText('');
     setImported(null);
     setReport(null);
     undoRef.current = null;
@@ -493,11 +509,14 @@ export function App() {
       )
         return;
 
-      undoRef.current = { desc: descText, claims: claimsText, lang, mode };
+      undoRef.current = { desc: descText, claims: claimsText, lang, mode, refList: refListText };
       const { split, lang: detectedLang } = result;
       result.fileName = file.name;
       setDescText(split.description);
       setClaimsText(split.claims);
+      // The Bezugszeichenliste is excluded from both buffers, but it is exactly
+      // what the reference-list check wants, so hand it over instead of dropping it.
+      if (split.signList) setRefListText(split.signList);
       setLang(detectedLang);
       setImported(result);
       setFocus(null);
@@ -533,6 +552,7 @@ export function App() {
     if (!u) return;
     setDescText(u.desc);
     setClaimsText(u.claims);
+    setRefListText(u.refList ?? '');
     setLang(u.lang);
     setImported(null);
     setReport(null);
@@ -883,6 +903,10 @@ export function App() {
           onDismiss={toggleDis}
           onRestoreAll={restoreAll}
           orphaned={orphaned}
+          refListText={refListText}
+          onRefListChange={setRefListText}
+          reconciled={reconciled}
+          claimSetStats={claimSetStats}
         />
       </main>
       <button className="reset-btn" onClick={doReset} title={t.resetAll}>

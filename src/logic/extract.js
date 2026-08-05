@@ -78,6 +78,7 @@ import { computeClaimGraph } from './claims.js';
  * @property {NumError[]} numErrors
  * @property {import('./claims.js').DepError[]} depErrors  Claims mode only
  * @property {Set<string>} noTermSigns  Signs seen only without a term
+ * @property {ReturnType<import('./claims.js').computeClaimGraph>} claimGraph  Claims mode only
  */
 
 // A number written in square brackets ([0012]) is a paragraph number, not a
@@ -622,7 +623,16 @@ export function extractData(text, lang, mwo = {}, autoMW = true, isClaims = fals
   const bareTerms = findBareTerms({ toks, text, termData, signData, lang, isClaims });
   const numErrors = computeNumberingErrors(claimNums);
 
-  return { signData, termData, artErrors, bareTerms, numErrors, depErrors, noTermSigns };
+  return {
+    signData,
+    termData,
+    artErrors,
+    bareTerms,
+    numErrors,
+    depErrors,
+    noTermSigns,
+    claimGraph,
+  };
 }
 
 // ── CLASSIFICATION ─────────────────────────────────────────────────────────

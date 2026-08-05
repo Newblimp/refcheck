@@ -115,6 +115,16 @@ export function splitPatentDoc(doc) {
   const numbering = applyClaimNumbering(claimsParas);
   claimsParas = numbering.paras;
 
+  // The reference-sign list: excluded from the description and claims buffers,
+  // but returned so it can be reconciled against them rather than discarded.
+  // Runs to the abstract, or to the end of the document.
+  let signListParas = [];
+  const signListH = firstOf(headings, SECTION_KINDS.SIGN_LIST);
+  if (signListH) {
+    const stop = nextOf(headings, [SECTION_KINDS.ABSTRACT], signListH.index);
+    signListParas = paragraphs.slice(signListH.index + 1, stop ? stop.index : paragraphs.length);
+  }
+
   // Language: whichever dictionary matched. The claims heading is the most
   // standardised, so it wins when the two disagree.
   const lang = claimsH?.lang || descH?.lang || null;
@@ -131,12 +141,15 @@ export function splitPatentDoc(doc) {
   return {
     description: toText(descParas),
     claims: toText(claimsParas),
+    signList: toText(signListParas),
     lang,
     descParas,
     claimsParas,
+    signListParas,
     detected: {
       description: !!descH,
       claims: !!claimsH,
+      signList: !!signListH,
       descHeading: descH ? paragraphs[descH.index].text.trim() : null,
       claimsHeading: claimsH ? paragraphs[claimsH.index].text.trim() : null,
       fellBack,

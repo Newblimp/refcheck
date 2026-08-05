@@ -153,5 +153,7 @@ export function computeClaimGraph(text, claimNums) {
   }
   for (const c of claims) closure(c.num);
 
-  return { claims, ancestors, depErrors };
+  // `direct` is exposed so claimStats can tell an independent claim from a
+  // dependent one, and spot multiple dependencies, without re-parsing.
+  return { claims, ancestors, depErrors, direct };
 }

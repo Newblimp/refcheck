@@ -134,3 +134,25 @@ describe('splitPatentDoc — boundary precision', () => {
     expect(split(body).claims).toBe('1. A device (10).');
   });
 });
+
+describe('reference-sign list', () => {
+  // The list is excluded from both buffers by design, but it is exactly what
+  // the reference-list check wants, so it is returned rather than discarded.
+  it('returns the Bezugszeichenliste separately', () => {
+    const r = split(DE_BODY);
+    expect(r.signList).toBe('10 Vorrichtung\n12 Gehäuse');
+    expect(r.detected.signList).toBe(true);
+  });
+
+  it('keeps the list out of the description and claims buffers', () => {
+    const r = split(DE_BODY);
+    expect(r.description).not.toMatch(/Vorrichtung$/m);
+    expect(r.claims).not.toContain('10 Vorrichtung');
+  });
+
+  it('reports no list when the document has no such heading', () => {
+    const r = split(EN_BODY);
+    expect(r.signList).toBe('');
+    expect(r.detected.signList).toBe(false);
+  });
+});

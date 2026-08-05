@@ -5,14 +5,19 @@ import { BareCard } from './BareCard.jsx';
 import { NumCard } from './NumCard.jsx';
 import { DepCard } from './DepCard.jsx';
 import { RefList } from './RefList.jsx';
+import { RefListCheck } from './RefListCheck.jsx';
+import { ClaimStats } from './ClaimStats.jsx';
 
 // A collapsible card-list section, styled like RefList's own header. Hides
 // itself when count is 0 rather than being conditionally mounted by the
 // caller, so its open/closed state survives the count dropping to 0 and
 // back up (e.g. while the user is mid-edit).
-function Section({ icon, label, color, count, children }) {
-  const [open, setOpen] = useState(true);
-  if (!count) return null;
+function Section({ icon, label, color, count, children, alwaysShow = false, defaultOpen = true }) {
+  const [open, setOpen] = useState(defaultOpen);
+  // Most sections hide themselves at zero; the two that host an input the user
+  // types into (the reference-list check, the claim-set panel) must stay
+  // reachable even with nothing to report.
+  if (!count && !alwaysShow) return null;
   return (
     <div className="sidebar-section">
       <button
@@ -62,6 +67,10 @@ function SidebarImpl({
   onDismiss,
   onRestoreAll,
   orphaned,
+  refListText,
+  onRefListChange,
+  reconciled,
+  claimSetStats,
 }) {
   const totalSigns = Object.keys(signData).length;
   const totalErrs =
@@ -295,6 +304,38 @@ function SidebarImpl({
                 ))}
               </Section>
             )}
+            {claimSetStats && (
+              <Section
+                icon="§"
+                label={t.claimStatsLbl}
+                color="var(--text-muted)"
+                count={claimSetStats.total}
+                alwaysShow
+              >
+                <ClaimStats stats={claimSetStats} t={t} />
+              </Section>
+            )}
+            <Section
+              icon="☰"
+              label={t.reconcileLbl}
+              color="var(--text-muted)"
+              count={
+                reconciled
+                  ? reconciled.termMismatch.length +
+                    reconciled.duplicates.length +
+                    reconciled.listedNotUsed.length +
+                    reconciled.usedNotListed.length
+                  : 0
+              }
+              alwaysShow
+            >
+              <RefListCheck
+                value={refListText}
+                onChange={onRefListChange}
+                result={reconciled}
+                t={t}
+              />
+            </Section>
             <RefList signData={signData} termData={termData} t={t} />
           </>
         )}

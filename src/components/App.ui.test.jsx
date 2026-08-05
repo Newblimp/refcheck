@@ -435,3 +435,90 @@ describe('App (keyboard and accessibility)', () => {
     expect(screen.getByRole('textbox', { name: /patent text/i })).toBeInTheDocument();
   });
 });
+
+describe('App (reference-list check and claim statistics)', () => {
+  const refListInput = (container) => container.querySelector('.rlc-in');
+
+  it('reports a reference list that matches the text', async () => {
+    const { container } = render(<App />);
+    typeInto('A housing 12 is provided. The housing 12 holds a cover 14.');
+    await sidebar(container).findByText('12');
+    fireEvent.change(refListInput(container), {
+      target: { value: '12 housing\n14 cover' },
+    });
+    expect(await sidebar(container).findByText(/2 entries match the text/)).toBeInTheDocument();
+  });
+
+  it('flags a term that differs between the list and the text', async () => {
+    const { container } = render(<App />);
+    typeInto('A housing 12 is provided. The housing 12 holds a cover 14.');
+    await sidebar(container).findByText('12');
+    fireEvent.change(refListInput(container), {
+      target: { value: '12 casing\n14 cover' },
+    });
+    expect(
+      await sidebar(container).findByText(/list: "casing".*text: "housing"/)
+    ).toBeInTheDocument();
+  });
+
+  it('flags a sign listed but never used, and one used but not listed', async () => {
+    const { container } = render(<App />);
+    typeInto('A housing 12 is provided. The housing 12 holds a cover 14.');
+    await sidebar(container).findByText('12');
+    fireEvent.change(refListInput(container), {
+      target: { value: '12 housing\n99 flywheel' },
+    });
+    expect(await sidebar(container).findByText(/never used in the text/)).toBeInTheDocument();
+    expect(sidebar(container).getByText(/not listed/)).toBeInTheDocument();
+  });
+
+  it('persists the reference list across a remount', async () => {
+    const { container, unmount } = render(<App />);
+    typeInto('A housing 12 is provided.');
+    await sidebar(container).findByText('12');
+    fireEvent.change(refListInput(container), { target: { value: '12 housing' } });
+    // The text buffer write is debounced; the sidebar only renders its sections
+    // once the restored buffer produces signs, so wait for both to land.
+    await waitFor(() => expect(localStorage.getItem('rsc_reflist')).toBe('12 housing'));
+    await waitFor(() => expect(localStorage.getItem('rsc_desc')).toBeTruthy());
+    unmount();
+    const again = render(<App />);
+    expect(await again.findByDisplayValue('12 housing')).toBeInTheDocument();
+  });
+
+  it('fills the reference list from an imported .docx Bezugszeichenliste', async () => {
+    const { container } = render(<App />);
+    const file = docxFile(DE_BODY);
+    await waitFor(() => expect(document.querySelector('.editor-ta')).toBeInTheDocument());
+    const dt = { types: ['Files'], files: [file] };
+    fireEvent(
+      window,
+      Object.assign(new Event('dragenter', { bubbles: true }), { dataTransfer: dt })
+    );
+    fireEvent(window, Object.assign(new Event('drop', { bubbles: true }), { dataTransfer: dt }));
+    await waitFor(() => expect(refListInput(container).value).toBe('10 Vorrichtung\n12 Gehäuse'));
+  });
+
+  it('shows claim-set statistics in claims mode', async () => {
+    const { container } = render(<App />);
+    fireEvent.click(screen.getByText('Claims'));
+    typeInto(
+      [
+        '1. A device (10) comprising a housing (12).',
+        '2. The device (10) of claim 1, wherein the housing (12) is metal.',
+        '3. The device (10) according to claim 1 or 2, further comprising a cover (14).',
+      ].join('\n')
+    );
+    await waitFor(() => expect(container.querySelector('.cs-body')).toBeInTheDocument());
+    const stats = within(container.querySelector('.cs-body'));
+    expect(stats.getByText('Count').previousSibling).toHaveTextContent('3');
+    expect(stats.getByText(/multiple dependency: claim 3/)).toBeInTheDocument();
+  });
+
+  it('does not show claim statistics in description mode', async () => {
+    const { container } = render(<App />);
+    typeInto('A housing 12 is provided.');
+    await sidebar(container).findByText('12');
+    expect(container.querySelector('.cs-body')).not.toBeInTheDocument();
+  });
+});

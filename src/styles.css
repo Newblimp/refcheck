@@ -1148,3 +1148,50 @@ mark.h-hover {
   color: inherit;
   cursor: pointer;
 }
+
+/* ── Reference-list check + claim-set statistics ───────────────────────────── */
+.rlc-body,
+.cs-body {
+  padding: 0 10px 8px;
+}
+
+/* Four figures, so 2x2 rather than the sign panel's 3-across (which would
+   leave a lone cell on a second row). */
+.cs-body .stats-row {
+  grid-template-columns: repeat(2, 1fr);
+  padding: 9px 0;
+  border-bottom: none;
+}
+
+.rlc-in {
+  width: 100%;
+  box-sizing: border-box;
+  resize: vertical;
+  min-height: 64px;
+  margin-bottom: 6px;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1.6;
+}
+
+.rlc-in::placeholder {
+  color: var(--text-dim);
+}
+
+.rlc-ok {
+  color: var(--ok);
+  font-size: 11px;
+  padding: 2px 0 4px;
+}
+
+.cs-note {
+  font-size: 11px;
+  color: var(--warn);
+  padding: 3px 0;
+  line-height: 1.5;
+}
