@@ -1,8 +1,9 @@
+import { memo } from 'react';
 import { disKey } from '../logic/constants.js';
 
 // ── CLAIM-DEPENDENCY CARD ───────────────────────────────────────────────────
 // A claim referencing a nonexistent claim, a later claim, or itself.
-export function DepCard({ de, focused, t, dis, onFocus, onDismiss }) {
+function DepCardImpl({ de, focused, t, dis, onFocus, onDismiss }) {
   const key = disKey.dep(de.key);
   const isDis = dis.has(key);
   const msg =
@@ -43,3 +44,7 @@ export function DepCard({ de, focused, t, dis, onFocus, onDismiss }) {
     </div>
   );
 }
+
+// memo: the sidebar re-renders on every keystroke, hover and error-nav step,
+// but a card's props only change when its own error does.
+export const DepCard = memo(DepCardImpl);

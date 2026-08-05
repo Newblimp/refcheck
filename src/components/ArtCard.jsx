@@ -1,7 +1,8 @@
+import { memo } from 'react';
 import { disKey } from '../logic/constants.js';
 
 // ── ARTICLE CARD ────────────────────────────────────────────────────────────
-export function ArtCard({ ae, focused, t, dis, onFocus, onDismiss }) {
+function ArtCardImpl({ ae, focused, t, dis, onFocus, onDismiss }) {
   const key = disKey.art(ae.termStem);
   const isDis = dis.has(key);
   const msg =
@@ -47,3 +48,7 @@ export function ArtCard({ ae, focused, t, dis, onFocus, onDismiss }) {
     </div>
   );
 }
+
+// memo: the sidebar re-renders on every keystroke, hover and error-nav step,
+// but a card's props only change when its own error does.
+export const ArtCard = memo(ArtCardImpl);

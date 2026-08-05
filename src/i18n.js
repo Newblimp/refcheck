@@ -88,6 +88,9 @@ export const T = {
       'Writes your edits back into the imported file; only changed paragraphs are rewritten',
     expTitleFresh: 'No imported file in this session — generates a new .docx from the two buffers',
     expDone: 'Exported',
+    storageFull:
+      'This text is too large to save in the browser — it will not survive a refresh. Export to .docx to keep it.',
+    dismiss: 'Dismiss',
     beeSays: "§ 961 BGB! I'm free!!",
   },
   de: {
@@ -179,6 +182,9 @@ export const T = {
     expTitleFresh:
       'Keine importierte Datei in dieser Sitzung — erzeugt eine neue .docx aus beiden Feldern',
     expDone: 'Exportiert',
+    storageFull:
+      'Dieser Text ist zu groß zum Speichern im Browser — er überlebt keinen Neuladen. Zum Sichern als .docx exportieren.',
+    dismiss: 'Schließen',
     beeSays: '§ 961 BGB! Ich bin frei!!',
   },
 };

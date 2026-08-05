@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { memo, useState } from 'react';
 import { SignCard } from './SignCard.jsx';
 import { ArtCard } from './ArtCard.jsx';
 import { BareCard } from './BareCard.jsx';
@@ -26,7 +26,7 @@ function Section({ icon, label, color, count, children }) {
 // ── SIDEBAR (overview pane) ─────────────────────────────────────────────────
 // Purely presentational: App owns all state and the search/dismissal filtering;
 // this renders the stats, the search box and the card sections.
-export function Sidebar({
+function SidebarImpl({
   t,
   lang,
   mode,
@@ -155,9 +155,9 @@ export function Sidebar({
               ))}
             </Section>
             <Section icon="◈" label={t.gArt} color="var(--art)" count={visArtActive.length}>
-              {visArtActive.map((ae, i) => (
+              {visArtActive.map((ae) => (
                 <ArtCard
-                  key={i}
+                  key={ae.artStart}
                   ae={ae}
                   focused={focus?.type === 'art' && focus.key === ae.artStart}
                   t={t}
@@ -168,9 +168,9 @@ export function Sidebar({
               ))}
             </Section>
             <Section icon="∅" label={t.gBare} color="var(--bare)" count={visBareActive.length}>
-              {visBareActive.map((bt, i) => (
+              {visBareActive.map((bt) => (
                 <BareCard
-                  key={i}
+                  key={bt.termStart}
                   bt={bt}
                   focused={focus?.type === 'bare' && focus.key === bt.termStart}
                   t={t}
@@ -181,9 +181,9 @@ export function Sidebar({
               ))}
             </Section>
             <Section icon="⌗" label={t.numberingLbl} color="var(--num)" count={visNumActive.length}>
-              {visNumActive.map((ne, i) => (
+              {visNumActive.map((ne) => (
                 <NumCard
-                  key={i}
+                  key={ne.key}
                   ne={ne}
                   focused={focus?.type === 'num' && focus.key === ne.start}
                   t={t}
@@ -194,9 +194,9 @@ export function Sidebar({
               ))}
             </Section>
             <Section icon="↷" label={t.gDep} color="var(--dep)" count={visDepActive.length}>
-              {visDepActive.map((de, i) => (
+              {visDepActive.map((de) => (
                 <DepCard
-                  key={i}
+                  key={de.key}
                   de={de}
                   focused={focus?.type === 'dep' && focus.key === de.start}
                   t={t}
@@ -286,10 +286,15 @@ export function Sidebar({
                 ))}
               </Section>
             )}
-            <RefList signData={signData} termData={termData} t={t} lang={lang} />
+            <RefList signData={signData} termData={termData} t={t} />
           </>
         )}
       </div>
     </div>
   );
 }
+
+// memo: Sidebar re-renders whenever App does — every keystroke, every hover,
+// every bee frame. Its props are stable identities (App memoizes the filtered
+// lists and useCallbacks the handlers), so this actually skips the work.
+export const Sidebar = memo(SidebarImpl);

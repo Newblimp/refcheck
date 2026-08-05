@@ -10,7 +10,13 @@ import { usePersistentState, jsonCodec, setCodec, oneOf } from '../hooks/usePers
 import { useTheme } from '../hooks/useTheme.js';
 import { useFileDrop } from '../hooks/useFileDrop.js';
 import { useBee } from '../hooks/useBee.js';
-import { fileKind, importPatentDoc, exportPatentDoc } from '../logic/importDoc.js';
+import { fileKind } from '../logic/fileKind.js';
+
+// The .docx pipeline (and fflate with it) is loaded on demand — most sessions
+// paste text and never touch it, so it does not belong in the initial bundle.
+// The service worker precaches every emitted chunk, so this still resolves
+// offline for a user who imports for the first time with no connection.
+const loadDocIO = () => import('../logic/importDoc.js');
 import { CtxMenu } from './CtxMenu.jsx';
 import { Sidebar } from './Sidebar.jsx';
 import { DropOverlay } from './DropOverlay.jsx';
@@ -31,6 +37,11 @@ const EMPTY_RESULT = {
 // useEffect on the server so the render smoke test logs no SSR warning.
 const useIsoLayoutEffect = typeof window !== 'undefined' ? useLayoutEffect : useEffect;
 
+// How long the text buffers wait before being written to localStorage. Long
+// enough that a burst of typing produces one write, short enough that a refresh
+// straight after typing keeps the text.
+const SAVE_MS = 400;
+
 // ── APP ─────────────────────────────────────────────────────────────────────
 export function App() {
   // Persisted preferences and buffers (all survive a refresh; see CLAUDE.md for keys)
@@ -40,8 +51,17 @@ export function App() {
     'description',
     oneOf(['description', 'claims'], 'description')
   );
-  const [descText, setDescText] = usePersistentState('rsc_desc', '');
-  const [claimsText, setClaimsText] = usePersistentState('rsc_claims', '');
+  // The two text buffers are the only large values stored, so they are the only
+  // ones that need a debounce (an undebounced write serialised the whole buffer
+  // on every keystroke) and the only ones that can realistically hit the quota.
+  const [storageFull, setStorageFull] = useState(false);
+  const onStorageError = useCallback(() => setStorageFull(true), []);
+  const textOpts = useMemo(
+    () => ({ debounce: SAVE_MS, onError: onStorageError }),
+    [onStorageError]
+  );
+  const [descText, setDescText] = usePersistentState('rsc_desc', '', undefined, textOpts);
+  const [claimsText, setClaimsText] = usePersistentState('rsc_claims', '', undefined, textOpts);
   const [mwo, setMwo] = usePersistentState('rsc_mwo', {}, jsonCodec);
   const [dis, setDis] = usePersistentState('rsc_dis', new Set(), setCodec);
   const [theme, setTheme] = useTheme();
@@ -139,12 +159,34 @@ export function App() {
     });
   }, []);
 
-  useEffect(() => {
+  // Hovering a sign highlights all of its marks in the editor. Doing that by
+  // walking every mark in the document on each hover transition meant a
+  // querySelectorAll plus a classList write per mark — thousands of them on a
+  // real patent, for a pointer movement. Index the marks by sign once per
+  // backdrop render, then touch only the outgoing and incoming sign's marks.
+  const markIndex = useRef(new Map());
+  const hoveredMarks = useRef(null);
+  useIsoLayoutEffect(() => {
     const bd = bdRef.current;
-    if (!bd) return;
-    bd.querySelectorAll('mark[data-sign]').forEach((m) => {
-      m.classList.toggle('h-hover', m.dataset.sign === hoverSign);
-    });
+    const index = new Map();
+    if (bd) {
+      for (const m of bd.querySelectorAll('mark[data-sign]')) {
+        const s = m.dataset.sign;
+        const list = index.get(s);
+        if (list) list.push(m);
+        else index.set(s, [m]);
+      }
+    }
+    markIndex.current = index;
+    // The nodes just got replaced, so nothing carries the hover class any more.
+    hoveredMarks.current = null;
+  }, [html]);
+
+  useEffect(() => {
+    for (const m of hoveredMarks.current || []) m.classList.remove('h-hover');
+    const next = hoverSign === null ? null : markIndex.current.get(hoverSign) || null;
+    for (const m of next || []) m.classList.add('h-hover');
+    hoveredMarks.current = next;
   }, [hoverSign, html]);
 
   // ── Search-filtered card lists (also drive the status-bar chips) ──
@@ -174,28 +216,51 @@ export function App() {
         [...(termData[ae.termStem]?.rawTerms || [])].some((r) => r.includes(q))
     );
   }, [artErrors, termData, search]);
-  const visArtActive = visArt.filter((ae) => !dis.has(disKey.art(ae.termStem)));
+  // The "active" (not dismissed) splits below are memoized rather than derived
+  // inline. They feed Sidebar and every card under it, so recomputing them per
+  // render also handed down fresh array identities on every hover, every search
+  // keystroke and every bee frame — which is what made memoizing the card
+  // components pointless before. Cheap on their own; the identity is the point.
+  const visArtActive = useMemo(
+    () => visArt.filter((ae) => !dis.has(disKey.art(ae.termStem))),
+    [visArt, dis]
+  );
   const visBare = useMemo(() => {
     const q = search.toLowerCase();
     return bareTerms.filter((bt) => !q || bt.term.includes(q) || bt.termStem.includes(q));
   }, [bareTerms, search]);
-  const visBareActive = visBare.filter((bt) => !dis.has(disKey.bare(bt.termStem)));
+  const visBareActive = useMemo(
+    () => visBare.filter((bt) => !dis.has(disKey.bare(bt.termStem))),
+    [visBare, dis]
+  );
   const visNum = useMemo(() => {
     const q = search.toLowerCase();
     return numErrors.filter(
       (ne) => !q || String(ne.value).includes(q) || String(ne.expected).includes(q)
     );
   }, [numErrors, search]);
-  const visNumActive = visNum.filter((ne) => !dis.has(disKey.num(ne.key)));
+  const visNumActive = useMemo(
+    () => visNum.filter((ne) => !dis.has(disKey.num(ne.key))),
+    [visNum, dis]
+  );
   const visDep = useMemo(() => {
     const q = search.toLowerCase();
     return depErrors.filter(
       (de) => !q || String(de.claim).includes(q) || String(de.ref).includes(q)
     );
   }, [depErrors, search]);
-  const visDepActive = visDep.filter((de) => !dis.has(disKey.dep(de.key)));
-  const errSignsActive = errSigns.filter(([s]) => !dis.has(disKey.sign(s)));
-  const errSignsDismissed = errSigns.filter(([s]) => dis.has(disKey.sign(s)));
+  const visDepActive = useMemo(
+    () => visDep.filter((de) => !dis.has(disKey.dep(de.key))),
+    [visDep, dis]
+  );
+  const errSignsActive = useMemo(
+    () => errSigns.filter(([s]) => !dis.has(disKey.sign(s))),
+    [errSigns, dis]
+  );
+  const errSignsDismissed = useMemo(
+    () => errSigns.filter(([s]) => dis.has(disKey.sign(s))),
+    [errSigns, dis]
+  );
   const disCt = dis.size;
   const totalSigns = Object.keys(signData).length;
   const anyActive =
@@ -205,19 +270,34 @@ export function App() {
     visNumActive.length ||
     visDepActive.length;
 
-  function scrollTo(start, end) {
-    const ta = taRef.current;
-    if (!ta) return;
-    ta.focus();
-    ta.setSelectionRange(start, end);
-    // Measure the real line height instead of hardcoding it, so CSS changes and
-    // browser zoom cannot desync click-to-navigate scrolling.
-    let lh = parseFloat(getComputedStyle(ta).lineHeight);
-    if (!Number.isFinite(lh)) lh = (parseFloat(getComputedStyle(ta).fontSize) || 13.5) * 1.75;
-    const lines = text.slice(0, start).split('\n').length;
-    ta.scrollTop = Math.max(0, (lines - 5) * lh);
-    syncScroll();
-  }
+  // Live mirrors of state the card callbacks below read. Keeping them in refs is
+  // what lets those callbacks be genuinely stable: every one of them is passed
+  // down to Sidebar and the cards, so a fresh identity per render would defeat
+  // the React.memo on each of them and re-render the whole sidebar on every
+  // keystroke, hover and bee frame.
+  const textRef = useRef(text);
+  textRef.current = text;
+  const focusRef = useRef(focus);
+  focusRef.current = focus;
+  const signDataRef = useRef(signData);
+  signDataRef.current = signData;
+
+  const scrollTo = useCallback(
+    (start, end) => {
+      const ta = taRef.current;
+      if (!ta) return;
+      ta.focus();
+      ta.setSelectionRange(start, end);
+      // Measure the real line height instead of hardcoding it, so CSS changes and
+      // browser zoom cannot desync click-to-navigate scrolling.
+      let lh = parseFloat(getComputedStyle(ta).lineHeight);
+      if (!Number.isFinite(lh)) lh = (parseFloat(getComputedStyle(ta).fontSize) || 13.5) * 1.75;
+      const lines = textRef.current.slice(0, start).split('\n').length;
+      ta.scrollTop = Math.max(0, (lines - 5) * lh);
+      syncScroll();
+    },
+    [syncScroll]
+  );
 
   // Click an error card: the first click focuses it and jumps to its first
   // occurrence; each further click on the same card advances to the next
@@ -225,33 +305,52 @@ export function App() {
   // focus. `occs` is the sorted [start, end] spans for the error, so a
   // single-occurrence card (article/bare/numbering/dependency) simply toggles,
   // exactly as before, while a multi-occurrence sign cycles through its marks.
-  function focusCycle(type, key, occs) {
-    if (!occs.length) return;
-    const id = type + ':' + key;
-    const cur = focusOcc.current;
-    // Only continue an existing cycle if this same error is still focused.
-    const advancing = !!focus && focus.type === type && focus.key === key && cur.id === id;
-    const idx = advancing ? cur.idx + 1 : 0;
-    if (advancing && idx >= occs.length) {
-      // stepped past the last → unfocus
-      focusOcc.current = { id: null, idx: 0 };
-      setFocus(null);
-      return;
-    }
-    focusOcc.current = { id, idx };
-    setFocus({ type, key });
-    scrollTo(occs[idx][0], occs[idx][1]);
-  }
-  const onFocusSign = (sign) => {
-    const occs = (signData[sign]?.positions || [])
-      .map((p) => [p.signStart, p.signEnd])
-      .sort((a, b) => a[0] - b[0]);
-    focusCycle('sign', sign, occs);
-  };
-  const onFocusArt = (ae) => focusCycle('art', ae.artStart, [[ae.artStart, ae.artEnd]]);
-  const onFocusBare = (bt) => focusCycle('bare', bt.termStart, [[bt.termStart, bt.termEnd]]);
-  const onFocusNum = (ne) => focusCycle('num', ne.start, [[ne.start, ne.end]]);
-  const onFocusDep = (de) => focusCycle('dep', de.start, [[de.start, de.end]]);
+  const focusCycle = useCallback(
+    (type, key, occs) => {
+      if (!occs.length) return;
+      const id = type + ':' + key;
+      const cur = focusOcc.current;
+      const focus = focusRef.current;
+      // Only continue an existing cycle if this same error is still focused.
+      const advancing = !!focus && focus.type === type && focus.key === key && cur.id === id;
+      const idx = advancing ? cur.idx + 1 : 0;
+      if (advancing && idx >= occs.length) {
+        // stepped past the last → unfocus
+        focusOcc.current = { id: null, idx: 0 };
+        setFocus(null);
+        return;
+      }
+      focusOcc.current = { id, idx };
+      setFocus({ type, key });
+      scrollTo(occs[idx][0], occs[idx][1]);
+    },
+    [scrollTo]
+  );
+  const onFocusSign = useCallback(
+    (sign) => {
+      const occs = (signDataRef.current[sign]?.positions || [])
+        .map((p) => [p.signStart, p.signEnd])
+        .sort((a, b) => a[0] - b[0]);
+      focusCycle('sign', sign, occs);
+    },
+    [focusCycle]
+  );
+  const onFocusArt = useCallback(
+    (ae) => focusCycle('art', ae.artStart, [[ae.artStart, ae.artEnd]]),
+    [focusCycle]
+  );
+  const onFocusBare = useCallback(
+    (bt) => focusCycle('bare', bt.termStart, [[bt.termStart, bt.termEnd]]),
+    [focusCycle]
+  );
+  const onFocusNum = useCallback(
+    (ne) => focusCycle('num', ne.start, [[ne.start, ne.end]]),
+    [focusCycle]
+  );
+  const onFocusDep = useCallback(
+    (de) => focusCycle('dep', de.start, [[de.start, de.end]]),
+    [focusCycle]
+  );
 
   function navigate(dir) {
     if (!allErrors.length) return;
@@ -263,13 +362,16 @@ export function App() {
     focusOcc.current = { id: null, idx: 0 }; // arrows drive their own cursor; restart card-cycling
   }
 
-  function toggleDis(key) {
-    setDis((d) => {
-      const n = new Set(d);
-      n.has(key) ? n.delete(key) : n.add(key);
-      return n;
-    });
-  }
+  const toggleDis = useCallback(
+    (key) => {
+      setDis((d) => {
+        const n = new Set(d);
+        n.has(key) ? n.delete(key) : n.add(key);
+        return n;
+      });
+    },
+    [setDis]
+  );
   function disAll() {
     const k = new Set();
     Object.keys(signData).forEach((s) => k.add(disKey.sign(s)));
@@ -279,9 +381,7 @@ export function App() {
     depErrors.forEach((de) => k.add(disKey.dep(de.key)));
     setDis(k);
   }
-  function restoreAll() {
-    setDis(new Set());
-  }
+  const restoreAll = useCallback(() => setDis(new Set()), [setDis]);
 
   function handleCtxMenu(e) {
     e.preventDefault();
@@ -359,6 +459,7 @@ export function App() {
       }
       let result;
       try {
+        const { importPatentDoc } = await loadDocIO();
         result = importPatentDoc(await file.arrayBuffer());
       } catch {
         setReport({ kind: 'error', messageKey: 'impErrRead' });
@@ -424,7 +525,8 @@ export function App() {
     if (file) handleFile(file);
   }
 
-  function doExport() {
+  async function doExport() {
+    const { exportPatentDoc } = await loadDocIO();
     const { bytes } = exportPatentDoc(
       imported,
       { description: descText, claims: claimsText },
@@ -603,6 +705,21 @@ export function App() {
         onUndo={undoRef.current && report?.kind !== 'error' ? undoImport : null}
         onDismiss={() => setReport(null)}
       />
+
+      {/* Storage failures used to be swallowed, so a user pasting an oversized
+          patent lost their work at the next refresh with no warning at all. */}
+      {storageFull && (
+        <div className="imp-banner imp-error" role="alert">
+          <span className="imp-main">
+            <strong>{t.storageFull}</strong>
+          </span>
+          <span className="imp-actions">
+            <button className="imp-x" onClick={() => setStorageFull(false)} aria-label={t.dismiss}>
+              ×
+            </button>
+          </span>
+        </div>
+      )}
 
       <div className="main">
         <div className="editor-pane">

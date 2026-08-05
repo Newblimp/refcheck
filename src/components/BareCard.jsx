@@ -1,7 +1,8 @@
+import { memo } from 'react';
 import { disKey } from '../logic/constants.js';
 
 // ── BARE-TERM CARD ──────────────────────────────────────────────────────────
-export function BareCard({ bt, focused, t, dis, onFocus, onDismiss }) {
+function BareCardImpl({ bt, focused, t, dis, onFocus, onDismiss }) {
   const key = disKey.bare(bt.termStem);
   const isDis = dis.has(key);
   return (
@@ -36,3 +37,7 @@ export function BareCard({ bt, focused, t, dis, onFocus, onDismiss }) {
     </div>
   );
 }
+
+// memo: the sidebar re-renders on every keystroke, hover and error-nav step,
+// but a card's props only change when its own error does.
+export const BareCard = memo(BareCardImpl);

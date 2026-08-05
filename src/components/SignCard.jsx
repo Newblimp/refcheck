@@ -1,9 +1,10 @@
+import { memo } from 'react';
 import { stem } from '../logic/stem.js';
 import { classify } from '../logic/extract.js';
 import { disKey } from '../logic/constants.js';
 
 // ── SIGN CARD ───────────────────────────────────────────────────────────────
-export function SignCard({
+function SignCardImpl({
   sign,
   sData,
   termData,
@@ -92,3 +93,7 @@ export function SignCard({
     </div>
   );
 }
+
+// memo: see the card components — identical reasoning, and a document can hold
+// hundreds of sign cards.
+export const SignCard = memo(SignCardImpl);

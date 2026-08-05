@@ -7,19 +7,11 @@ import { readDocx, DocxError } from './docx/read.js';
 import { writeDocx, createDocx } from './docx/write.js';
 import { splitPatentDoc } from './docSplit.js';
 import { detectLang } from './detectLang.js';
+import { fileKind } from './fileKind.js';
 
-const ACCEPTED = /\.(docx|docm)$/i;
-
-/**
- * Classify a filename before we bother reading it.
- * @returns {'ok'|'legacyDoc'|'unsupported'}
- */
-export function fileKind(name) {
-  const n = String(name || '');
-  if (ACCEPTED.test(n)) return 'ok';
-  if (/\.doc$/i.test(n)) return 'legacyDoc'; // binary OLE — not readable in-browser
-  return 'unsupported';
-}
+// Re-exported so this module stays the single seam callers reason about, even
+// though the implementation lives elsewhere to keep it out of the lazy chunk.
+export { fileKind };
 
 /**
  * @typedef {Object} ImportResult
