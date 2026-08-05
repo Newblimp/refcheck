@@ -336,3 +336,102 @@ describe('App (interactive)', () => {
     expect(container.querySelector('.badge.warn')).toBeFalsy();
   });
 });
+
+describe('App (keyboard and accessibility)', () => {
+  const CONFLICT = 'The housing 12 is fixed. The casing 12 is fixed. A cover 14 is on.';
+
+  it('steps through errors with Ctrl+] and Ctrl+[', async () => {
+    const { container } = render(<App />);
+    typeInto(CONFLICT);
+    await sidebar(container).findByText('12');
+    const label = () => container.querySelector('.nav-lbl')?.textContent;
+    await waitFor(() => expect(label()).toBeTruthy());
+    const first = label();
+
+    fireEvent.keyDown(window, { key: ']', ctrlKey: true });
+    await waitFor(() => expect(label()).not.toBe(first));
+    const second = label();
+
+    fireEvent.keyDown(window, { key: '[', ctrlKey: true });
+    await waitFor(() => expect(label()).toBe(first));
+    expect(second).not.toBe(first);
+  });
+
+  it('the error-nav buttons have accessible names', async () => {
+    const { container } = render(<App />);
+    typeInto(CONFLICT);
+    await sidebar(container).findByText('12');
+    // These were SVG-only buttons with no name at all.
+    expect(screen.getByRole('button', { name: /previous error/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /next error/i })).toBeInTheDocument();
+  });
+
+  it('error cards are reachable and activatable by keyboard', async () => {
+    const { container } = render(<App />);
+    typeInto(CONFLICT);
+    await sidebar(container).findByText('12');
+    const card = container.querySelector('.sign-card');
+    // Was a plain <div onClick> — no role, no tab stop, no key handler.
+    expect(card).toHaveAttribute('role', 'button');
+    expect(card).toHaveAttribute('tabindex', '0');
+    fireEvent.keyDown(card, { key: 'Enter' });
+    await waitFor(() => expect(card.className).toMatch(/focused/));
+  });
+
+  it('activates a card with Space as well as Enter', async () => {
+    const { container } = render(<App />);
+    typeInto(CONFLICT);
+    await sidebar(container).findByText('12');
+    const card = container.querySelector('.sign-card');
+    fireEvent.keyDown(card, { key: ' ' });
+    await waitFor(() => expect(card.className).toMatch(/focused/));
+  });
+
+  it('collapsible section headers expose their expanded state', async () => {
+    const { container } = render(<App />);
+    typeInto(CONFLICT);
+    await sidebar(container).findByText('12');
+    const header = container.querySelector('.sec-lbl-toggle');
+    expect(header).toHaveAttribute('aria-expanded', 'true');
+    fireEvent.click(header);
+    await waitFor(() => expect(header).toHaveAttribute('aria-expanded', 'false'));
+  });
+
+  it('"/" focuses the sign filter, but not while typing in the editor', async () => {
+    const { container } = render(<App />);
+    typeInto(CONFLICT);
+    await sidebar(container).findByText('12');
+    const search = container.querySelector('.search-in');
+
+    // Fired at the editor: must be ignored, or the app is unusable.
+    fireEvent.keyDown(editor(), { key: '/', target: editor() });
+    expect(document.activeElement).not.toBe(search);
+
+    fireEvent.keyDown(document.body, { key: '/' });
+    await waitFor(() => expect(document.activeElement).toBe(search));
+  });
+
+  it('keeps <html lang> in step with the language toggle', async () => {
+    render(<App />);
+    expect(document.documentElement.lang).toBe('en');
+    fireEvent.click(screen.getByRole('button', { name: 'DE' }));
+    await waitFor(() => expect(document.documentElement.lang).toBe('de'));
+  });
+
+  it('marks the active language toggle with aria-pressed', async () => {
+    render(<App />);
+    expect(screen.getByRole('button', { name: 'EN' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('button', { name: 'DE' })).toHaveAttribute('aria-pressed', 'false');
+  });
+
+  it('exposes main and complementary landmarks', () => {
+    render(<App />);
+    expect(screen.getByRole('main')).toBeInTheDocument();
+    expect(screen.getByRole('complementary')).toBeInTheDocument();
+  });
+
+  it('gives the editor an accessible name', () => {
+    render(<App />);
+    expect(screen.getByRole('textbox', { name: /patent text/i })).toBeInTheDocument();
+  });
+});

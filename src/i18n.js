@@ -91,6 +91,11 @@ export const T = {
     storageFull:
       'This text is too large to save in the browser — it will not survive a refresh. Export to .docx to keep it.',
     dismiss: 'Dismiss',
+    dismissOne: 'Dismiss this error',
+    restoreOne: 'Restore this error',
+    navPrev: 'Previous error (Ctrl+[)',
+    navNext: 'Next error (Ctrl+])',
+    editorAria: 'Patent text',
     beeSays: "§ 961 BGB! I'm free!!",
   },
   de: {
@@ -185,6 +190,11 @@ export const T = {
     storageFull:
       'Dieser Text ist zu groß zum Speichern im Browser — er überlebt keinen Neuladen. Zum Sichern als .docx exportieren.',
     dismiss: 'Schließen',
+    dismissOne: 'Diesen Fehler ausblenden',
+    restoreOne: 'Diesen Fehler wiederherstellen',
+    navPrev: 'Vorheriger Fehler (Strg+[)',
+    navNext: 'Nächster Fehler (Strg+])',
+    editorAria: 'Patenttext',
     beeSays: '§ 961 BGB! Ich bin frei!!',
   },
 };

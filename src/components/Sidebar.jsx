@@ -15,9 +15,15 @@ function Section({ icon, label, color, count, children }) {
   if (!count) return null;
   return (
     <div className="sidebar-section">
-      <div className="sec-lbl sec-lbl-toggle" style={{ color }} onClick={() => setOpen((o) => !o)}>
+      <button
+        type="button"
+        className="sec-lbl sec-lbl-toggle"
+        style={{ color }}
+        onClick={() => setOpen((o) => !o)}
+        aria-expanded={open}
+      >
         {open ? '▾' : '▸'} {icon} {label} ({count})
-      </div>
+      </button>
       {open && children}
     </div>
   );
@@ -34,6 +40,7 @@ function SidebarImpl({
   termData,
   search,
   onSearch,
+  searchRef,
   errSignsActive,
   errSignsDismissed,
   okSigns,
@@ -77,7 +84,7 @@ function SidebarImpl({
   };
 
   return (
-    <div className="ov-pane">
+    <aside className="ov-pane" aria-label={t.ovLbl}>
       <div className="pane-hdr">
         <span className="pane-title">{t.ovLbl}</span>
       </div>
@@ -112,8 +119,10 @@ function SidebarImpl({
       {totalSigns > 0 && (
         <div className="search-row">
           <input
+            ref={searchRef}
             className="search-in"
             placeholder={t.searchPh}
+            aria-label={t.searchPh}
             value={search}
             onChange={(e) => onSearch(e.target.value)}
           />
@@ -290,7 +299,7 @@ function SidebarImpl({
           </>
         )}
       </div>
-    </div>
+    </aside>
   );
 }
 

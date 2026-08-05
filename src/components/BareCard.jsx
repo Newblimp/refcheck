@@ -1,12 +1,13 @@
 import { memo } from 'react';
 import { disKey } from '../logic/constants.js';
+import { activatable } from './cardProps.js';
 
 // ── BARE-TERM CARD ──────────────────────────────────────────────────────────
 function BareCardImpl({ bt, focused, t, dis, onFocus, onDismiss }) {
   const key = disKey.bare(bt.termStem);
   const isDis = dis.has(key);
   return (
-    <div className={`bare-card${focused ? ' focused' : ''}`} onClick={() => onFocus(bt)}>
+    <div className={`bare-card${focused ? ' focused' : ''}`} {...activatable(() => onFocus(bt))}>
       <div className="sc-row">
         <span
           className={`badge ${isDis ? 'dim' : 'warn'}`}
@@ -26,6 +27,8 @@ function BareCardImpl({ bt, focused, t, dis, onFocus, onDismiss }) {
         </span>
         <button
           className="dis-btn"
+          aria-label={isDis ? t.restoreOne : t.dismissOne}
+          title={isDis ? t.restoreOne : t.dismissOne}
           onClick={(e) => {
             e.stopPropagation();
             onDismiss(key);

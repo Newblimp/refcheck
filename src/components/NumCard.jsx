@@ -1,12 +1,13 @@
 import { memo } from 'react';
 import { disKey } from '../logic/constants.js';
+import { activatable } from './cardProps.js';
 
 // ── NUMBERING CARD ──────────────────────────────────────────────────────────
 function NumCardImpl({ ne, focused, t, dis, onFocus, onDismiss }) {
   const key = disKey.num(ne.key);
   const isDis = dis.has(key);
   return (
-    <div className={`bare-card${focused ? ' focused' : ''}`} onClick={() => onFocus(ne)}>
+    <div className={`bare-card${focused ? ' focused' : ''}`} {...activatable(() => onFocus(ne))}>
       <div className="sc-row">
         <span
           className={`badge ${isDis ? 'dim' : 'warn'}`}
@@ -26,6 +27,8 @@ function NumCardImpl({ ne, focused, t, dis, onFocus, onDismiss }) {
         </span>
         <button
           className="dis-btn"
+          aria-label={isDis ? t.restoreOne : t.dismissOne}
+          title={isDis ? t.restoreOne : t.dismissOne}
           onClick={(e) => {
             e.stopPropagation();
             onDismiss(key);

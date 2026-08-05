@@ -2,6 +2,7 @@ import { memo } from 'react';
 import { stem } from '../logic/stem.js';
 import { classify } from '../logic/extract.js';
 import { disKey } from '../logic/constants.js';
+import { activatable } from './cardProps.js';
 
 // ── SIGN CARD ───────────────────────────────────────────────────────────────
 function SignCardImpl({
@@ -51,7 +52,7 @@ function SignCardImpl({
   return (
     <div
       className={`sign-card${focused ? ' focused' : ''}${hoverSign === sign ? ' hovered' : ''}`}
-      onClick={() => onFocus(sign)}
+      {...activatable(() => onFocus(sign))}
       onMouseEnter={() => onHover && onHover(sign)}
       onMouseLeave={() => onHover && onHover(null)}
     >
@@ -80,7 +81,8 @@ function SignCardImpl({
             e.stopPropagation();
             onDismiss(disKey.sign(sign));
           }}
-          title={isDis ? 'Restore' : 'Dismiss'}
+          aria-label={isDis ? t.restoreOne : t.dismissOne}
+          title={isDis ? t.restoreOne : t.dismissOne}
         >
           {isDis ? '↩' : '×'}
         </button>

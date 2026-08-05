@@ -11,6 +11,7 @@ import { usePersistentState, jsonCodec, setCodec, oneOf } from '../hooks/usePers
 import { useTheme } from '../hooks/useTheme.js';
 import { useFileDrop } from '../hooks/useFileDrop.js';
 import { useBee } from '../hooks/useBee.js';
+import { useHotkeys } from '../hooks/useHotkeys.js';
 import { fileKind } from '../logic/fileKind.js';
 
 // The .docx pipeline (and fflate with it) is loaded on demand — most sessions
@@ -114,6 +115,13 @@ export function App() {
   const allErrors = useMemo(() => getAllErrors(res, mode, dis), [res, mode, dis]);
 
   useEffect(() => setNavIdx(0), [allErrors.length]);
+
+  // Keep <html lang> in step with the checking language. It was hardcoded to
+  // "en" in index.html, so screen readers announced German patent text with
+  // English pronunciation rules.
+  useEffect(() => {
+    if (typeof document !== 'undefined') document.documentElement.lang = lang;
+  }, [lang]);
 
   const focusSign = focus?.type === 'sign' ? focus.key : null;
   const html = useMemo(
@@ -362,6 +370,17 @@ export function App() {
     setFocus({ type: e.type, key: e.type === 'sign' ? e.sign : e.start });
     focusOcc.current = { id: null, idx: 0 }; // arrows drive their own cursor; restart card-cycling
   }
+
+  // Keyboard shortcuts. Ctrl/Cmd+[ and +] step through the errors without
+  // leaving the editor — the arrows in the status bar were previously the only
+  // way. "/" focuses the sign filter, but only when the user is not typing.
+  const searchRef = useRef(null);
+  useHotkeys({
+    'mod+[': () => navigate(-1),
+    'mod+]': () => navigate(1),
+    '/': () => searchRef.current?.focus(),
+    Escape: () => setCtx(null),
+  });
 
   const toggleDis = useCallback(
     (key) => {
@@ -690,11 +709,19 @@ export function App() {
             {claimsText && <span className="buf-dot" />}
           </button>
         </div>
-        <div className="lang-toggle">
-          <button className={lang === 'en' ? 'active' : ''} onClick={() => setLang('en')}>
+        <div className="lang-toggle" role="group" aria-label="Language">
+          <button
+            className={lang === 'en' ? 'active' : ''}
+            aria-pressed={lang === 'en'}
+            onClick={() => setLang('en')}
+          >
             EN
           </button>
-          <button className={lang === 'de' ? 'active' : ''} onClick={() => setLang('de')}>
+          <button
+            className={lang === 'de' ? 'active' : ''}
+            aria-pressed={lang === 'de'}
+            onClick={() => setLang('de')}
+          >
             DE
           </button>
         </div>
@@ -722,7 +749,7 @@ export function App() {
         </div>
       )}
 
-      <div className="main">
+      <main className="main">
         <div className="editor-pane">
           <div className="pane-hdr">
             <span className="pane-title">{t.editorLbl}</span>
@@ -745,6 +772,7 @@ export function App() {
             />
             <textarea
               className="editor-ta"
+              aria-label={t.editorAria}
               ref={taRef}
               value={text}
               placeholder={mode === 'description' ? t.placeholder_desc : t.placeholder_claims}
@@ -775,7 +803,12 @@ export function App() {
             )}
             {allErrors.length > 0 && (
               <div className="err-nav" style={{ marginLeft: 'auto' }}>
-                <button className="nav-btn" onClick={() => navigate(-1)}>
+                <button
+                  className="nav-btn"
+                  onClick={() => navigate(-1)}
+                  aria-label={t.navPrev}
+                  title={t.navPrev}
+                >
                   <svg
                     width="10"
                     height="10"
@@ -788,7 +821,12 @@ export function App() {
                   </svg>
                 </button>
                 <span className="nav-lbl">{t.navLabel(navIdx + 1, allErrors.length)}</span>
-                <button className="nav-btn" onClick={() => navigate(1)}>
+                <button
+                  className="nav-btn"
+                  onClick={() => navigate(1)}
+                  aria-label={t.navNext}
+                  title={t.navNext}
+                >
                   <svg
                     width="10"
                     height="10"
@@ -823,6 +861,7 @@ export function App() {
           termData={termData}
           search={search}
           onSearch={setSearch}
+          searchRef={searchRef}
           errSignsActive={errSignsActive}
           errSignsDismissed={errSignsDismissed}
           okSigns={okSigns}
@@ -845,7 +884,7 @@ export function App() {
           onRestoreAll={restoreAll}
           orphaned={orphaned}
         />
-      </div>
+      </main>
       <button className="reset-btn" onClick={doReset} title={t.resetAll}>
         {t.resetAll}
       </button>

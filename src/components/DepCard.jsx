@@ -1,5 +1,6 @@
 import { memo } from 'react';
 import { disKey } from '../logic/constants.js';
+import { activatable } from './cardProps.js';
 
 // ── CLAIM-DEPENDENCY CARD ───────────────────────────────────────────────────
 // A claim referencing a nonexistent claim, a later claim, or itself.
@@ -13,7 +14,7 @@ function DepCardImpl({ de, focused, t, dis, onFocus, onDismiss }) {
         ? t.depSelf(de.claim)
         : t.depForward(de.claim, de.ref);
   return (
-    <div className={`bare-card${focused ? ' focused' : ''}`} onClick={() => onFocus(de)}>
+    <div className={`bare-card${focused ? ' focused' : ''}`} {...activatable(() => onFocus(de))}>
       <div className="sc-row">
         <span
           className={`badge ${isDis ? 'dim' : 'warn'}`}
@@ -33,6 +34,8 @@ function DepCardImpl({ de, focused, t, dis, onFocus, onDismiss }) {
         </span>
         <button
           className="dis-btn"
+          aria-label={isDis ? t.restoreOne : t.dismissOne}
+          title={isDis ? t.restoreOne : t.dismissOne}
           onClick={(e) => {
             e.stopPropagation();
             onDismiss(key);

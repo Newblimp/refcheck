@@ -1118,3 +1118,33 @@ mark.h-hover {
     min-height: 55vh;
   }
 }
+
+/* ── Focus visibility ──────────────────────────────────────────────────────
+   There were no focus styles at all, and .editor-ta explicitly clears the UA
+   outline — so a keyboard user had no idea where they were. :focus-visible
+   keeps these off mouse clicks, which is why the outline can be this loud. */
+:where(button, [role='button'], input, textarea, a):focus-visible {
+  outline: 2px solid var(--accent, #7aa2f7);
+  outline-offset: 2px;
+  border-radius: 3px;
+}
+
+.editor-ta:focus-visible {
+  /* The editor fills its pane, so an offset ring would be clipped. */
+  outline: 2px solid var(--accent, #7aa2f7);
+  outline-offset: -2px;
+}
+
+/* The card sections' headers are now real buttons; keep them looking like the
+   plain labels they were. */
+.sec-lbl-toggle {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: 0;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
