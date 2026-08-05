@@ -1,5 +1,15 @@
 import { describe, it, expect } from 'vitest';
-import { likelySign, isClaimNumber, isArt, isOrd, artType, isSignToken, compareSigns, romanToInt, signVal } from './constants.js';
+import {
+  likelySign,
+  isClaimNumber,
+  isArt,
+  isOrd,
+  artType,
+  isSignToken,
+  compareSigns,
+  romanToInt,
+  signVal,
+} from './constants.js';
 import { tokenize } from './tokenize.js';
 
 describe('likelySign', () => {
@@ -22,7 +32,7 @@ describe('likelySign', () => {
 describe('isClaimNumber', () => {
   // Helper: find the token for the first occurrence of `word` in `text`.
   const tokFor = (text, word, occ = 0) => {
-    const matches = tokenize(text).filter(t => t.word === word);
+    const matches = tokenize(text).filter((t) => t.word === word);
     return matches[occ];
   };
 
@@ -71,7 +81,7 @@ describe('isSignToken', () => {
   it('accepts plain, lettered and primed signs', () => {
     expect(isSignToken('10')).toBe(true);
     expect(isSignToken('12a')).toBe(true);
-    expect(isSignToken("10'")).toBe(true);   // ASCII apostrophe
+    expect(isSignToken("10'")).toBe(true); // ASCII apostrophe
     expect(isSignToken('10′')).toBe(true); // U+2032 prime
   });
   it('rejects words, out-of-range and uppercase-suffixed numbers', () => {
@@ -91,8 +101,8 @@ describe('isSignToken', () => {
   it('rejects malformed Roman numerals and lowercase forms', () => {
     expect(isSignToken('IIII')).toBe(false); // four I's is not valid
     expect(isSignToken('VV')).toBe(false);
-    expect(isSignToken('ii')).toBe(false);   // must be uppercase
-    expect(isSignToken('I.')).toBe(false);   // substep needs an Arabic numeral
+    expect(isSignToken('ii')).toBe(false); // must be uppercase
+    expect(isSignToken('I.')).toBe(false); // substep needs an Arabic numeral
   });
 });
 
@@ -119,7 +129,7 @@ describe('signVal', () => {
 });
 
 describe('compareSigns', () => {
-  it('orders numerically, then by suffix (10 < 10\' < 10a < 12)', () => {
+  it("orders numerically, then by suffix (10 < 10' < 10a < 12)", () => {
     const sorted = ['12', '10a', "10'", '10'].sort(compareSigns);
     expect(sorted).toEqual(['10', "10'", '10a', '12']);
   });

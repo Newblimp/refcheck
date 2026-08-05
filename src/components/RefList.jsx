@@ -14,15 +14,18 @@ export function RefList({ signData, termData, t }) {
   function copy(e) {
     e.stopPropagation();
     if (!canCopy) return;
-    navigator.clipboard.writeText(toPlainText(rows)).then(() => {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1500);
-    }).catch(() => {});
+    navigator.clipboard
+      .writeText(toPlainText(rows))
+      .then(() => {
+        setCopied(true);
+        setTimeout(() => setCopied(false), 1500);
+      })
+      .catch(() => {});
   }
 
   return (
     <div className="reflist-section">
-      <div className="reflist-hdr" onClick={() => setOpen(o => !o)}>
+      <div className="reflist-hdr" onClick={() => setOpen((o) => !o)}>
         <span className="sec-lbl" style={{ padding: 0, color: 'var(--text-muted)' }}>
           {open ? '▾' : '▸'} ⌗ {t.refListLbl} ({rows.length})
         </span>
@@ -35,10 +38,14 @@ export function RefList({ signData, termData, t }) {
       {open && (
         <table className="reflist-table">
           <thead>
-            <tr><th>{t.refListColSign}</th><th>{t.refListColTerm}</th><th>{t.refListColCount}</th></tr>
+            <tr>
+              <th>{t.refListColSign}</th>
+              <th>{t.refListColTerm}</th>
+              <th>{t.refListColCount}</th>
+            </tr>
           </thead>
           <tbody>
-            {rows.map(r => (
+            {rows.map((r) => (
               <tr key={r.sign}>
                 <td className="rl-sign">{r.sign}</td>
                 <td className="rl-term">{r.term}</td>

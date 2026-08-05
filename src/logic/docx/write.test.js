@@ -5,7 +5,7 @@ import { readDocx, docxXmlToParagraphs } from './read.js';
 import { splitPatentDoc } from '../docSplit.js';
 import { para, makeDocx, DE_BODY, EN_BODY } from './fixture.js';
 
-const load = body => {
+const load = (body) => {
   const doc = readDocx(makeDocx(body));
   return { doc, split: splitPatentDoc(doc) };
 };
@@ -56,16 +56,18 @@ describe('writeDocx — round trip', () => {
     const { doc, split } = load(EN_BODY);
     const before = doc.documentXml;
     const edited = split.description.replace('housing 12 is made', 'housing 14 is made');
-    const xml = documentXmlOf(writeDocx(doc, [
-      { paras: split.descParas, text: edited },
-      { paras: split.claimsParas, text: split.claims },
-    ]));
+    const xml = documentXmlOf(
+      writeDocx(doc, [
+        { paras: split.descParas, text: edited },
+        { paras: split.claimsParas, text: split.claims },
+      ])
+    );
     expect(xml).toContain('The housing 14 is made of aluminium.');
     expect(xml).not.toContain('The housing 12 is made of aluminium.');
     // Untouched paragraphs, and the sections we never imported, survive.
     expect(xml).toContain('The device 10 comprises a housing 12.');
-    expect(xml).toContain('A device 10 is disclosed.');       // abstract
-    expect(xml).toContain('Fig. 1 shows a device 10.');       // figure listing
+    expect(xml).toContain('A device 10 is disclosed.'); // abstract
+    expect(xml).toContain('Fig. 1 shows a device 10.'); // figure listing
     // Everything before the first edit is unchanged, character for character.
     const cut = before.indexOf('The housing 12');
     expect(xml.slice(0, cut)).toBe(before.slice(0, cut));
@@ -73,12 +75,18 @@ describe('writeDocx — round trip', () => {
   it('preserves the other parts of the zip', () => {
     const { doc, split } = load(EN_BODY);
     const out = writeDocx(doc, [{ paras: split.descParas, text: split.description + ' Extra.' }]);
-    expect(Object.keys(unzipSync(out)).sort()).toEqual(
-      ['[Content_Types].xml', '_rels/.rels', 'word/comments.xml', 'word/document.xml', 'word/footer1.xml', 'word/header1.xml']
-    );
+    expect(Object.keys(unzipSync(out)).sort()).toEqual([
+      '[Content_Types].xml',
+      '_rels/.rels',
+      'word/comments.xml',
+      'word/document.xml',
+      'word/footer1.xml',
+      'word/header1.xml',
+    ]);
   });
   it('keeps the paragraph properties and the first run formatting', () => {
-    const body = para('DETAILED DESCRIPTION', { style: 'Heading1' }) +
+    const body =
+      para('DETAILED DESCRIPTION', { style: 'Heading1' }) +
       para('The device 10.', { style: 'BodyText', italic: true });
     const { doc, split } = load(body);
     const xml = documentXmlOf(writeDocx(doc, [{ paras: split.descParas, text: 'The device 14.' }]));
@@ -97,9 +105,7 @@ describe('writeDocx — round trip', () => {
   });
   it('escapes XML metacharacters written back into the document', () => {
     const { doc, split } = load(EN_BODY);
-    const xml = documentXmlOf(writeDocx(doc, [
-      { paras: split.descParas, text: 'a & b < c > d' },
-    ]));
+    const xml = documentXmlOf(writeDocx(doc, [{ paras: split.descParas, text: 'a & b < c > d' }]));
     expect(xml).toContain('a &amp; b &lt; c &gt; d');
   });
   it('separate paragraphs stay separate paragraphs, not a <w:br/> run', () => {
@@ -110,23 +116,26 @@ describe('writeDocx — round trip', () => {
     expect(xml).not.toContain('<w:br/>');
   });
   it('a paragraph that spanned lines via <w:br/> keeps its break when edited', () => {
-    const body = para('DETAILED DESCRIPTION', { style: 'Heading1' }) +
+    const body =
+      para('DETAILED DESCRIPTION', { style: 'Heading1' }) +
       '<w:p><w:r><w:t>line one 10</w:t><w:br/><w:t>line two 12</w:t></w:r></w:p>';
     const { doc, split } = load(body);
     expect(split.description).toBe('line one 10\nline two 12');
     expect(split.descParas).toHaveLength(1);
-    const xml = documentXmlOf(writeDocx(doc, [
-      { paras: split.descParas, text: 'line one 10\nline two 14' },
-    ]));
+    const xml = documentXmlOf(
+      writeDocx(doc, [{ paras: split.descParas, text: 'line one 10\nline two 14' }])
+    );
     expect(xml).toContain('<w:br/>');
     expect(xml).toContain('line two 14');
-    expect(docxXmlToParagraphs(xml).map(p => p.text)).toContain('line one 10\nline two 14');
+    expect(docxXmlToParagraphs(xml).map((p) => p.text)).toContain('line one 10\nline two 14');
   });
   it('appends brand-new trailing paragraphs', () => {
     const { doc, split } = load(EN_BODY);
-    const xml = documentXmlOf(writeDocx(doc, [
-      { paras: split.descParas, text: `${split.description}\nA newly added sentence 20.` },
-    ]));
+    const xml = documentXmlOf(
+      writeDocx(doc, [
+        { paras: split.descParas, text: `${split.description}\nA newly added sentence 20.` },
+      ])
+    );
     expect(xml).toContain('A newly added sentence 20.');
   });
   it('the result re-imports to the edited text (full round trip)', () => {
@@ -149,13 +158,13 @@ describe('createDocx', () => {
       { text: 'The device 10 comprises a housing 12.' },
       { heading: 'Claims', text: '1. A device (10).' },
     ]);
-    const paras = docxXmlToParagraphs(documentXmlOf(bytes)).map(p => p.text);
+    const paras = docxXmlToParagraphs(documentXmlOf(bytes)).map((p) => p.text);
     expect(paras).toContain('The device 10 comprises a housing 12.');
     expect(paras).toContain('Claims');
     expect(paras).toContain('1. A device (10).');
   });
   it('produces a file the reader accepts', () => {
     const doc = readDocx(createDocx([{ text: 'x 10' }]));
-    expect(doc.paragraphs.map(p => p.text)).toEqual(['x 10']);
+    expect(doc.paragraphs.map((p) => p.text)).toEqual(['x 10']);
   });
 });

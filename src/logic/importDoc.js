@@ -65,7 +65,8 @@ export function exportPatentDoc(imported, buffers, opts = {}) {
   }
   const sections = [];
   if (buffers.description) sections.push({ text: buffers.description });
-  if (buffers.claims) sections.push({ heading: opts.claimsHeading || 'Claims', text: buffers.claims });
+  if (buffers.claims)
+    sections.push({ heading: opts.claimsHeading || 'Claims', text: buffers.claims });
   return { bytes: createDocx(sections), mode: 'fresh' };
 }
 

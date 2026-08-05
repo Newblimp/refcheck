@@ -8,11 +8,12 @@ describe('performance smoke', () => {
   it('extracts a >100KB patent-like document well under a second', () => {
     const parts = [];
     for (let i = 0; i < 700; i++) {
-      const a = 10 + 2 * (i % 40), b = 12 + 2 * (i % 40);
+      const a = 10 + 2 * (i % 40),
+        b = 12 + 2 * (i % 40);
       parts.push(
         `The fastening element ${a} is arranged on the housing portion ${b} and comprises ` +
-        `a first bearing surface ${a}a. The housing portion ${b} further includes a mounting ` +
-        `flange ${b}a which engages the fastening element ${a}.`
+          `a first bearing surface ${a}a. The housing portion ${b} further includes a mounting ` +
+          `flange ${b}a which engages the fastening element ${a}.`
       );
     }
     const text = parts.join('\n');

@@ -2,7 +2,7 @@ import { classify } from './extract.js';
 import { disKey } from './constants.js';
 
 // ── HTML BUILDER ────────────────────────────────────────────────────────────
-export const esc = s => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+export const esc = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
 /**
  * Build the highlighted HTML for the backdrop overlay. Invariant: stripping the
@@ -24,7 +24,12 @@ export function buildHtml(text, res, mode, dis, focusSign) {
     const focused = focusSign === sign;
     for (const p of sData.positions) {
       const cls = sev === 'warn' ? 'h-warn' : sev === 'dis' ? 'h-dis' : 'h-ok';
-      spans.push({ start: p.signStart, end: p.signEnd, cls: focused ? cls + ' h-focus' : cls, sign });
+      spans.push({
+        start: p.signStart,
+        end: p.signEnd,
+        cls: focused ? cls + ' h-focus' : cls,
+        sign,
+      });
       if (sev === 'warn') spans.push({ start: p.termStart, end: p.termEnd, cls: 'h-wt' });
     }
   }
@@ -47,8 +52,14 @@ export function buildHtml(text, res, mode, dis, focusSign) {
   spans.sort((a, b) => a.start - b.start || a.end - b.end);
   const clean = [];
   let cur = 0;
-  for (const sp of spans) { if (sp.start >= cur) { clean.push(sp); cur = sp.end; } }
-  let html = '', pos = 0;
+  for (const sp of spans) {
+    if (sp.start >= cur) {
+      clean.push(sp);
+      cur = sp.end;
+    }
+  }
+  let html = '',
+    pos = 0;
   for (const sp of clean) {
     if (sp.start > pos) html += esc(text.slice(pos, sp.start));
     const ds = sp.sign ? ` data-sign="${sp.sign}"` : '';

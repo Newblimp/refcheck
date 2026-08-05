@@ -34,7 +34,8 @@ const REF_RE = new RegExp(String.raw`\b(?:claims?|anspr(?:uch|üche|üchen))\s+(
 // Connectors that make the pair around them a range (endpoints expanded).
 const RANGE_SEP = /(?:^|\s|,)(?:to|through|bis)(?:\s|$)|[-–—]/i;
 // "any one of the preceding claims" / "einem der vorhergehenden Ansprüche".
-const PRECEDING_RE = /\bpreceding\s+claims?\b|\bvorher(?:ig|gehend)en\s+anspr|\bvorstehenden\s+anspr|\bvorangehenden\s+anspr/i;
+const PRECEDING_RE =
+  /\bpreceding\s+claims?\b|\bvorher(?:ig|gehend)en\s+anspr|\bvorstehenden\s+anspr|\bvorangehenden\s+anspr/i;
 
 /** Split the claims text into per-claim spans. `claimNums` comes from
  *  extractData's line-leading claim-number scan and is in document order. */
@@ -64,12 +65,21 @@ export function parseClaimRefs(body, offset = 0) {
     const list = m[1];
     const listStart = m.index + m[0].length - list.length;
     const numRe = /\d{1,4}/g;
-    let nm, prev = null;
+    let nm,
+      prev = null;
     while ((nm = numRe.exec(list)) !== null) {
       const num = parseInt(nm[0], 10);
-      refs.push({ num, start: offset + listStart + nm.index, end: offset + listStart + nm.index + nm[0].length });
+      refs.push({
+        num,
+        start: offset + listStart + nm.index,
+        end: offset + listStart + nm.index + nm[0].length,
+      });
       nums.add(num);
-      if (prev !== null && RANGE_SEP.test(list.slice(prev.endIdx, nm.index)) && num - prev.num < 200)
+      if (
+        prev !== null &&
+        RANGE_SEP.test(list.slice(prev.endIdx, nm.index)) &&
+        num - prev.num < 200
+      )
         for (let k = prev.num + 1; k < num; k++) nums.add(k);
       prev = { num, endIdx: nm.index + nm[0].length };
     }
@@ -85,7 +95,7 @@ export function parseClaimRefs(body, offset = 0) {
 export function computeClaimGraph(text, claimNums) {
   if (!claimNums || claimNums.length === 0) return null;
   const claims = segmentClaims(text, claimNums);
-  const claimSet = new Set(claims.map(c => c.num));
+  const claimSet = new Set(claims.map((c) => c.num));
   const depErrors = [];
   const direct = new Map(); // claim num → Set of direct parent nums
   const keyCount = {};
@@ -95,13 +105,24 @@ export function computeClaimGraph(text, claimNums) {
     const parents = direct.get(c.num) || new Set();
     if (allPreceding) for (const o of claims) if (o.num < c.num) parents.add(o.num);
     for (const r of refs) {
-      const type = !claimSet.has(r.num) ? 'missing'
-        : r.num === c.num ? 'self'
-        : r.num > c.num ? 'forward' : null;
+      const type = !claimSet.has(r.num)
+        ? 'missing'
+        : r.num === c.num
+          ? 'self'
+          : r.num > c.num
+            ? 'forward'
+            : null;
       if (type) {
         const base = `${c.num}>${r.num}`;
         const n = (keyCount[base] = (keyCount[base] || 0) + 1);
-        depErrors.push({ claim: c.num, ref: r.num, type, start: r.start, end: r.end, key: `${base}#${n}` });
+        depErrors.push({
+          claim: c.num,
+          ref: r.num,
+          type,
+          start: r.start,
+          end: r.end,
+          key: `${base}#${n}`,
+        });
       }
     }
     // Only backward references to existing claims form dependency edges, so the

@@ -16,15 +16,20 @@ export function usePersistentState(key, initial, codec) {
     }
   });
   useEffect(() => {
-    try { localStorage.setItem(key, codec ? codec.stringify(value) : value); } catch {}
+    try {
+      localStorage.setItem(key, codec ? codec.stringify(value) : value);
+    } catch {}
   }, [value]);
   return [value, setValue];
 }
 
 export const jsonCodec = { parse: JSON.parse, stringify: JSON.stringify };
-export const setCodec = { parse: raw => new Set(JSON.parse(raw)), stringify: s => JSON.stringify([...s]) };
+export const setCodec = {
+  parse: (raw) => new Set(JSON.parse(raw)),
+  stringify: (s) => JSON.stringify([...s]),
+};
 // Rejects unknown stored values (e.g. hand-edited storage) in favor of a fallback.
 export const oneOf = (allowed, fallback) => ({
-  parse: raw => (allowed.includes(raw) ? raw : fallback),
-  stringify: v => v,
+  parse: (raw) => (allowed.includes(raw) ? raw : fallback),
+  stringify: (v) => v,
 });

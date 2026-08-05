@@ -35,18 +35,18 @@ npm run preview  # serve the production build locally
 
 ## Project layout
 
-| Path | Purpose |
-|------|---------|
-| `index.html` | Vite entry (HTML shell, sets the initial theme) |
-| `public/sw.js` | Service worker — caches the app shell for offline use |
-| `public/manifest.webmanifest` | PWA manifest (installable / Add to Home Screen) |
-| `src/main.jsx` | Mounts the React app, registers the service worker |
-| `src/styles.css` | All styles (CSS custom properties for theming) + self-hosted `@font-face` |
-| `src/fonts/` | Self-hosted font files (no external CDN dependency) |
-| `src/i18n.js` | English/German UI strings |
-| `src/logic/` | Pure, framework-free logic (tokenizer, stemming, extraction, cross-reference, HTML builder, reference list) — covered by tests |
-| `src/hooks/` | React hooks (`useDebounced`) |
-| `src/components/` | React components (`App`, `SignCard`, `ArtCard`, `BareCard`, `NumCard`, `RefList`, `CtxMenu`) |
-| `src/**/*.test.js(x)` | Vitest unit tests (logic in `node`, `*.ui.test.jsx` in `jsdom`) |
+| Path                          | Purpose                                                                                                                        |
+| ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| `index.html`                  | Vite entry (HTML shell, sets the initial theme)                                                                                |
+| `public/sw.js`                | Service worker — caches the app shell for offline use                                                                          |
+| `public/manifest.webmanifest` | PWA manifest (installable / Add to Home Screen)                                                                                |
+| `src/main.jsx`                | Mounts the React app, registers the service worker                                                                             |
+| `src/styles.css`              | All styles (CSS custom properties for theming) + self-hosted `@font-face`                                                      |
+| `src/fonts/`                  | Self-hosted font files (no external CDN dependency)                                                                            |
+| `src/i18n.js`                 | English/German UI strings                                                                                                      |
+| `src/logic/`                  | Pure, framework-free logic (tokenizer, stemming, extraction, cross-reference, HTML builder, reference list) — covered by tests |
+| `src/hooks/`                  | React hooks (`useDebounced`)                                                                                                   |
+| `src/components/`             | React components (`App`, `SignCard`, `ArtCard`, `BareCard`, `NumCard`, `RefList`, `CtxMenu`)                                   |
+| `src/**/*.test.js(x)`         | Vitest unit tests (logic in `node`, `*.ui.test.jsx` in `jsdom`)                                                                |
 
 See [`CLAUDE.md`](./CLAUDE.md) for a deeper architecture overview.

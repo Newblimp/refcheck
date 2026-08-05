@@ -12,26 +12,26 @@ describe('tokenize', () => {
 
   it('keeps a trailing-letter sign as one token (e.g. 12a)', () => {
     const toks = tokenize('cover 12a here');
-    expect(toks.map(t => t.word)).toEqual(['cover', '12a', 'here']);
+    expect(toks.map((t) => t.word)).toEqual(['cover', '12a', 'here']);
   });
 
-  it('captures a trailing prime as part of the sign (10\' and 10′)', () => {
-    expect(tokenize("arm 10' here").map(t => t.word)).toEqual(['arm', "10'", 'here']);
-    expect(tokenize('arm 10′ here').map(t => t.word)).toEqual(['arm', '10′', 'here']);
+  it("captures a trailing prime as part of the sign (10' and 10′)", () => {
+    expect(tokenize("arm 10' here").map((t) => t.word)).toEqual(['arm', "10'", 'here']);
+    expect(tokenize('arm 10′ here').map((t) => t.word)).toEqual(['arm', '10′', 'here']);
   });
 
   it('keeps a primed sign distinct from its bare number', () => {
-    expect(tokenize("10 10'").map(t => t.word)).toEqual(['10', "10'"]);
+    expect(tokenize("10 10'").map((t) => t.word)).toEqual(['10', "10'"]);
   });
 
   it('reports spans that exclude surrounding parentheses', () => {
     const toks = tokenize('device (10)');
-    const sign = toks.find(t => t.word === '10');
+    const sign = toks.find((t) => t.word === '10');
     expect(sign).toEqual({ word: '10', start: 8, end: 10 });
   });
 
   it('keeps German letters and hyphens within a word', () => {
-    expect(tokenize('Gehäuse-Deckel').map(t => t.word)).toEqual(['Gehäuse-Deckel']);
+    expect(tokenize('Gehäuse-Deckel').map((t) => t.word)).toEqual(['Gehäuse-Deckel']);
   });
 
   it('emits no token for a digit run longer than a valid sign (>5 digits)', () => {
@@ -50,7 +50,7 @@ describe('tokenize', () => {
 
   it('does not merge a number across a decimal point', () => {
     // "3.5" — the '.' is not a word/number character, so two tokens appear.
-    expect(tokenize('3.5').map(t => t.word)).toEqual(['3', '5']);
+    expect(tokenize('3.5').map((t) => t.word)).toEqual(['3', '5']);
   });
 
   it('returns an empty array for text with no word/number characters', () => {
@@ -58,25 +58,35 @@ describe('tokenize', () => {
   });
 
   it('captures an uppercase Roman-numeral step as one token', () => {
-    expect(tokenize('step II here').map(t => t.word)).toEqual(['step', 'II', 'here']);
-    expect(tokenize('the step IX begins').map(t => t.word)).toEqual(['the', 'step', 'IX', 'begins']);
+    expect(tokenize('step II here').map((t) => t.word)).toEqual(['step', 'II', 'here']);
+    expect(tokenize('the step IX begins').map((t) => t.word)).toEqual([
+      'the',
+      'step',
+      'IX',
+      'begins',
+    ]);
   });
 
   it('captures a Roman substep (Roman + dot + Arabic) as one token', () => {
-    expect(tokenize('step I.1 here').map(t => t.word)).toEqual(['step', 'I.1', 'here']);
-    expect(tokenize('IV.3 then IX').map(t => t.word)).toEqual(['IV.3', 'then', 'IX']);
+    expect(tokenize('step I.1 here').map((t) => t.word)).toEqual(['step', 'I.1', 'here']);
+    expect(tokenize('IV.3 then IX').map((t) => t.word)).toEqual(['IV.3', 'then', 'IX']);
   });
 
   it('does not read Roman letters that merely begin a word as a numeral', () => {
     // "In", "Die", "Vorrichtung" all start with Roman letters but are words: the
     // trailing boundary makes the Roman branch fall through to the word branch.
-    expect(tokenize('In the housing').map(t => t.word)).toEqual(['In', 'the', 'housing']);
-    expect(tokenize('Die Vorrichtung').map(t => t.word)).toEqual(['Die', 'Vorrichtung']);
+    expect(tokenize('In the housing').map((t) => t.word)).toEqual(['In', 'the', 'housing']);
+    expect(tokenize('Die Vorrichtung').map((t) => t.word)).toEqual(['Die', 'Vorrichtung']);
   });
 
   it('keeps a Roman step separate from a following sentence period', () => {
     // "II." (step) — the '.' is only glued when an Arabic digit follows it.
-    expect(tokenize('II. Insert the pin.').map(t => t.word)).toEqual(['II', 'Insert', 'the', 'pin']);
+    expect(tokenize('II. Insert the pin.').map((t) => t.word)).toEqual([
+      'II',
+      'Insert',
+      'the',
+      'pin',
+    ]);
   });
 
   it('records correct spans for multiple tokens on a line', () => {
@@ -95,7 +105,14 @@ describe('tokenize', () => {
     for (const tok of tokenize(text)) {
       expect(text.slice(tok.start, tok.end)).toBe(tok.word);
     }
-    expect(tokenize(text).map(t => t.word)).toEqual(['housing', '12', 'cover', '14', 'screw', '18']);
+    expect(tokenize(text).map((t) => t.word)).toEqual([
+      'housing',
+      '12',
+      'cover',
+      '14',
+      'screw',
+      '18',
+    ]);
   });
 
   it('is safe to call repeatedly (module-level regex resets lastIndex)', () => {

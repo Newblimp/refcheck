@@ -57,12 +57,7 @@ export const HEADINGS = {
     ],
   },
   [SECTION_KINDS.CLAIMS]: {
-    de: [
-      'Patentansprüche',
-      'Ansprüche',
-      'Schutzansprüche',
-      'Patentanspruch',
-    ],
+    de: ['Patentansprüche', 'Ansprüche', 'Schutzansprüche', 'Patentanspruch'],
     en: [
       'Claims',
       'What is claimed is',
@@ -92,11 +87,7 @@ export const HEADINGS = {
     ],
   },
   [SECTION_KINDS.SIGN_LIST]: {
-    de: [
-      'Bezugszeichenliste',
-      'Liste der Bezugszeichen',
-      'Bezugszeichen',
-    ],
+    de: ['Bezugszeichenliste', 'Liste der Bezugszeichen', 'Bezugszeichen'],
     en: [
       'Reference Numerals',
       'Reference Signs',

@@ -10,20 +10,24 @@
 //
 // Every function takes an `rnd` so tests can drive it deterministically.
 
-export const LIFESPAN = 14;   // seconds of wandering before heading for an exit
-export const MAX_AGE = 45;    // hard stop, so a bee can never get stuck on screen
-const SPAWN_MARGIN = 40;      // how far outside the edge it starts
-const EXIT_MARGIN = 200;      // how far outside the edge it aims when leaving
-const GONE_MARGIN = 120;      // past this, it has left the screen
-const EDGE_PAD = 48;          // wander waypoints stay this far inside the viewport
+export const LIFESPAN = 14; // seconds of wandering before heading for an exit
+export const MAX_AGE = 45; // hard stop, so a bee can never get stuck on screen
+const SPAWN_MARGIN = 40; // how far outside the edge it starts
+const EXIT_MARGIN = 200; // how far outside the edge it aims when leaving
+const GONE_MARGIN = 120; // past this, it has left the screen
+const EDGE_PAD = 48; // wander waypoints stay this far inside the viewport
 
 /** Pick a point just outside one of the four edges. side: 0=top 1=right 2=bottom 3=left */
 function edgePoint(side, w, h, margin, rnd) {
   switch (side & 3) {
-    case 0: return { x: rnd() * w, y: -margin };
-    case 1: return { x: w + margin, y: rnd() * h };
-    case 2: return { x: rnd() * w, y: h + margin };
-    default: return { x: -margin, y: rnd() * h };
+    case 0:
+      return { x: rnd() * w, y: -margin };
+    case 1:
+      return { x: w + margin, y: rnd() * h };
+    case 2:
+      return { x: rnd() * w, y: h + margin };
+    default:
+      return { x: -margin, y: rnd() * h };
   }
 }
 
@@ -32,7 +36,8 @@ function edgePoint(side, w, h, margin, rnd) {
 export function pickTarget(b, w, h, rnd = Math.random) {
   if (b.leaving) {
     const p = edgePoint(Math.floor(rnd() * 4), w, h, EXIT_MARGIN, rnd);
-    b.tx = p.x; b.ty = p.y;
+    b.tx = p.x;
+    b.ty = p.y;
     b.retargetIn = 3;
     return b;
   }
@@ -51,8 +56,18 @@ export function spawnBee(w, h, rnd = Math.random) {
   const entrySide = Math.floor(rnd() * 4) & 3;
   const { x, y } = edgePoint(entrySide, w, h, SPAWN_MARGIN, rnd);
   const b = {
-    x, y, vx: 0, vy: 0, tx: 0, ty: 0,
-    age: 0, retargetIn: 0, leaving: false, entered: false, dir: 1, entrySide,
+    x,
+    y,
+    vx: 0,
+    vy: 0,
+    tx: 0,
+    ty: 0,
+    age: 0,
+    retargetIn: 0,
+    leaving: false,
+    entered: false,
+    dir: 1,
+    entrySide,
   };
   // First waypoint is inside the viewport, so it always flies in rather than
   // hovering at the edge it spawned on.
@@ -73,7 +88,8 @@ export function stepBee(b, dt, w, h, rnd = Math.random) {
     pickTarget(b, w, h, rnd);
   }
 
-  const dx = b.tx - b.x, dy = b.ty - b.y;
+  const dx = b.tx - b.x,
+    dy = b.ty - b.y;
   const d = Math.hypot(dx, dy) || 1;
   const accel = b.leaving ? 1000 : 760;
   // Jitter is a real acceleration, comparable to the steering term: that balance
@@ -90,7 +106,10 @@ export function stepBee(b, dt, w, h, rnd = Math.random) {
 
   const sp = Math.hypot(b.vx, b.vy);
   const max = b.leaving ? 520 : 340;
-  if (sp > max) { b.vx = (b.vx / sp) * max; b.vy = (b.vy / sp) * max; }
+  if (sp > max) {
+    b.vx = (b.vx / sp) * max;
+    b.vy = (b.vy / sp) * max;
+  }
 
   b.x += b.vx * dt;
   b.y += b.vy * dt;
@@ -106,8 +125,7 @@ export function stepBee(b, dt, w, h, rnd = Math.random) {
 export function beeGone(b, w, h) {
   if (b.age > MAX_AGE) return true;
   if (!b.entered) return false;
-  return b.x < -GONE_MARGIN || b.x > w + GONE_MARGIN
-    || b.y < -GONE_MARGIN || b.y > h + GONE_MARGIN;
+  return b.x < -GONE_MARGIN || b.x > w + GONE_MARGIN || b.y < -GONE_MARGIN || b.y > h + GONE_MARGIN;
 }
 
 /**

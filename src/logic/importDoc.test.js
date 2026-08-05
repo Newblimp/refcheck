@@ -34,7 +34,9 @@ describe('importPatentDoc', () => {
   it('returns EN for an English application', () => {
     const r = importPatentDoc(makeDocx(EN_BODY));
     expect(r.lang).toBe('en');
-    expect(r.split.claims).toBe('1. A device (10) comprising a housing (12).\n2. A device (10) according to claim 1.');
+    expect(r.split.claims).toBe(
+      '1. A device (10) comprising a housing (12).\n2. A device (10) according to claim 1.'
+    );
   });
   it('throws a DocxError for a non-Word file', () => {
     expect(() => importPatentDoc(new Uint8Array([1, 2, 3, 4, 5]))).toThrow();
@@ -45,26 +47,35 @@ describe('exportPatentDoc', () => {
   it('round-trips into the original file when the buffers were imported', () => {
     const imported = importPatentDoc(makeDocx(EN_BODY));
     const edited = imported.split.description.replace('housing 12', 'housing 14');
-    const { bytes, mode } = exportPatentDoc(imported, { description: edited, claims: imported.split.claims });
+    const { bytes, mode } = exportPatentDoc(imported, {
+      description: edited,
+      claims: imported.split.claims,
+    });
     expect(mode).toBe('roundTrip');
     const xml = documentXmlOf(bytes);
     expect(xml).toContain('housing 14');
     expect(xml).toContain('A device 10 is disclosed.'); // untouched abstract survives
   });
   it('generates a fresh document when there is no imported source', () => {
-    const { bytes, mode } = exportPatentDoc(null, {
-      description: 'The device 10 comprises a housing 12.',
-      claims: '1. A device (10).',
-    }, { claimsHeading: 'Claims' });
+    const { bytes, mode } = exportPatentDoc(
+      null,
+      {
+        description: 'The device 10 comprises a housing 12.',
+        claims: '1. A device (10).',
+      },
+      { claimsHeading: 'Claims' }
+    );
     expect(mode).toBe('fresh');
     const again = splitPatentDoc(readDocx(bytes));
     expect(again.claims).toBe('1. A device (10).');
     expect(again.detected.claimsHeading).toBe('Claims');
   });
   it('a fresh German export uses the German claims heading', () => {
-    const { bytes } = exportPatentDoc(null,
+    const { bytes } = exportPatentDoc(
+      null,
       { description: 'Die Vorrichtung 10.', claims: '1. Vorrichtung (10).' },
-      { claimsHeading: 'Patentansprüche' });
+      { claimsHeading: 'Patentansprüche' }
+    );
     const again = splitPatentDoc(readDocx(bytes));
     expect(again.lang).toBe('de');
     expect(again.claims).toBe('1. Vorrichtung (10).');

@@ -13,12 +13,12 @@ import { useDebounced } from './useDebounced.js';
 const TICK_MS = 10_000;
 const MEAN_MS = 5 * 60_000;
 const MAX_BEES = 5;
-const SETTLE_MS = 400;   // pause after typing before the trigger word is counted
+const SETTLE_MS = 400; // pause after typing before the trigger word is counted
 
 const prefersReducedMotion = () =>
-  typeof window !== 'undefined'
-  && typeof window.matchMedia === 'function'
-  && !!window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  typeof window !== 'undefined' &&
+  typeof window.matchMedia === 'function' &&
+  !!window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 /**
  * @param {string} watchText Text whose "bee" count triggers a flight. Pass BOTH
@@ -32,10 +32,10 @@ export function useBee(watchText, lang) {
   const nextId = useRef(1);
 
   const add = useCallback(() => {
-    setBees(list => (list.length >= MAX_BEES ? list : [...list, nextId.current++]));
+    setBees((list) => (list.length >= MAX_BEES ? list : [...list, nextId.current++]));
   }, []);
   // Stable identity: Bee holds this for the lifetime of its flight.
-  const done = useCallback(id => setBees(list => list.filter(x => x !== id)), []);
+  const done = useCallback((id) => setBees((list) => list.filter((x) => x !== id)), []);
 
   // Random appearances. Unrequested motion, so this one honours the OS setting.
   useEffect(() => {
@@ -70,7 +70,10 @@ export function useBee(watchText, lang) {
     // once) must not summon a bee on its own.
     const langChanged = prevLang.current !== lang;
     prevLang.current = lang;
-    if (seen.current === null || langChanged) { seen.current = n; return; }
+    if (seen.current === null || langChanged) {
+      seen.current = n;
+      return;
+    }
     if (n > seen.current) add();
     seen.current = n;
   }, [settled, lang, add]);

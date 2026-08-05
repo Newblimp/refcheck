@@ -15,22 +15,27 @@ export function useFileDrop(onFile) {
   useEffect(() => {
     if (typeof window === 'undefined') return;
     let depth = 0;
-    const hasFiles = e => {
+    const hasFiles = (e) => {
       const types = e.dataTransfer?.types;
       return types && Array.prototype.indexOf.call(types, 'Files') !== -1;
     };
-    const onEnter = e => { if (!hasFiles(e)) return; e.preventDefault(); depth++; setDragging(true); };
-    const onOver = e => {
+    const onEnter = (e) => {
+      if (!hasFiles(e)) return;
+      e.preventDefault();
+      depth++;
+      setDragging(true);
+    };
+    const onOver = (e) => {
       if (!hasFiles(e)) return;
       e.preventDefault(); // without this the browser opens the file on drop
       if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy';
     };
-    const onLeave = e => {
+    const onLeave = (e) => {
       if (!hasFiles(e)) return;
       depth = Math.max(0, depth - 1);
       if (depth === 0) setDragging(false);
     };
-    const onDrop = e => {
+    const onDrop = (e) => {
       if (!hasFiles(e)) return;
       e.preventDefault();
       depth = 0;

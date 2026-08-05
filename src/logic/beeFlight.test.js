@@ -1,9 +1,21 @@
 import { describe, it, expect } from 'vitest';
-import { spawnBee, stepBee, beeGone, pickTarget, countBees, LIFESPAN, MAX_AGE } from './beeFlight.js';
+import {
+  spawnBee,
+  stepBee,
+  beeGone,
+  pickTarget,
+  countBees,
+  LIFESPAN,
+  MAX_AGE,
+} from './beeFlight.js';
 
-const W = 1200, H = 800;
+const W = 1200,
+  H = 800;
 // Deterministic "random" so flights are reproducible.
-const seq = values => { let i = 0; return () => values[i++ % values.length]; };
+const seq = (values) => {
+  let i = 0;
+  return () => values[i++ % values.length];
+};
 const mid = () => 0.5;
 
 /** Fly until the bee leaves, returning the path. */
@@ -27,7 +39,7 @@ describe('spawnBee', () => {
     }
   });
   it('uses each of the four sides across the random range', () => {
-    const sides = new Set([0.1, 0.35, 0.6, 0.85].map(r => spawnBee(W, H, () => r).entrySide));
+    const sides = new Set([0.1, 0.35, 0.6, 0.85].map((r) => spawnBee(W, H, () => r).entrySide));
     expect(sides.size).toBe(4);
   });
   it('aims its first waypoint inside the viewport, so it flies in', () => {
@@ -84,12 +96,15 @@ describe('stepBee', () => {
   });
   it('faces the direction it is travelling', () => {
     const b = spawnBee(W, H, mid);
-    b.vx = 200; stepBee(b, 1 / 60, W, H, mid);
+    b.vx = 200;
+    stepBee(b, 1 / 60, W, H, mid);
     expect(b.dir).toBe(1);
-    b.vx = -200; b.tx = -500; stepBee(b, 1 / 60, W, H, mid);
+    b.vx = -200;
+    b.tx = -500;
+    stepBee(b, 1 / 60, W, H, mid);
     expect(b.dir).toBe(-1);
   });
-  it('does not teleport on a large frame gap (dt is the caller\'s to clamp)', () => {
+  it("does not teleport on a large frame gap (dt is the caller's to clamp)", () => {
     const b = spawnBee(W, H, mid);
     const x0 = b.x;
     stepBee(b, 0.05, W, H, mid);
@@ -100,22 +115,33 @@ describe('stepBee', () => {
 describe('beeGone', () => {
   it('is false while the bee is still on screen', () => {
     const b = spawnBee(W, H, mid);
-    b.entered = true; b.x = W / 2; b.y = H / 2;
+    b.entered = true;
+    b.x = W / 2;
+    b.y = H / 2;
     expect(beeGone(b, W, H)).toBe(false);
   });
   it('is false at spawn, before it has ever entered', () => {
     expect(beeGone(spawnBee(W, H, mid), W, H)).toBe(false);
   });
   it('is true once it has entered and then left through any side', () => {
-    for (const [x, y] of [[-500, 400], [W + 500, 400], [600, -500], [600, H + 500]]) {
+    for (const [x, y] of [
+      [-500, 400],
+      [W + 500, 400],
+      [600, -500],
+      [600, H + 500],
+    ]) {
       const b = spawnBee(W, H, mid);
-      b.entered = true; b.x = x; b.y = y;
+      b.entered = true;
+      b.x = x;
+      b.y = y;
       expect(beeGone(b, W, H)).toBe(true);
     }
   });
   it('is true past the hard age cap even if somehow still on screen', () => {
     const b = spawnBee(W, H, mid);
-    b.x = W / 2; b.y = H / 2; b.age = MAX_AGE + 1;
+    b.x = W / 2;
+    b.y = H / 2;
+    b.age = MAX_AGE + 1;
     expect(beeGone(b, W, H)).toBe(true);
   });
 });
@@ -126,7 +152,7 @@ describe('a whole flight', () => {
     const { b, path } = flyOut(rnd);
     expect(b.entered).toBe(true);
     expect(beeGone(b, W, H)).toBe(true);
-    expect(b.age).toBeGreaterThan(1);          // it stuck around
+    expect(b.age).toBeGreaterThan(1); // it stuck around
     expect(b.age).toBeLessThanOrEqual(MAX_AGE);
     expect(path.length).toBeGreaterThan(120);
   });

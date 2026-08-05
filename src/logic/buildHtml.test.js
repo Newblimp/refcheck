@@ -2,7 +2,14 @@ import { describe, it, expect } from 'vitest';
 import { extractData } from './extract.js';
 import { buildHtml, esc, findAtPos } from './buildHtml.js';
 
-const EMPTY = { signData: {}, termData: {}, artErrors: [], bareTerms: [], numErrors: [], depErrors: [] };
+const EMPTY = {
+  signData: {},
+  termData: {},
+  artErrors: [],
+  bareTerms: [],
+  numErrors: [],
+  depErrors: [],
+};
 const build = (text, mode, isClaims, dis = new Set(), focusSign = null) =>
   buildHtml(text, extractData(text, 'en', {}, true, isClaims), mode, dis, focusSign);
 
@@ -64,8 +71,8 @@ describe('buildHtml', () => {
   it('produces non-overlapping, ascending marks', () => {
     const html = build('The housing 12 is the casing 12. A housing 12.', 'description', false);
     // Every <mark> should open before the next one — no nested marks.
-    const opens = [...html.matchAll(/<mark/g)].map(m => m.index);
-    const closes = [...html.matchAll(/<\/mark>/g)].map(m => m.index);
+    const opens = [...html.matchAll(/<mark/g)].map((m) => m.index);
+    const closes = [...html.matchAll(/<\/mark>/g)].map((m) => m.index);
     expect(opens.length).toBe(closes.length);
     for (let i = 1; i < opens.length; i++) {
       expect(opens[i]).toBeGreaterThan(closes[i - 1]); // previous mark closed first
@@ -78,7 +85,7 @@ describe('buildHtml', () => {
   // trailing "\n" sentinel is appended (see below) and stripped here before
   // comparison — it carries no content, only backdrop height.
   it('stripping the marks reproduces the escaped input exactly (alignment invariant)', () => {
-    const stripMarks = html => html.replace(/<\/?mark[^>]*>/g, '');
+    const stripMarks = (html) => html.replace(/<\/?mark[^>]*>/g, '');
     const samples = [
       'The device 10 comprises a housing 12 and a cover 14. The housing 12 is the casing 12.',
       '1. A device (10) according to claim 9.\n3. The device (10) of claim 1. The housing is here.',

@@ -34,11 +34,11 @@ function findHeadings(paragraphs) {
 
 /** First heading of `kind` at or after `from`. */
 const firstOf = (headings, kind, from = 0) =>
-  headings.find(h => h.kind === kind && h.index >= from) || null;
+  headings.find((h) => h.kind === kind && h.index >= from) || null;
 
 /** First heading of any kind in `kinds` strictly after `after`. */
 const nextOf = (headings, kinds, after) =>
-  headings.find(h => h.index > after && kinds.includes(h.kind)) || null;
+  headings.find((h) => h.index > after && kinds.includes(h.kind)) || null;
 
 /**
  * Word auto-numbering lives in numbering.xml, not in the text — so an
@@ -54,10 +54,14 @@ const nextOf = (headings, kinds, after) =>
  */
 function applyClaimNumbering(paras) {
   const counters = new Map();
-  let synthesized = 0, unusual = false;
-  const out = paras.map(p => {
+  let synthesized = 0,
+    unusual = false;
+  const out = paras.map((p) => {
     if (!p.numbered) return p;
-    if (p.ilvl > 0) { unusual = true; return p; }
+    if (p.ilvl > 0) {
+      unusual = true;
+      return p;
+    }
     if (/^\s*\d{1,4}\s*[.)]/.test(p.text)) return p; // already numbered in text
     if (!p.text.trim()) return p;
     const key = p.numId == null ? '_' : String(p.numId);
@@ -72,7 +76,7 @@ function applyClaimNumbering(paras) {
 
 /** Join paragraphs into buffer text, trimming leading/trailing blank lines. */
 function toText(paras) {
-  const lines = paras.map(p => p.text);
+  const lines = paras.map((p) => p.text);
   while (lines.length && !lines[0].trim()) lines.shift();
   while (lines.length && !lines[lines.length - 1].trim()) lines.pop();
   return lines.join('\n');
@@ -93,7 +97,11 @@ export function splitPatentDoc(doc) {
   // Description: from just after its heading up to the claims or the sign list.
   let descParas = [];
   if (descH) {
-    const stop = nextOf(headings, [SECTION_KINDS.CLAIMS, SECTION_KINDS.SIGN_LIST, SECTION_KINDS.ABSTRACT], descH.index);
+    const stop = nextOf(
+      headings,
+      [SECTION_KINDS.CLAIMS, SECTION_KINDS.SIGN_LIST, SECTION_KINDS.ABSTRACT],
+      descH.index
+    );
     descParas = paragraphs.slice(descH.index + 1, stop ? stop.index : paragraphs.length);
   }
 
@@ -134,7 +142,11 @@ export function splitPatentDoc(doc) {
       fellBack,
       synthesizedClaimNumbers: numbering.synthesized,
       unusualNumbering: numbering.unusual,
-      headings: headings.map(h => ({ kind: h.kind, lang: h.lang, text: paragraphs[h.index].text.trim() })),
+      headings: headings.map((h) => ({
+        kind: h.kind,
+        lang: h.lang,
+        text: paragraphs[h.index].text.trim(),
+      })),
     },
   };
 }

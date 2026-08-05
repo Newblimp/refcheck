@@ -8,7 +8,8 @@ import { makeDocx, DE_BODY } from '../logic/docx/fixture.js';
 const docxFile = (body, name = 'application.docx') => {
   const bytes = makeDocx(body);
   const file = new File([bytes], name);
-  file.arrayBuffer = () => Promise.resolve(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength));
+  file.arrayBuffer = () =>
+    Promise.resolve(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength));
   return file;
 };
 
@@ -23,7 +24,9 @@ const typeInto = (text) => fireEvent.change(editor(), { target: { value: text } 
 const sidebar = (container) => within(container.querySelector('.ov-scroll'));
 
 beforeEach(() => {
-  try { localStorage.clear(); } catch {}
+  try {
+    localStorage.clear();
+  } catch {}
   vi.clearAllMocks();
 });
 
@@ -80,13 +83,13 @@ describe('App (interactive)', () => {
     const second = ed.value.indexOf('12', first + 1);
     expect(second).toBeGreaterThan(first);
 
-    fireEvent.click(card);                       // 1st click → first occurrence
+    fireEvent.click(card); // 1st click → first occurrence
     expect(ed.selectionStart).toBe(first);
-    fireEvent.click(card);                       // 2nd click → next occurrence
+    fireEvent.click(card); // 2nd click → next occurrence
     expect(ed.selectionStart).toBe(second);
-    fireEvent.click(card);                       // past the last → unfocus
+    fireEvent.click(card); // past the last → unfocus
     expect(container.querySelector('.sign-card.focused')).toBeFalsy();
-    fireEvent.click(card);                       // cycle restarts at the first
+    fireEvent.click(card); // cycle restarts at the first
     expect(ed.selectionStart).toBe(first);
   });
 
@@ -97,7 +100,9 @@ describe('App (interactive)', () => {
     fireEvent.click(container.querySelector('.reflist-hdr')); // expand
     fireEvent.click(container.querySelector('.reflist-section .restore-btn')); // copy
     expect(navigator.clipboard.writeText).toHaveBeenCalledWith('10\tdevice\n12\thousing');
-    expect(await within(container.querySelector('.reflist-section')).findByText('Copied')).toBeInTheDocument();
+    expect(
+      await within(container.querySelector('.reflist-section')).findByText('Copied')
+    ).toBeInTheDocument();
   });
 
   it('imports a dropped .docx into both buffers and sets the language', async () => {
@@ -105,14 +110,17 @@ describe('App (interactive)', () => {
     const file = docxFile(DE_BODY);
     fireEvent.drop(window, { dataTransfer: { types: ['Files'], files: [file] } });
 
-    await waitFor(() => expect(editor().value).toContain('Die Vorrichtung 10 umfasst ein Gehäuse 12.'));
+    await waitFor(() =>
+      expect(editor().value).toContain('Die Vorrichtung 10 umfasst ein Gehäuse 12.')
+    );
     // Only the detailed description — not the abstract, figure listing or sign list.
     expect(editor().value).not.toContain('Die Erfindung betrifft');
     expect(editor().value).not.toContain('Fig. 1 zeigt');
     expect(editor().value).not.toContain('10 Vorrichtung');
     // Language switched to German off the "Patentansprüche" heading.
     await waitFor(() =>
-      expect(container.querySelector('.lang-toggle button.active').textContent).toBe('DE'));
+      expect(container.querySelector('.lang-toggle button.active').textContent).toBe('DE')
+    );
     // Warnings render in the language the import just switched TO, not the one
     // that was active when the file was dropped.
     expect(await screen.findByText(/automatisch nummerierte Ansprüche/)).toBeInTheDocument();
@@ -184,9 +192,12 @@ describe('App (interactive)', () => {
     // The setting suppresses the RANDOM appearances, but typing "bee" is an
     // explicit by-name request; silently doing nothing just looks broken.
     const mm = window.matchMedia;
-    window.matchMedia = q => ({
+    window.matchMedia = (q) => ({
       matches: /prefers-reduced-motion/.test(q),
-      addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {},
+      addEventListener() {},
+      removeEventListener() {},
+      addListener() {},
+      removeListener() {},
     });
     try {
       const { container } = render(<App />);
@@ -262,7 +273,9 @@ describe('App (interactive)', () => {
     fireEvent.click(screen.getByText('Claims'));
     typeInto('1. A device (10) with a housing (12).');
     // Sign 10 exists only in the claims buffer → "in claims, not in description".
-    expect(await sidebar(container).findByText(/in claims, not in description/)).toBeInTheDocument();
+    expect(
+      await sidebar(container).findByText(/in claims, not in description/)
+    ).toBeInTheDocument();
   });
 
   it('flags a bad claim dependency and dismisses it from its card', async () => {
@@ -270,10 +283,13 @@ describe('App (interactive)', () => {
     fireEvent.click(screen.getByText('Claims'));
     typeInto('1. A device (10) according to claim 3.');
     expect(await sidebar(container).findByText(/nonexistent claim 3/)).toBeInTheDocument();
-    const card = sidebar(container).getByText(/nonexistent claim 3/).closest('.bare-card');
+    const card = sidebar(container)
+      .getByText(/nonexistent claim 3/)
+      .closest('.bare-card');
     fireEvent.click(card.querySelector('.dis-btn'));
     await waitFor(() =>
-      expect(sidebar(container).queryByText(/nonexistent claim 3/)).not.toBeInTheDocument());
+      expect(sidebar(container).queryByText(/nonexistent claim 3/)).not.toBeInTheDocument()
+    );
   });
 
   it('extends a term via the context menu', async () => {

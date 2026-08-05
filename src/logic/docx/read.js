@@ -54,9 +54,7 @@ export function decodeXml(s) {
   if (s.indexOf('&') === -1) return s;
   return s.replace(/&(#x?[0-9a-fA-F]+|[a-z]+);/g, (m, e) => {
     if (e[0] === '#') {
-      const cp = e[1] === 'x' || e[1] === 'X'
-        ? parseInt(e.slice(2), 16)
-        : parseInt(e.slice(1), 10);
+      const cp = e[1] === 'x' || e[1] === 'X' ? parseInt(e.slice(2), 16) : parseInt(e.slice(1), 10);
       return Number.isFinite(cp) ? String.fromCodePoint(cp) : m;
     }
     return ENTITIES[e] !== undefined ? ENTITIES[e] : m;
@@ -78,17 +76,19 @@ const TAG_RE = /<(\/?)([A-Za-z0-9:_.-]+)((?:"[^"]*"|'[^']*'|[^>"'])*?)(\/?)>/g;
  */
 export function docxXmlToParagraphs(xml) {
   const paras = [];
-  let p = null;            // paragraph under construction
-  let chunks = null;       // text pieces of the current paragraph
-  let skipDepth = 0;       // inside <w:txbxContent> / <w:del> → ignore content
-  let skipTag = null;      // which tag opened the skip
-  let inT = false;         // inside <w:t>
-  let tStart = 0;          // where the current <w:t> body began
-  let inPPr = 0;           // inside <w:pPr> (paragraph-level props)
+  let p = null; // paragraph under construction
+  let chunks = null; // text pieces of the current paragraph
+  let skipDepth = 0; // inside <w:txbxContent> / <w:del> → ignore content
+  let skipTag = null; // which tag opened the skip
+  let inT = false; // inside <w:t>
+  let tStart = 0; // where the current <w:t> body began
+  let inPPr = 0; // inside <w:pPr> (paragraph-level props)
   let pPrStart = -1;
-  let runDepth = 0;        // inside <w:r>
+  let runDepth = 0; // inside <w:r>
   let rPrStart = -1;
-  let runCount = 0, boldRuns = 0, curRunBold = false;
+  let runCount = 0,
+    boldRuns = 0,
+    curRunBold = false;
 
   TAG_RE.lastIndex = 0;
   let m;
@@ -114,11 +114,18 @@ export function docxXmlToParagraphs(xml) {
 
     switch (name) {
       case 'w:p': {
-        if (isSelf) { // <w:p/> — an empty paragraph still occupies a line
-          paras.push(makePara('', '', false, null, 0, false, {
-            xmlStart: m.index, xmlEnd: m.index + full.length,
-            pPrXml: '', rPrXml: '', pAttrs: attrs, synthesizedPrefix: '',
-          }));
+        if (isSelf) {
+          // <w:p/> — an empty paragraph still occupies a line
+          paras.push(
+            makePara('', '', false, null, 0, false, {
+              xmlStart: m.index,
+              xmlEnd: m.index + full.length,
+              pPrXml: '',
+              rPrXml: '',
+              pAttrs: attrs,
+              synthesizedPrefix: '',
+            })
+          );
           break;
         }
         if (isClose) {
@@ -128,15 +135,24 @@ export function docxXmlToParagraphs(xml) {
             p.src.xmlEnd = m.index + full.length;
             paras.push(p);
           }
-          p = null; chunks = null; pPrStart = -1;
-          runCount = 0; boldRuns = 0;
+          p = null;
+          chunks = null;
+          pPrStart = -1;
+          runCount = 0;
+          boldRuns = 0;
         } else {
           p = makePara('', '', false, null, 0, false, {
-            xmlStart: m.index, xmlEnd: -1,
-            pPrXml: '', rPrXml: '', pAttrs: attrs, synthesizedPrefix: '',
+            xmlStart: m.index,
+            xmlEnd: -1,
+            pPrXml: '',
+            rPrXml: '',
+            pAttrs: attrs,
+            synthesizedPrefix: '',
           });
           chunks = [];
-          runCount = 0; boldRuns = 0; pPrStart = -1;
+          runCount = 0;
+          boldRuns = 0;
+          pPrStart = -1;
         }
         break;
       }
@@ -156,10 +172,16 @@ export function docxXmlToParagraphs(xml) {
         if (p && inPPr > 0 && !isClose) p.numbered = true;
         break;
       case 'w:numId':
-        if (p && inPPr > 0) { const v = attr(attrs, 'w:val'); if (v != null) p.numId = Number(v); }
+        if (p && inPPr > 0) {
+          const v = attr(attrs, 'w:val');
+          if (v != null) p.numId = Number(v);
+        }
         break;
       case 'w:ilvl':
-        if (p && inPPr > 0) { const v = attr(attrs, 'w:val'); if (v != null) p.ilvl = Number(v); }
+        if (p && inPPr > 0) {
+          const v = attr(attrs, 'w:val');
+          if (v != null) p.ilvl = Number(v);
+        }
         break;
       case 'w:r':
         if (isClose) {
@@ -167,7 +189,9 @@ export function docxXmlToParagraphs(xml) {
           if (curRunBold) boldRuns++;
           curRunBold = false;
         } else if (!isSelf) {
-          runDepth++; runCount++; curRunBold = false;
+          runDepth++;
+          runCount++;
+          curRunBold = false;
         }
         break;
       case 'w:rPr':
@@ -215,10 +239,14 @@ function makePara(text, style, numbered, numId, ilvl, bold, src) {
 }
 
 /** True for the Office Open XML magic bytes (a ZIP local file header). */
-const isZip = b => b.length > 4 && b[0] === 0x50 && b[1] === 0x4b && (b[2] === 3 || b[2] === 5 || b[2] === 7);
+const isZip = (b) =>
+  b.length > 4 && b[0] === 0x50 && b[1] === 0x4b && (b[2] === 3 || b[2] === 5 || b[2] === 7);
 
 export class DocxError extends Error {
-  constructor(code) { super(code); this.code = code; }
+  constructor(code) {
+    super(code);
+    this.code = code;
+  }
 }
 
 /**
@@ -233,7 +261,7 @@ export function readDocx(buf) {
   if (!isZip(bytes)) throw new DocxError('notZip');
   let entries;
   try {
-    entries = unzipSync(bytes, { filter: f => f.name === 'word/document.xml' });
+    entries = unzipSync(bytes, { filter: (f) => f.name === 'word/document.xml' });
   } catch {
     throw new DocxError('notZip');
   }
