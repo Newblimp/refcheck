@@ -257,6 +257,17 @@ export const likelySign = (s) => {
   return n >= 1 && n <= 99999;
 };
 
+// ── LIST / RANGE CONNECTORS ──────────────────────────────────────────────────
+// The words and dashes that join two numbers into a list or range, EN + DE.
+// Shared by the sign-list scan (extract.js: "the bearings 18, 20 and 22") and the
+// claim-reference parser (claims.js: "any one of claims 1 to 4"). These were two
+// separate literals that had drifted apart — the sign scan was missing
+// "or"/"oder"/"through", so "the bearings 18 or 22" registered only the first.
+export const CONNECTOR_WORDS = ['and', 'und', 'or', 'oder', 'to', 'through', 'bis'];
+export const RANGE_DASHES = '[-–—]';
+// Alternation fragment, longest-first so "through" is not shadowed by a prefix.
+export const CONNECTOR_ALT = [...CONNECTOR_WORDS].sort((a, b) => b.length - a.length).join('|');
+
 // ── REFERENCE-SIGN PATTERN ───────────────────────────────────────────────────
 // Single source of truth for what a reference sign looks like: 1–5 digits, an
 // optional trailing letter (12a) and an optional trailing prime (10', 10′).

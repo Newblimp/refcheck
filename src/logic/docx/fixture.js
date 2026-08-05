@@ -1,6 +1,7 @@
 // Test helper: build real .docx bytes in memory, so no binary fixture has to be
 // committed. Shared by read/write/import tests.
 import { zipSync, strToU8 } from 'fflate';
+import { escapeMarkup } from '../escape.js';
 
 /** One `<w:p>`. opts: {style, num, ilvl, numId, bold, italic, raw} */
 export function para(text, opts = {}) {
@@ -17,7 +18,7 @@ export function para(text, opts = {}) {
     opts.bold || opts.italic
       ? `<w:rPr>${opts.bold ? '<w:b/>' : ''}${opts.italic ? '<w:i/>' : ''}</w:rPr>`
       : '';
-  const esc = String(text).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const esc = escapeMarkup(text);
   return `<w:p>${pPr}<w:r>${rPr}<w:t xml:space="preserve">${esc}</w:t></w:r></w:p>`;
 }
 

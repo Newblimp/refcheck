@@ -10,10 +10,18 @@
 // corrections ("12" → "14", fixing an article) touch a handful of paragraphs.
 
 import { unzipSync, zipSync, strToU8, strFromU8 } from 'fflate';
+import { escapeMarkup } from '../escape.js';
+import { blankEdges } from '../blankEdges.js';
 
-const esc = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+// Shared with the HTML backdrop builder — same three characters, same rules.
+const esc = escapeMarkup;
 
 /** Longest common subsequence of two line arrays → aligned index pairs. */
+// Cell budget for the LCS table. Beyond this the diff falls back to positional
+// pairing: a 2000x2000 table is already 16MB and 4M iterations, which is not a
+// reasonable thing to do in a browser tab for a cosmetic alignment improvement.
+const MAX_LCS_CELLS = 4_000_000;
+
 function lcsPairs(a, b) {
   const n = a.length,
     m = b.length;
@@ -21,7 +29,7 @@ function lcsPairs(a, b) {
   if (!n || !m) return pairs;
   // Bounded: past this size the prefix/suffix trim below has already failed to
   // reduce the problem, and a positional pairing is good enough.
-  if (n * m > 4_000_000) return pairs;
+  if (n * m > MAX_LCS_CELLS) return pairs;
   const dp = new Int32Array((n + 1) * (m + 1));
   const w = m + 1;
   for (let i = n - 1; i >= 0; i--) {
@@ -145,12 +153,9 @@ export function planEdits(paras, editedText) {
       owner.push(pi);
     }
   });
-  // toText() trimmed leading/trailing blank lines; mirror that here.
-  let head = 0;
-  while (head < oldLines.length && !oldLines[head].trim()) head++;
-  let tailBlank = 0;
-  while (tailBlank < oldLines.length - head && !oldLines[oldLines.length - 1 - tailBlank].trim())
-    tailBlank++;
+  // toText() trimmed leading/trailing blank lines; the same rule has to apply
+  // here or the diff lines up against text the user never saw.
+  const { head, tail: tailBlank } = blankEdges(oldLines);
   const visOld = oldLines.slice(head, oldLines.length - tailBlank);
   const visOwner = owner.slice(head, oldLines.length - tailBlank);
 

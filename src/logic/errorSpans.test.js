@@ -1,0 +1,99 @@
+import { describe, it, expect } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { extractData } from './extract.js';
+import { eachErrorSpan, getAllErrors } from './errorSpans.js';
+import { HL } from './buildHtml.js';
+import { disKey } from './constants.js';
+
+const collect = (res, mode, dis = new Set()) => {
+  const out = [];
+  eachErrorSpan(res, mode, dis, (sp) => out.push(sp));
+  return out;
+};
+
+describe('eachErrorSpan', () => {
+  it('reports consistent signs as ok and inconsistent ones as warn', () => {
+    const res = extractData('The housing 12 is fixed. The casing 12 is fixed. The cover 14 is on.');
+    const spans = collect(res, 'description');
+    const sev = (sign) => spans.find((s) => s.kind === 'sign' && s.sign === sign).sev;
+    expect(sev('12')).toBe('warn');
+    expect(sev('14')).toBe('ok');
+  });
+
+  it('emits a signTerm span alongside each warned sign, but not for ok signs', () => {
+    const res = extractData('The housing 12 is fixed. The casing 12 is fixed. The cover 14 is on.');
+    const spans = collect(res, 'description');
+    const terms = spans.filter((s) => s.kind === 'signTerm');
+    expect(terms.length).toBeGreaterThan(0);
+    expect(terms.every((s) => s.sign === '12')).toBe(true);
+  });
+
+  it('marks a dismissed sign dis rather than dropping it — the backdrop still greys it', () => {
+    const res = extractData('The housing 12 is fixed. The casing 12 is fixed.');
+    const dis = new Set([disKey.sign('12')]);
+    const sign = collect(res, 'description', dis).find((s) => s.kind === 'sign');
+    expect(sign.sev).toBe('dis');
+    // ...while the navigator excludes it entirely.
+    expect(getAllErrors(res, 'description', dis).some((e) => e.type === 'sign')).toBe(false);
+  });
+
+  it('omits dismissed article, bare, numbering and dependency errors', () => {
+    const res = extractData('The housing 12 comprises a housing 12.');
+    const withArt = collect(res, 'description').filter((s) => s.kind === 'art');
+    expect(withArt.length).toBeGreaterThan(0);
+    const dis = new Set(withArt.map((s) => disKey.art(s.item.termStem)));
+    expect(collect(res, 'description', dis).filter((s) => s.kind === 'art')).toEqual([]);
+  });
+
+  it('covers every error category the extractor produces', () => {
+    const claims = [
+      '1. A device (10) comprising a housing (12).',
+      '3. The device (10) according to claim 9, wherein the seal (14) is fitted.',
+    ].join('\n');
+    const res = extractData(claims, 'en', {}, true, true);
+    const kinds = new Set(collect(res, 'claims').map((s) => s.kind));
+    expect(kinds.has('sign')).toBe(true);
+    expect(kinds.has('num')).toBe(true); // claim 3 where 2 was expected
+    expect(kinds.has('dep')).toBe(true); // claim 3 refers to nonexistent claim 9
+  });
+});
+
+describe('getAllErrors', () => {
+  it('returns errors in document order', () => {
+    const res = extractData('The housing 12 is fixed. The casing 12 is fixed.');
+    const errs = getAllErrors(res, 'description', new Set());
+    const starts = errs.map((e) => e.start);
+    expect([...starts].sort((a, b) => a - b)).toEqual(starts);
+  });
+
+  it('never returns a signTerm span — the sign itself is the navigation target', () => {
+    const res = extractData('The housing 12 is fixed. The casing 12 is fixed.');
+    const errs = getAllErrors(res, 'description', new Set());
+    expect(errs.every((e) => e.type !== 'signTerm')).toBe(true);
+  });
+
+  it('excludes consistent signs', () => {
+    // Introduced with an indefinite article, so there is no article error either.
+    const res = extractData('A cover 14 is on. The cover 14 is fixed.');
+    expect(getAllErrors(res, 'description', new Set())).toEqual([]);
+  });
+
+  it('carries each category under its historical property name', () => {
+    const res = extractData('The housing 12 comprises a housing 12.');
+    const errs = getAllErrors(res, 'description', new Set());
+    const art = errs.find((e) => e.type === 'art');
+    expect(art).toBeDefined();
+    expect(art.ae).toBeDefined();
+  });
+});
+
+describe('highlight classes', () => {
+  it('every class the logic emits is defined in styles.css', () => {
+    // The pure logic layer names stylesheet classes with nothing else linking
+    // the two, so a rename in styles.css would silently stop highlighting.
+    const css = readFileSync(new URL('../styles.css', import.meta.url), 'utf8');
+    for (const cls of Object.values(HL)) {
+      expect(css, `styles.css is missing .${cls}`).toContain(`.${cls}`);
+    }
+  });
+});

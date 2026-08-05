@@ -1,6 +1,7 @@
 import { useState, useRef, useCallback, useEffect, useLayoutEffect, useMemo } from 'react';
 import { T } from '../i18n.js';
-import { extractData, classify, getAllErrors } from '../logic/extract.js';
+import { extractData, classify } from '../logic/extract.js';
+import { getAllErrors } from '../logic/errorSpans.js';
 import { buildHtml, findAtPos } from '../logic/buildHtml.js';
 import { computeCrossRef } from '../logic/crossref.js';
 import { compareSigns, disKey } from '../logic/constants.js';

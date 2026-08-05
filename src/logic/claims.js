@@ -1,3 +1,5 @@
+import { CONNECTOR_ALT, RANGE_DASHES } from './constants.js';
+
 // ── CLAIM STRUCTURE ──────────────────────────────────────────────────────────
 // Segments the claims buffer into individual claims, parses each claim's
 // dependency references ("according to claim 3", "nach einem der Ansprüche 1
@@ -29,7 +31,12 @@
 // "claim(s) 1, 2 or 4 to 7" — the word, then a number list whose connectors are
 // commas, EN/DE conjunctions or range words/dashes. The list regex backtracks
 // cleanly at "claim 1, wherein…" (no digits after the comma → list is just "1").
-const NUM_LIST = String.raw`\d{1,4}(?:\s*(?:,|or|and|to|through|bis|oder|und|[-–—])\s*\d{1,4})*`;
+// Cap on how many intermediate claim numbers a range may expand to. "claims 1
+// to 4" should yield 2 and 3; a nonsense range like "1 to 9999" should not
+// allocate thousands of entries, so it is treated as two endpoints instead.
+const MAX_RANGE_SPAN = 200;
+
+const NUM_LIST = `\\d{1,4}(?:\\s*(?:,|${CONNECTOR_ALT}|${RANGE_DASHES})\\s*\\d{1,4})*`;
 const REF_RE = new RegExp(String.raw`\b(?:claims?|anspr(?:uch|üche|üchen))\s+(${NUM_LIST})`, 'gi');
 // Connectors that make the pair around them a range (endpoints expanded).
 const RANGE_SEP = /(?:^|\s|,)(?:to|through|bis)(?:\s|$)|[-–—]/i;
@@ -78,7 +85,7 @@ export function parseClaimRefs(body, offset = 0) {
       if (
         prev !== null &&
         RANGE_SEP.test(list.slice(prev.endIdx, nm.index)) &&
-        num - prev.num < 200
+        num - prev.num < MAX_RANGE_SPAN
       )
         for (let k = prev.num + 1; k < num; k++) nums.add(k);
       prev = { num, endIdx: nm.index + nm[0].length };

@@ -11,6 +11,7 @@
 //   Claims      = after a claims heading       → next signList/abstract heading
 
 import { SECTION_KINDS, matchHeading } from './headings.js';
+import { trimBlankEdges } from './blankEdges.js';
 
 /**
  * @typedef {Object} SplitResult
@@ -74,12 +75,11 @@ function applyClaimNumbering(paras) {
   return { paras: out, synthesized, unusual };
 }
 
-/** Join paragraphs into buffer text, trimming leading/trailing blank lines. */
+/** Join paragraphs into buffer text, trimming leading/trailing blank lines.
+ *  The trimming rule is shared with docx/write.planEdits, which has to rebuild
+ *  this exact line array to diff against. */
 function toText(paras) {
-  const lines = paras.map((p) => p.text);
-  while (lines.length && !lines[0].trim()) lines.shift();
-  while (lines.length && !lines[lines.length - 1].trim()) lines.pop();
-  return lines.join('\n');
+  return trimBlankEdges(paras.map((p) => p.text)).join('\n');
 }
 
 /**

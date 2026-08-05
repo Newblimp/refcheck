@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { extractData, classify, getAllErrors, detectOrdStems } from './extract.js';
+import { extractData, classify, detectOrdStems } from './extract.js';
+import { getAllErrors } from './errorSpans.js';
 import { tokenize } from './tokenize.js';
 import { stem } from './stem.js';
 import { compareSigns } from './constants.js';
@@ -661,5 +662,93 @@ describe('getAllErrors', () => {
     const de = res.depErrors[0];
     const errs = getAllErrors(res, 'claims', new Set(['d:' + de.key]));
     expect(errs.some((e) => e.type === 'dep')).toBe(false);
+  });
+});
+
+describe('shared list connectors', () => {
+  // The sign-list scan and the claim-reference parser had drifted apart: the
+  // sign scan was missing or/oder/through, so only the first sign of "18 or 22"
+  // was registered under the shared term. Both now share one vocabulary.
+  it('registers both signs of an "or" list under the shared term', () => {
+    const res = extractData('A device comprising the bearings 18 or 22.');
+    expect(res.signData['18']).toBeDefined();
+    expect(res.signData['22']).toBeDefined();
+    expect(Object.keys(res.signData['22'].terms)[0]).toBe(Object.keys(res.signData['18'].terms)[0]);
+  });
+
+  it('handles the German "oder"', () => {
+    const res = extractData('Eine Vorrichtung mit den Lagern 18 oder 22.', 'de');
+    expect(res.signData['18']).toBeDefined();
+    expect(res.signData['22']).toBeDefined();
+  });
+
+  it('handles "through" as a range word', () => {
+    const res = extractData('A device comprising the bearings 18 through 22.');
+    expect(res.signData['18']).toBeDefined();
+    expect(res.signData['22']).toBeDefined();
+  });
+
+  it('still keeps distinct terms apart across a connector', () => {
+    // The digit-connector-digit adjacency rule must survive the wider vocabulary:
+    // a word between the connector and the second number means two terms.
+    const res = extractData('A housing 12 or a cover 14 is provided.');
+    expect(Object.keys(res.signData['12'].terms)).toEqual(['hous']);
+    expect(Object.keys(res.signData['14'].terms)).toEqual(['cover']);
+  });
+});
+
+describe('autoMW = false', () => {
+  // Every other call site in the suite passes true or defaults, so the branch
+  // that skips ordinal detection entirely was never executed by a test.
+  const TEXT = 'A first bearing 20 supports the shaft. A second bearing 21 is at the end.';
+
+  it('does not auto-extend ordinal terms when disabled', () => {
+    const off = extractData(TEXT, 'en', {}, false, false);
+    // Without ordinal detection both bearings collapse onto the same term...
+    expect(Object.keys(off.signData['20'].terms)).toEqual(['bear']);
+    expect(Object.keys(off.signData['21'].terms)).toEqual(['bear']);
+  });
+
+  it('auto-extends them when enabled', () => {
+    const on = extractData(TEXT, 'en', {}, true, false);
+    expect(Object.keys(on.signData['20'].terms)).toEqual(['first bear']);
+    expect(Object.keys(on.signData['21'].terms)).toEqual(['second bear']);
+  });
+
+  it('still honours an explicit multi-word override with autoMW off', () => {
+    const off = extractData(TEXT, 'en', { bear: 1 }, false, false);
+    expect(Object.keys(off.signData['20'].terms)).toEqual(['first bear']);
+  });
+});
+
+describe('bracketed paragraph numbers', () => {
+  // The "bracket on either side" rule is subtle enough to pin directly rather
+  // than only through its effect on a whole extraction.
+  it('ignores a fully bracketed number', () => {
+    const res = extractData('The housing [0012] is shown.');
+    expect(res.signData['0012']).toBeUndefined();
+  });
+
+  it('ignores both members of a bracketed range', () => {
+    const res = extractData('See the housing [0012]-[0015] for detail.');
+    expect(res.signData['0012']).toBeUndefined();
+    expect(res.signData['0015']).toBeUndefined();
+  });
+
+  it('ignores every member of a bracketed list', () => {
+    const res = extractData('The housing [18, 20] is shown.');
+    expect(res.signData['18']).toBeUndefined();
+    expect(res.signData['20']).toBeUndefined();
+  });
+
+  it('still detects an unbracketed sign in the same sentence', () => {
+    const res = extractData('The housing 12 is shown in paragraph [0012].');
+    expect(res.signData['12']).toBeDefined();
+    expect(res.signData['0012']).toBeUndefined();
+  });
+
+  it('does not let a bracketed number satisfy a bare term', () => {
+    const res = extractData('A housing 12 is shown. The housing [0012] is aluminium.');
+    expect(res.bareTerms.some((b) => b.termStem === 'hous')).toBe(true);
   });
 });

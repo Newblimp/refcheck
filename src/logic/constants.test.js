@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
+  disKey,
   likelySign,
   isClaimNumber,
   isArt,
@@ -163,5 +164,38 @@ describe('article helpers', () => {
     expect(artType('a')).toBe('indef');
     expect(artType('eine')).toBe('indef');
     expect(artType('der')).toBe('def');
+  });
+});
+
+describe('disKey', () => {
+  // The declared single source of truth for dismissal keys. Every test that
+  // exercises dismissals elsewhere hard-codes the literal strings ('s:12'), so
+  // without these the scheme could change and the suite would stay green while
+  // every saved dismissal in a user's localStorage silently stopped matching.
+  it('namespaces each category so keys cannot collide across types', () => {
+    const keys = [
+      disKey.sign('12'),
+      disKey.art('12'),
+      disKey.bare('12'),
+      disKey.num('12'),
+      disKey.dep('12'),
+    ];
+    expect(new Set(keys).size).toBe(5);
+  });
+
+  it('produces the prefixes the persisted format uses', () => {
+    expect(disKey.sign('12')).toBe('s:12');
+    expect(disKey.art('hous')).toBe('a:hous');
+    expect(disKey.bare('hous')).toBe('b:hous');
+    expect(disKey.num('3#1')).toBe('n:3#1');
+    expect(disKey.dep('3>9#1')).toBe('d:3>9#1');
+  });
+
+  it('is stable for the same id', () => {
+    expect(disKey.sign('12a')).toBe(disKey.sign('12a'));
+  });
+
+  it('keeps multi-word term stems distinct', () => {
+    expect(disKey.art('first bear')).not.toBe(disKey.art('second bear'));
   });
 });
