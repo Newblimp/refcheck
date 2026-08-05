@@ -14,6 +14,10 @@ Patent documents must maintain strict consistency between reference signs (numer
 5. **Missing signs** - Terms that appear without their reference sign nearby
 6. **Orphaned signs** - Signs present in description but not claims, or vice versa
 7. **Claim dependency errors** - "according to claim N" references to nonexistent claims, forward references, and self-references
+8. **Reference-list drift** - the draft's own list of reference signs disagreeing with the text
+   (listed-but-unused, used-but-unlisted, or the same sign under a different term)
+9. **Claim-set structure** - independent/dependent counts, multiple dependency, and the
+   claim-count thresholds that attract fees
 
 ## Architecture
 
@@ -27,6 +31,10 @@ Support below.
 ```
 index.html              Vite entry (HTML shell; sets initial theme to avoid FOUC;
                         links manifest.webmanifest + icon.svg)
+build/
+  swPrecache.js         Vite plugin: injects the built asset list + a build id into
+                        dist/sw.js. Without it the worker precaches nothing and the
+                        offline guarantee does not hold (see Offline Support)
 public/
   sw.js                 Hand-rolled service worker: caches the app shell so the
                         tool keeps working offline after the first load
@@ -52,12 +60,29 @@ src/
     constants.js        EXCL list, article/ordinal sets, likelySign, isClaimNumber,
                         SIGN_RE / ROMAN_RE / isSignToken / compareSigns (sign +
                         Roman-numeral-step pattern, romanToInt/signVal + sort),
-                        disKey (the dismissal-key scheme — never build "s:…" by hand)
+                        disKey (the dismissal-key scheme — never build "s:…" by hand),
+                        CONNECTOR_ALT / RANGE_DASHES (list+range connectors, shared by
+                        the sign-list scan and the claim-reference parser — these had
+                        drifted apart as two literals; do not re-declare them)
+    escape.js           escapeMarkup — HTML/XML text escaping (was 3 identical copies)
+    blankEdges.js       blankEdges / trimBlankEdges — the blank-line trimming rule that
+                        docSplit and docx/write MUST agree on, or round-trip export
+                        diffs against text the user never saw
+    errorSpans.js       eachErrorSpan + getAllErrors — ONE traversal of the five error
+                        categories, consumed by buildHtml AND the error navigator; add
+                        a sixth error type here, not in two places
+    fileKind.js         fileKind alone, so classifying a dropped file does not pull in
+                        the lazily-loaded .docx chunk
+    refListParse.js     parseRefList — reads a drafter's reference-sign list
+    reconcile.js        reconcileRefList — diffs that list against the signs in the text
+    claimStats.js       claimStats + THRESHOLDS — claim-set counts and fee thresholds
     stem.js             stemEn / stemDe / stem (Porter EN, Snowball DE); stem() is
                         memoized (patent vocabulary is tiny, so this halves extraction)
     tokenize.js         tokenize() (module-level regex, lastIndex reset per call)
-    extract.js          detectOrdStems, extractData, classify, getAllErrors;
-                        JSDoc typedefs for the ExtractResult shape live at the top
+    extract.js          detectOrdStems, extractData, classify; JSDoc typedefs for the
+                        ExtractResult shape live at the top. extractData orchestrates
+                        named phase functions (findSignGroups, computeArticleErrors,
+                        findBareTerms, computeNumberingErrors) rather than inlining them
     claims.js           segmentClaims / parseClaimRefs / computeClaimGraph — claim
                         spans, dependency refs (single, lists, ranges, "preceding
                         claims", EN+DE), transitive ancestors, depErrors
@@ -72,11 +97,16 @@ src/
   hooks/
     useDebounced.js     Debounce hook (defers extraction on large docs; a delay of
                         0 passes the value through with zero extra renders)
-    usePersistentState.js  useState + localStorage (codecs: jsonCodec/setCodec/oneOf)
+    usePersistentState.js  useState + localStorage (codecs: jsonCodec/setCodec/oneOf).
+                        Optional {debounce, onError}: the text buffers debounce their
+                        writes and flush on pagehide/visibilitychange
     useTheme.js         Theme preference + <html data-theme> application
     useFileDrop.js      Window-level file drag/drop (preventDefault on dragover +
                         drop, or the browser opens the file instead of the app)
     useBee.js           Decides when a bee appears (rare random draw + typing "bee")
+    useHotkeys.js       Window-level shortcuts. Unmodified keys are suppressed while
+                        the user is typing — the editor holds focus nearly always, so
+                        a bare "/" binding would make the app impossible to type in
   test/
     setup.js            Vitest setup (jest-dom + matchMedia/clipboard stubs)
   components/           React components
@@ -92,6 +122,9 @@ src/
     DropOverlay.jsx     Drag-over affordance (pointer-events:none — the editor
                         hit-tests with elementFromPoint)
     ImportBanner.jsx    Import result + warnings + one-step Undo
+    RefListCheck.jsx    Reference-list paste box + reconciliation findings
+    ClaimStats.jsx      Claim-set statistics panel (claims mode)
+    cardProps.js        activatable() — role/tabIndex/key handling shared by the cards
     Bee.jsx             The easter-egg bee (rAF loop writing transforms directly)
     App.smoke.test.jsx  Server-render smoke test (node env)
     App.ui.test.jsx     Interactive DOM tests (jsdom env)
@@ -99,29 +132,33 @@ src/
 
 ### Core Functions
 
-| Function                                  | Module                | Purpose                                                                                                              |
-| ----------------------------------------- | --------------------- | -------------------------------------------------------------------------------------------------------------------- |
-| `tokenize()`                              | `logic/tokenize.js`   | Splits text into word/number tokens                                                                                  |
-| `extractData()`                           | `logic/extract.js`    | Extracts signs, terms, article usage, bare terms, numbering + dependency errors                                      |
-| `classify()`                              | `logic/extract.js`    | Determines if a sign has errors                                                                                      |
-| `getAllErrors()`                          | `logic/extract.js`    | Collects all error positions for navigation — signature `(result, mode, dis)`                                        |
-| `computeClaimGraph()`                     | `logic/claims.js`     | Claim spans, dependency refs, transitive ancestor sets, `depErrors`                                                  |
-| `buildHtml()`                             | `logic/buildHtml.js`  | Generates highlighted HTML for the backdrop — signature `(text, result, mode, dis, focusSign)`                       |
-| `findAtPos()`                             | `logic/buildHtml.js`  | Finds sign/article at a given character position                                                                     |
-| `computeCrossRef()`                       | `logic/crossref.js`   | Compares the Description and Claims buffers                                                                          |
-| `isClaimNumber()`                         | `logic/constants.js`  | Detects a line-leading Arabic claim number (`1.`, `1)`)                                                              |
-| `isSignToken()`                           | `logic/constants.js`  | Single source of truth for what counts as a sign (Arabic **or** Roman-numeral step)                                  |
-| `compareSigns()`                          | `logic/constants.js`  | Sign sort: all Arabic first (value, then suffix — `10'`, `10a`), all Roman steps grouped at the end (`I`/`I.1`/`II`) |
-| `romanToInt()` / `signVal()`              | `logic/constants.js`  | Roman→integer conversion; numeric ordering value for any sign                                                        |
-| `buildRefList()`                          | `logic/reflist.js`    | Builds the sorted sign → term numeral list                                                                           |
-| `stemEn()` / `stemDe()`                   | `logic/stem.js`       | Language-specific word stemming                                                                                      |
-| `matchHeading()`                          | `logic/headings.js`   | Classifies a line as a section heading → `{kind, lang}` (whole-line match, then short-line prefix)                   |
-| `splitPatentDoc()`                        | `logic/docSplit.js`   | Document model → Description/Claims buffers + `detected` report                                                      |
-| `detectLang()`                            | `logic/detectLang.js` | Heading-derived language, falling back to stopword scoring                                                           |
-| `readDocx()` / `docxXmlToParagraphs()`    | `logic/docx/read.js`  | `.docx` → paragraph model (the only OOXML-aware code)                                                                |
-| `writeDocx()` / `planEdits()`             | `logic/docx/write.js` | Writes edits back into the original file, rewriting only changed paragraphs                                          |
-| `importPatentDoc()` / `exportPatentDoc()` | `logic/importDoc.js`  | The seam App.jsx calls; hides read/split/detect and round-trip-vs-fresh                                              |
-| `spawnBee()` / `stepBee()` / `beeGone()`  | `logic/beeFlight.js`  | Easter-egg bee flight: spawn off a random edge, dart around, leave                                                   |
+| Function                                  | Module                  | Purpose                                                                                                                     |
+| ----------------------------------------- | ----------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| `tokenize()`                              | `logic/tokenize.js`     | Splits text into word/number tokens                                                                                         |
+| `extractData()`                           | `logic/extract.js`      | Extracts signs, terms, article usage, bare terms, numbering + dependency errors                                             |
+| `classify()`                              | `logic/extract.js`      | Determines if a sign has errors                                                                                             |
+| `eachErrorSpan()`                         | `logic/errorSpans.js`   | The single walk over all five error categories; `buildHtml` and `getAllErrors` both consume it                              |
+| `getAllErrors()`                          | `logic/errorSpans.js`   | Collects all error positions for navigation — signature `(result, mode, dis)`                                               |
+| `computeClaimGraph()`                     | `logic/claims.js`       | Claim spans, dependency refs, transitive ancestor sets, `depErrors`, and `direct` (per-claim parents, used by `claimStats`) |
+| `buildHtml()`                             | `logic/buildHtml.js`    | Generates highlighted HTML for the backdrop — signature `(text, result, mode, dis, focusSign)`                              |
+| `findAtPos()`                             | `logic/buildHtml.js`    | Finds sign/article at a given character position                                                                            |
+| `computeCrossRef()`                       | `logic/crossref.js`     | Compares two **already-computed** extraction results (Description vs Claims)                                                |
+| `isClaimNumber()`                         | `logic/constants.js`    | Detects a line-leading Arabic claim number (`1.`, `1)`)                                                                     |
+| `isSignToken()`                           | `logic/constants.js`    | Single source of truth for what counts as a sign (Arabic **or** Roman-numeral step)                                         |
+| `compareSigns()`                          | `logic/constants.js`    | Sign sort: all Arabic first (value, then suffix — `10'`, `10a`), all Roman steps grouped at the end (`I`/`I.1`/`II`)        |
+| `romanToInt()` / `signVal()`              | `logic/constants.js`    | Roman→integer conversion; numeric ordering value for any sign                                                               |
+| `buildRefList()`                          | `logic/reflist.js`      | Builds the sorted sign → term numeral list                                                                                  |
+| `parseRefList()`                          | `logic/refListParse.js` | Parses a drafter's reference list (`10 housing`, `12 – Gehäuse`, tabs, dashes)                                              |
+| `reconcileRefList()`                      | `logic/reconcile.js`    | Diffs that list against the signs actually used; stem-compared, so plurals do not false-alarm                               |
+| `claimStats()`                            | `logic/claimStats.js`   | Claim-set counts, multiple dependency, EPO/USPTO claim-count thresholds                                                     |
+| `stemEn()` / `stemDe()`                   | `logic/stem.js`         | Language-specific word stemming                                                                                             |
+| `matchHeading()`                          | `logic/headings.js`     | Classifies a line as a section heading → `{kind, lang}` (whole-line match, then short-line prefix)                          |
+| `splitPatentDoc()`                        | `logic/docSplit.js`     | Document model → Description/Claims buffers + `detected` report                                                             |
+| `detectLang()`                            | `logic/detectLang.js`   | Heading-derived language, falling back to stopword scoring                                                                  |
+| `readDocx()` / `docxXmlToParagraphs()`    | `logic/docx/read.js`    | `.docx` → paragraph model (the only OOXML-aware code)                                                                       |
+| `writeDocx()` / `planEdits()`             | `logic/docx/write.js`   | Writes edits back into the original file, rewriting only changed paragraphs                                                 |
+| `importPatentDoc()` / `exportPatentDoc()` | `logic/importDoc.js`    | The seam App.jsx calls; hides read/split/detect and round-trip-vs-fresh                                                     |
+| `spawnBee()` / `stepBee()` / `beeGone()`  | `logic/beeFlight.js`    | Easter-egg bee flight: spawn off a random edge, dart around, leave                                                          |
 
 ## Features
 
@@ -229,6 +266,51 @@ the drawings` (detailed description) coexist; the ordered prefix fallback for th
 - Up to `MAX_BEES` (5) fly at once; `useBee` tracks a list of ids rather than a boolean,
   which is what makes "type it twice, get two bees" actually true
 
+### Reference-list check (reconciliation)
+
+- A **Reference list check** section in the sidebar takes the draft's own list of
+  reference signs — pasted, or filled automatically from a `.docx` import — and diffs it
+  against the signs actually used in the active buffer
+- Reports **listed but never used** (usually a leftover from a deleted embodiment),
+  **used but never listed**, **term mismatch** (the list says "housing", the text says
+  "casing" — the one that matters), and a sign **listed twice** under two names
+- Terms compare on **stems**, so "housings" in the list and "housing" in the text is a
+  match, not a false alarm
+- `logic/refListParse.js` is deliberately liberal about the separator (`10 housing`,
+  `12 - cover`, `14\tshaft`, `16: seal`, `18) flange`) and strict about exactly one
+  thing: the line must START with a reference sign, so headings and prose inside the list
+  are skipped rather than guessed at
+- `splitPatentDoc` already located the Bezugszeichenliste and discarded it; it now returns
+  it as `signList`, which is what makes the import auto-fill work. It is still excluded
+  from the description and claims buffers
+- Persisted under `rsc_reflist`; cleared by **Reset all** and restored by the import
+  **Undo**, alongside the text buffers
+
+### Claim-set statistics (claims mode)
+
+- A **Claim set** section reports total / independent / dependent counts and the longest
+  dependency chain, all derived from the graph `computeClaimGraph` already builds — it
+  just had to stop keeping its `direct` parent map private
+- Flags **multiple dependency** (an EPO fee, and not allowed at all in US practice) and
+  **claims depending on a multiply-dependent claim**, which is easy to introduce by
+  accident deep in a chain
+- Flags the claim-count thresholds that attract fees: EPO from the 16th and again from the
+  51st, USPTO past 20 total or 3 independent. `THRESHOLDS` in `logic/claimStats.js` holds
+  them as **counts, not currency** — the amounts change, the structure of the rules does not
+- A range (`any one of claims 1 to 4`) is _one_ multiply-dependent claim, not four
+
+### Keyboard
+
+- `Ctrl`/`Cmd`+`[` and `Ctrl`/`Cmd`+`]` step through the errors without leaving the editor
+- `/` focuses the sign filter; `Escape` closes the context menu
+- Bindings **without** a modifier are suppressed while the user is typing (`useHotkeys.js`)
+  — the editor is a `<textarea>` that holds focus almost all the time, so an unqualified
+  `/` binding would make the app impossible to type in
+- Every error card is keyboard-reachable: they carry `role="button"`, `tabIndex={0}` and
+  Enter/Space handling via `activatable()` in `components/cardProps.js`. They cannot simply
+  BE `<button>`s — each already contains a nested dismiss button, and nesting interactive
+  elements is invalid HTML
+
 ### Reference numeral list
 
 - A collapsible **Reference list** section in the sidebar shows the active buffer's signs in a numerically sorted `sign → term → count` table (dominant term per sign)
@@ -263,11 +345,48 @@ the drawings` (detailed description) coexist; the ordered prefix fallback for th
 
 ### Offline Support
 
-- The app runs entirely client-side (no backend calls), so once loaded it needs the network only for the initial fetch. Two things used to break that:
-  - The UI fonts (Space Grotesk, JetBrains Mono) were pulled from the Google Fonts CDN on every load. They're now **self-hosted** — the `.woff2` files live in `src/fonts/` and are `@font-face`-declared with relative `url()`s in `styles.css`, so Vite hashes and bundles them like any other asset (no CDN request, no external dependency at all)
-  - Nothing cached the app shell itself, so a page reload with no connection would just fail. `public/sw.js` is a small hand-rolled service worker (registered from `main.jsx`, production builds only) that caches the shell: navigations go network-first with a cached-shell fallback, and hashed assets (JS/CSS/fonts) are cache-first, since a content hash never changes meaning under the same URL
-  - `public/manifest.webmanifest` + `public/icon.svg` make the page installable (Add to Home Screen / desktop PWA install), which is the most reliable way to keep using it with no connection at all
-- Net effect: after the first successful load, the tool keeps working fully offline — including on a hard refresh — since both the shell and its assets are already cached and no external requests remain
+The app runs entirely client-side (no backend calls), so once loaded it needs the network
+only for the initial fetch. Three things are required for that to actually hold, and all
+three are now in place:
+
+- **The app shell is precached at install time.** `build/swPrecache.js` is a Vite plugin
+  that injects the emitted asset list (plus the base URL, the manifest and the icon) into
+  `dist/sw.js`, and `install` does `cache.addAll` over it. This is not optional polish:
+  the service worker registers _after_ the page has already fetched its JS, CSS and fonts,
+  so those requests never reach the fetch handler. A worker that only fills its cache
+  opportunistically has an empty cache when the first visit ends — the app used to become
+  offline-capable on the **second** visit, not the first, despite the docs claiming
+  otherwise.
+- **Cache lookups pass `ignoreVary`.** Static hosts (GitHub Pages, and Vite's own preview
+  server) send `Vary: Origin` on assets. Entries written by `cache.addAll` carry no
+  `Origin` header, but the page's own module-script and stylesheet requests are CORS-mode
+  and _do_ send one — so Vary matching rejects every precached entry and the page fails to
+  boot offline despite a full cache. These URLs are content-hashed, so their bytes cannot
+  legitimately vary by request header. This is only findable by testing in a real browser;
+  do not remove it.
+- **The cache name carries a build id** derived from the asset list, so each deploy gets
+  its own cache and `activate` actually evicts the previous one. A fixed name (the
+  original `refcheck-shell-v1`) meant the cleanup never matched anything and every
+  deploy's hashed bundles accumulated in one cache indefinitely.
+
+Supporting pieces: the UI fonts are **self-hosted** (`src/fonts/`, `@font-face` with
+relative `url()`s in `styles.css`), so Vite hashes and bundles them like any other asset
+and no CDN request remains; the bee sprite is vendored for the same reason; and
+`public/manifest.webmanifest` + `public/icon.svg` make the page installable.
+
+The lazily-loaded `.docx` chunk (see Word import/export) is in the precache list too, so
+a user who imports or exports for the first time while offline still gets it.
+
+Navigations are network-first with a cached-shell fallback, so a returning-online user
+picks up the latest build; unhashed assets (`icon.svg`, `manifest.webmanifest`) are
+network-first too, since their contents can change under a stable URL. Everything else is
+cache-first, and the offline navigation fallback resolves against the base URL — the
+previous `./index.html` fallback was dead code, since the navigation is cached under
+`/refcheck/`.
+
+**Verified in Chromium**, not merely reasoned about: on a first-ever visit the shell is
+precached; an offline hard reload then boots the app, runs extraction and renders the
+self-hosted fonts, and a first-ever `.docx` export succeeds from the precached chunk.
 
 ### Multi-word Terms
 
@@ -301,19 +420,22 @@ User Input (textarea — per-mode buffer)
                                  (marks carry data-sign attribute for hover)
 ```
 
-`computeCrossRef` (in `logic/crossref.js`) runs `extractData` on both buffers independently and compares sign sets.
+`computeCrossRef` (in `logic/crossref.js`) takes the two **already-computed** extraction
+results and compares them — App memoizes `extractData` per buffer and passes both in. It
+does not run extraction itself.
 
 ## localStorage Keys
 
-| Key          | Purpose                                                                       |
-| ------------ | ----------------------------------------------------------------------------- |
-| `rsc_theme`  | Theme preference: `'light'`, `'dark'`, or `'system'`                          |
-| `rsc_mwo`    | Multi-word override settings (JSON object mapping stems to extra word counts) |
-| `rsc_desc`   | Description-mode text buffer (autosaved)                                      |
-| `rsc_claims` | Claims-mode text buffer (autosaved)                                           |
-| `rsc_lang`   | UI/checking language: `'en'` or `'de'`                                        |
-| `rsc_mode`   | Active mode: `'description'` or `'claims'`                                    |
-| `rsc_dis`    | Dismissed-error keys (JSON array; see `disKey` in `constants.js`)             |
+| Key           | Purpose                                                                       |
+| ------------- | ----------------------------------------------------------------------------- |
+| `rsc_theme`   | Theme preference: `'light'`, `'dark'`, or `'system'`                          |
+| `rsc_mwo`     | Multi-word override settings (JSON object mapping stems to extra word counts) |
+| `rsc_desc`    | Description-mode text buffer (autosaved)                                      |
+| `rsc_claims`  | Claims-mode text buffer (autosaved)                                           |
+| `rsc_lang`    | UI/checking language: `'en'` or `'de'`                                        |
+| `rsc_mode`    | Active mode: `'description'` or `'claims'`                                    |
+| `rsc_dis`     | Dismissed-error keys (JSON array; see `disKey` in `constants.js`)             |
+| `rsc_reflist` | The drafter's reference-sign list, for the reference-list check               |
 
 All access goes through `hooks/usePersistentState.js`.
 
@@ -328,20 +450,27 @@ All access goes through `hooks/usePersistentState.js`.
 ### Export Features
 
 - [x] Reference numeral list with copy-to-clipboard (plain text)
+- [x] Reference-list **reconciliation** against the text (`logic/reconcile.js`)
 - [ ] Could add CSV/JSON export of sign-term mappings
 - [ ] Could add copy-to-clipboard for error summary
 
 ### Keyboard Navigation
 
-- [ ] No keyboard shortcuts for error navigation
-- [ ] Consider: `Ctrl+[` / `Ctrl+]` for prev/next error
-- [ ] Consider: `Escape` to close context menu
+- [x] `Ctrl`/`Cmd`+`[` / `Ctrl`/`Cmd`+`]` for prev/next error (`hooks/useHotkeys.js`)
+- [x] `Escape` closes the context menu; `/` focuses the sign filter
+- [x] Error cards and collapsible section headers are keyboard-activatable
+- [ ] Could add a shortcut for import/export/reset
 
 ### Accessibility
 
-- [ ] Missing ARIA labels on interactive elements
-- [ ] Screen reader support could be improved
-- [ ] Focus management in context menu needs work
+- [x] ARIA labels on the error-nav buttons, editor, search box and dismiss buttons
+- [x] `aria-pressed` on the language toggle, `aria-expanded` on the section headers
+- [x] `main`/`complementary` landmarks; `:focus-visible` styles (there were none, and
+      `.editor-ta` explicitly cleared the UA outline)
+- [x] `<html lang>` follows the language setting instead of being hardcoded to `en`
+- [x] `CtxMenu` has `role="menu"`, arrow-key navigation and focus restore
+- [ ] Mode/theme toggle groups could use `role="radiogroup"` rather than plain buttons
+- [ ] The error counts in the status bar are not in a live region
 
 ### Theming
 
@@ -351,8 +480,32 @@ All access goes through `hooks/usePersistentState.js`.
 ### Performance
 
 - [x] Extraction is debounced for large documents (≥5000 chars) via `useDebounced`
-- [x] `stem()` is memoized and the bare-term pass reuses precomputed per-token stems (a 166KB document extracts in ~70ms, down from ~125ms); `perf.test.js` guards against regressions
+- [x] `stem()` is memoized (one cache per language, keyed on the raw word) and its suffix
+      tables live at module scope rather than being rebuilt per call
+- [x] **The quadratic scans are gone.** `extractData` had four superlinear paths; the
+      worst was the sign range/list scan locating its preceding term with a `findIndex`
+      from index 0. Measured on the same machine: a list-heavy 103KB description went
+      133ms → 16ms, a plain 146KB one 34ms → 13ms. The others: bare-term coverage is a
+      binary search over sorted ranges with a prefix-max of end offsets (an exact
+      equivalent — a coverage bitmap would wrongly treat two adjacent ranges as covering
+      a span neither contains); `inParensAt` binary-searches the sign groups; the
+      antecedent check locates each term position's claim once
+- [x] `localStorage` writes are debounced. They ran on **every keystroke**, so a 200KB
+      description serialised and stored 200KB per key press — a bigger typing-latency
+      source than extraction, and not covered by the extraction debounce
+- [x] Hovering a sign touches only that sign's marks (indexed per backdrop render), not
+      every mark in the document
+- [x] `Sidebar` and the card components are `React.memo`'d, with memoized list props and
+      `useCallback`'d handlers. Note the ordering: memo alone skips **nothing** until the
+      props are stable identities, so all three go together or none do
+- [x] The `.docx` pipeline (and fflate) is lazily imported: 227KB → 214KB initial JS,
+      77KB → 70KB gzipped. Safe only because the service worker precaches the chunk
 - [x] Editor hover hit-testing is throttled to one `elementFromPoint` per animation frame
+- [x] `perf.test.js` covers the shapes it used to miss — a range/list-heavy corpus and a
+      150-claim claims-mode set — plus a **ratio** test that fails on quadratic growth
+      regardless of runner speed. The original single corpus contained no list constructs
+      and never ran in claims mode, so two of the three quadratic paths were invisible to
+      the guard written to catch exactly them
 - [ ] Very large documents may still lag in rendering (no virtualization)
 - [ ] A Web Worker for extraction was considered and deliberately not added — post-optimization timings sit comfortably inside the 200ms debounce
 
@@ -425,6 +578,7 @@ React + Vite. Common commands:
 npm install      # first-time setup
 npm run dev      # dev server with hot reload
 npm test         # run the Vitest unit tests
+npm run format   # prettier --write . (CI runs format:check before the tests)
 npm run build    # production bundle → dist/
 npm run preview  # serve the production build locally
 ```
@@ -448,31 +602,45 @@ Actions"** in Settings → Pages. The Vite `base` is `/refcheck/` (project-site 
 
 ### Testing
 
-Run with `npm test` (currently **335 tests**). Logic tests run under the fast `node`
+Run with `npm test` (currently **466 tests**). Logic tests run under the fast `node`
 environment; only `*.ui.test.jsx` files run under `jsdom` (scoped via
 `environmentMatchGlobs` in `vite.config.js`, with `src/test/setup.js` providing the
-jest-dom matchers and `matchMedia`/`clipboard` stubs). Coverage by area:
+jest-dom matchers and `matchMedia`/`clipboard` stubs). The `include` glob covers
+`build/` as well as `src/`, so the service-worker precache generator is tested too.
 
-| File                 | Covers                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
-| -------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `tokenize.test.js`   | word/number spans, trailing-letter (`12a`) & **prime (`10'`,`10′`)** signs, **Roman steps/substeps (`II`, `I.1`) + word-fallthrough (`In`, `Die`)**, German letters/hyphens, >5-digit runs, glued word+number, decimals, **CRLF spans**, repeat-call safety                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
-| `stem.test.js`       | EN Porter steps (`-s`/`-ies`/`-ing`/`-ed`/`-tion`, `-ss` retention, short words), DE Snowball (plurals, umlaut folding, case), dispatch + EN fallback                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
-| `constants.test.js`  | `likelySign`, `isClaimNumber` (terminators, indented, parens, mid-sentence, none, **Roman `I.` guard**, **CRLF**), `isSignToken` (prime/letter/range, **Roman + malformed rejection**), **`romanToInt`/`signVal`**, `compareSigns` (**Roman ordering, Arabic-before-Roman grouping**), article/ordinal helpers                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
-| `extract.test.js`    | sign/term consistency & inconsistencies, claims parentheses, claim-numbering (+ stable keys, CRLF), article errors (EN+DE), DE gender conflict, ordinal multi-word + `mwo` + `detectOrdStems` guards, bare terms, **prime signs**, **Roman step/substep signs + conflicts**, **ranges (to/bis/and/und/dash/semicolon, EN+DE, with negatives, figure-word exclusion, `bis`/`Ansprüchen` never a term)**, **parenthesised sign groups (`(6, 12; 13)` all in-parens, `(see 10)` excluded)**, **`noTermSigns`**, **bracketed paragraph numbers (`[0012]`)**, **per-claim antecedent basis**, **claim dependency errors**, `getAllErrors` (five categories, dismissal keys)                                                                                                                                                                  |
-| `claims.test.js`     | `segmentClaims` spans, `parseClaimRefs` (positions, offsets, lists, range expansion, DE, "preceding claims", trailing-comma negatives), `computeClaimGraph` (transitive ancestors, range/preceding ancestry, missing/forward/self typing, duplicate keys, acyclicity)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
-| `crossref.test.js`   | null/agreement, missing-in-desc/claims, numeric sort, sign & term conflicts, **`notIntroducedInDesc`**                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
-| `buildHtml.test.js`  | empty input, warn/data-sign marks, numbering + dependency highlights, dismissed→`h-dis`, focus class, escaping, non-overlapping marks, **strip-marks ≡ esc(text) + trailing-newline sentinel (alignment invariant)**, **trailing-newline sentinel appended (vertical alignment)**; `findAtPos`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
-| `reflist.test.js`    | `buildRefList` (sort, dominant term, primes, empty), `toPlainText`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
-| `headings.test.js`   | normalization (leading `III.`/`B)` labels, trailing colon, NBSP, the `I claim` guard), every dictionary entry round-tripping to its own kind, the **`BRIEF DESCRIPTION` vs `DESCRIPTION OF THE DRAWINGS` collision**, and negatives — a sentence mentioning "Ansprüche" and an over-long line must NOT match                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
-| `docx/read.test.js`  | entity decoding, **run joining with no separator** (`hous`+`ing`), `xml:space="preserve"`, tab/br, empty paragraphs, pStyle/numPr/bold (incl. `w:val="0"`), **text-box exclusion**, **tracked insertions kept / deletions dropped**, xml spans + pPr/rPr capture, header/footer/comment parts excluded, `notZip`/`noDocument` errors                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
-| `docSplit.test.js`   | EN + DE slicing, abstract/figure-listing/Bezugszeichenliste exclusion, heading-derived language, **auto-number synthesis** (per-`numId` counters, already-numbered left alone, multi-level flagged), no-heading and claims-only fallbacks, blank-edge trimming, and a description whose prose mentions "Ansprüchen"                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
-| `docx/write.test.js` | `alignLines` (same/changed/deleted/appended/inserted), `planEdits` no-op on unchanged text, round trip: edit applied, **untouched paragraphs and other zip parts byte-identical**, pPr/rPr preserved, **synthesized claim numbers stripped**, XML escaping, `<w:br/>` paragraphs, appended paragraphs, re-import equals the edit, `createDocx`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
-| `detectLang.test.js` | EN/DE prose, umlaut signal, empty input, **headings beat text**, text fallback                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
-| `importDoc.test.js`  | `fileKind` (`.docx`/`.docm`/legacy `.doc`/other), import returns buffers+lang+provenance, round-trip vs fresh export, DE fresh export heading                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
-| `beeFlight.test.js`  | spawn off each of the four edges, entering/`entered`, jagged path (heading reversals), bounded speed, lifespan → `leaving`, exit through any side, hard age cap, `countBees` (word boundary, plural, `beetle` negative, DE `Biene`/`Bienen` gated on language, `Bienenstock` negative)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
-| `i18n.test.js`       | EN/DE key parity + matching value types                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
-| `perf.test.js`       | extraction of a >100KB document stays well under a second (quadratic-regression guard)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
-| `App.ui.test.jsx`    | (jsdom) typing populates sidebar, dismiss removes warning, **collapsible card section toggles open/closed**, nav cycles, **click-to-cycle through a sign's occurrences (+ unfocus after last)**, RefList copy, persistence restore + reset, mode switching preserves buffers, cross-ref section, dependency card + dismissal, context-menu term extension, language/theme toggles + persistence, dismissed-error restore, **dropped `.docx` fills both buffers + switches language + reconstructs claim numbers**, **warnings render in the newly-detected language**, **import undo**, **legacy `.doc` rejection**, **typing "bee" summons the bee + EN/DE bubble text + no bee for a restored buffer + flight survives continued typing + explicit request beats reduced-motion + two bees + DE "Biene" + no bee on language switch** |
+Formatting is enforced: `.prettierrc` exists and CI runs `npm run format:check` before
+the tests. Keep it green — 51 of ~55 files once violated the repo's own config because
+nothing checked.
+
+Coverage by area:
+
+| File                             | Covers                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `tokenize.test.js`               | word/number spans, trailing-letter (`12a`) & **prime (`10'`,`10′`)** signs, **Roman steps/substeps (`II`, `I.1`) + word-fallthrough (`In`, `Die`)**, German letters/hyphens, >5-digit runs, glued word+number, decimals, **CRLF spans**, repeat-call safety                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| `stem.test.js`                   | EN Porter steps (`-s`/`-ies`/`-ing`/`-ed`/`-tion`, `-ss` retention, short words), DE Snowball (plurals, umlaut folding, case), dispatch + EN fallback, **cache transparency across an eviction and per-language isolation**                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| `constants.test.js`              | `likelySign`, `isClaimNumber` (terminators, indented, parens, mid-sentence, none, **Roman `I.` guard**, **CRLF**), `isSignToken` (prime/letter/range, **Roman + malformed rejection**), **`romanToInt`/`signVal`**, `compareSigns` (**Roman ordering, Arabic-before-Roman grouping**), article/ordinal helpers, **`disKey`** — the declared source of truth for dismissal keys, which had no direct test at all while every dismissal test hard-coded the literals                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| `extract.test.js`                | sign/term consistency & inconsistencies, claims parentheses, claim-numbering (+ stable keys, CRLF), article errors (EN+DE), DE gender conflict, ordinal multi-word + `mwo` + `detectOrdStems` guards, bare terms, **prime signs**, **Roman step/substep signs + conflicts**, **ranges (to/bis/and/und/or/oder/through/dash/semicolon, EN+DE, with negatives, figure-word exclusion, `bis`/`Ansprüchen` never a term)**, **parenthesised sign groups**, **`noTermSigns`**, **bracketed paragraph numbers (`[0012]`) — now unit-tested directly**, **per-claim antecedent basis**, **claim dependency errors**, **`autoMW = false`** (previously never exercised by any call site)                                                                                                                                                                                                                                                                                                                                                |
+| `claims.test.js`                 | `segmentClaims` spans, `parseClaimRefs` (positions, offsets, lists, range expansion, DE, "preceding claims", trailing-comma negatives), `computeClaimGraph` (transitive ancestors, range/preceding ancestry, missing/forward/self typing, duplicate keys, acyclicity)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| `crossref.test.js`               | null/agreement, missing-in-desc/claims, numeric sort, sign & term conflicts, **`notIntroducedInDesc`**                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| `buildHtml.test.js`              | empty input, warn/data-sign marks, numbering + dependency highlights, dismissed→`h-dis`, focus class, escaping, non-overlapping marks, **strip-marks ≡ esc(text) + trailing-newline sentinel (alignment invariant)**, **trailing-newline sentinel appended (vertical alignment)**; `findAtPos`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| `reflist.test.js`                | `buildRefList` (sort, dominant term, primes, empty), `toPlainText`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| `headings.test.js`               | normalization (leading `III.`/`B)` labels, trailing colon, NBSP, the `I claim` guard), every dictionary entry round-tripping to its own kind, the **`BRIEF DESCRIPTION` vs `DESCRIPTION OF THE DRAWINGS` collision**, and negatives — a sentence mentioning "Ansprüche" and an over-long line must NOT match                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| `docx/read.test.js`              | entity decoding, **run joining with no separator** (`hous`+`ing`), `xml:space="preserve"`, tab/br, empty paragraphs, pStyle/numPr/bold (incl. `w:val="0"`), **text-box exclusion**, **tracked insertions kept / deletions dropped**, xml spans + pPr/rPr capture, header/footer/comment parts excluded, `notZip`/`noDocument` errors                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| `docSplit.test.js`               | EN + DE slicing, abstract/figure-listing/Bezugszeichenliste exclusion, heading-derived language, **auto-number synthesis** (per-`numId` counters, already-numbered left alone, multi-level flagged), no-heading and claims-only fallbacks, blank-edge trimming, a description whose prose mentions "Ansprüchen", **the sign list returned separately as `signList`**                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| `docx/write.test.js`             | `alignLines` (same/changed/deleted/appended/inserted), `planEdits` no-op on unchanged text, round trip: edit applied, **untouched paragraphs and other zip parts byte-identical**, pPr/rPr preserved, **synthesized claim numbers stripped**, XML escaping, `<w:br/>` paragraphs, appended paragraphs, re-import equals the edit, `createDocx`, **the LCS size bail-out** — note `alignLines` trims the common head and tail _before_ measuring, so a single-edit case never reaches the degraded path however long the documents are                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| `detectLang.test.js`             | EN/DE prose, umlaut signal, empty input, **headings beat text**, text fallback                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| `importDoc.test.js`              | `fileKind` (`.docx`/`.docm`/legacy `.doc`/other), import returns buffers+lang+provenance, round-trip vs fresh export, DE fresh export heading                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| `beeFlight.test.js`              | spawn off each of the four edges, entering/`entered`, jagged path (heading reversals), bounded speed, lifespan → `leaving`, exit through any side, hard age cap, `countBees` (word boundary, plural, `beetle` negative, DE `Biene`/`Bienen` gated on language, `Bienenstock` negative)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| `i18n.test.js`                   | EN/DE key parity + matching value types                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| `errorSpans.test.js`             | severity per sign, `signTerm` spans only for warned signs, a dismissed sign kept as `dis` for the backdrop while the navigator drops it, all five categories, document order, **and that every highlight class the logic emits is actually defined in `styles.css`**                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| `reconcile.test.js`              | `parseRefList` (separator forms, multi-word terms, primed/suffixed signs, non-list lines skipped, duplicates) and `reconcileRefList` (clean list, listed-not-used, used-not-listed, term mismatch, plural/case tolerance, numeric sort, DE)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| `claimStats.test.js`             | independent/dependent counts, multiple dependency, a range counting as ONE multiply-dependent claim, depends-on-multiple, chain depth, and each EPO/USPTO threshold at and past its boundary                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| `swPrecache.test.js`             | precache list contents (base URL included, sw.js excluded, unhashed assets added, lazy chunk covered), build-id stability, and that a missing placeholder **throws** rather than shipping a worker that caches nothing                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| `usePersistentState.ui.test.jsx` | init/fallback, immediate vs debounced writes, burst coalescing, flush on pagehide and visibilitychange, quota failure reported not swallowed, private-mode degradation, all three codecs                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| `useHotkeys.ui.test.jsx`         | mod/Cmd equivalence, firing from inside the editor, suppression of unmodified bindings while typing, named keys, case-insensitivity, disable, handler swap without re-binding, unmount cleanup                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| `useFileDrop.ui.test.jsx`        | nested dragenter/dragleave balancing, **dragleave with types hidden**, **dragend on an abandoned drag**, drop delivers the file, dragover preventDefault                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| `perf.test.js`                   | a >100KB plain description, **a >100KB range/list-heavy one**, **a 150-claim claims-mode set**, and **a ratio test that fails on quadratic growth regardless of runner speed**. The original corpus had no list constructs and never ran in claims mode, so two of the three quadratic paths were invisible to it                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| `App.ui.test.jsx`                | (jsdom) typing populates sidebar, dismiss removes warning, **collapsible card section toggles open/closed**, nav cycles, **click-to-cycle through a sign's occurrences (+ unfocus after last)**, RefList copy, persistence restore + reset, mode switching preserves buffers, cross-ref section, dependency card + dismissal, context-menu term extension, language/theme toggles + persistence, dismissed-error restore, **dropped `.docx` fills both buffers + switches language + reconstructs claim numbers**, **import undo**, **legacy `.doc` rejection**, **the bee** (EN/DE bubble, no bee for a restored buffer, survives continued typing, beats reduced-motion on explicit request, two bees, no bee on language switch), **keyboard: Ctrl+[/] error nav, Enter/Space on a card, `/` focuses the filter but not while typing, `aria-expanded`, landmarks, `<html lang>`**, **reference-list check** (match, term mismatch, stale + missing entries, persistence, auto-fill from a `.docx`), **claim-set statistics** |
 
 Manual smoke test — `npm run dev`, then paste into Description mode:
 
