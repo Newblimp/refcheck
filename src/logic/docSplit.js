@@ -11,6 +11,7 @@
 //   Claims      = after a claims heading       → next signList/abstract heading
 
 import { SECTION_KINDS, matchHeading } from './headings.js';
+import { trimBlankEdges } from './blankEdges.js';
 
 /**
  * @typedef {Object} SplitResult
@@ -34,11 +35,11 @@ function findHeadings(paragraphs) {
 
 /** First heading of `kind` at or after `from`. */
 const firstOf = (headings, kind, from = 0) =>
-  headings.find(h => h.kind === kind && h.index >= from) || null;
+  headings.find((h) => h.kind === kind && h.index >= from) || null;
 
 /** First heading of any kind in `kinds` strictly after `after`. */
 const nextOf = (headings, kinds, after) =>
-  headings.find(h => h.index > after && kinds.includes(h.kind)) || null;
+  headings.find((h) => h.index > after && kinds.includes(h.kind)) || null;
 
 /**
  * Word auto-numbering lives in numbering.xml, not in the text — so an
@@ -54,10 +55,14 @@ const nextOf = (headings, kinds, after) =>
  */
 function applyClaimNumbering(paras) {
   const counters = new Map();
-  let synthesized = 0, unusual = false;
-  const out = paras.map(p => {
+  let synthesized = 0,
+    unusual = false;
+  const out = paras.map((p) => {
     if (!p.numbered) return p;
-    if (p.ilvl > 0) { unusual = true; return p; }
+    if (p.ilvl > 0) {
+      unusual = true;
+      return p;
+    }
     if (/^\s*\d{1,4}\s*[.)]/.test(p.text)) return p; // already numbered in text
     if (!p.text.trim()) return p;
     const key = p.numId == null ? '_' : String(p.numId);
@@ -70,12 +75,11 @@ function applyClaimNumbering(paras) {
   return { paras: out, synthesized, unusual };
 }
 
-/** Join paragraphs into buffer text, trimming leading/trailing blank lines. */
+/** Join paragraphs into buffer text, trimming leading/trailing blank lines.
+ *  The trimming rule is shared with docx/write.planEdits, which has to rebuild
+ *  this exact line array to diff against. */
 function toText(paras) {
-  const lines = paras.map(p => p.text);
-  while (lines.length && !lines[0].trim()) lines.shift();
-  while (lines.length && !lines[lines.length - 1].trim()) lines.pop();
-  return lines.join('\n');
+  return trimBlankEdges(paras.map((p) => p.text)).join('\n');
 }
 
 /**
@@ -93,7 +97,11 @@ export function splitPatentDoc(doc) {
   // Description: from just after its heading up to the claims or the sign list.
   let descParas = [];
   if (descH) {
-    const stop = nextOf(headings, [SECTION_KINDS.CLAIMS, SECTION_KINDS.SIGN_LIST, SECTION_KINDS.ABSTRACT], descH.index);
+    const stop = nextOf(
+      headings,
+      [SECTION_KINDS.CLAIMS, SECTION_KINDS.SIGN_LIST, SECTION_KINDS.ABSTRACT],
+      descH.index
+    );
     descParas = paragraphs.slice(descH.index + 1, stop ? stop.index : paragraphs.length);
   }
 
@@ -106,6 +114,16 @@ export function splitPatentDoc(doc) {
 
   const numbering = applyClaimNumbering(claimsParas);
   claimsParas = numbering.paras;
+
+  // The reference-sign list: excluded from the description and claims buffers,
+  // but returned so it can be reconciled against them rather than discarded.
+  // Runs to the abstract, or to the end of the document.
+  let signListParas = [];
+  const signListH = firstOf(headings, SECTION_KINDS.SIGN_LIST);
+  if (signListH) {
+    const stop = nextOf(headings, [SECTION_KINDS.ABSTRACT], signListH.index);
+    signListParas = paragraphs.slice(signListH.index + 1, stop ? stop.index : paragraphs.length);
+  }
 
   // Language: whichever dictionary matched. The claims heading is the most
   // standardised, so it wins when the two disagree.
@@ -123,18 +141,25 @@ export function splitPatentDoc(doc) {
   return {
     description: toText(descParas),
     claims: toText(claimsParas),
+    signList: toText(signListParas),
     lang,
     descParas,
     claimsParas,
+    signListParas,
     detected: {
       description: !!descH,
       claims: !!claimsH,
+      signList: !!signListH,
       descHeading: descH ? paragraphs[descH.index].text.trim() : null,
       claimsHeading: claimsH ? paragraphs[claimsH.index].text.trim() : null,
       fellBack,
       synthesizedClaimNumbers: numbering.synthesized,
       unusualNumbering: numbering.unusual,
-      headings: headings.map(h => ({ kind: h.kind, lang: h.lang, text: paragraphs[h.index].text.trim() })),
+      headings: headings.map((h) => ({
+        kind: h.kind,
+        lang: h.lang,
+        text: paragraphs[h.index].text.trim(),
+      })),
     },
   };
 }

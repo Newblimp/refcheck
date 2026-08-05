@@ -1,8 +1,27 @@
-import { classify } from './extract.js';
-import { disKey } from './constants.js';
+import { eachErrorSpan } from './errorSpans.js';
+import { escapeMarkup } from './escape.js';
 
 // ── HTML BUILDER ────────────────────────────────────────────────────────────
-export const esc = s => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+// Highlight classes, paired with the error kinds they render. These names are a
+// contract with styles.css — the pure logic layer has no other link to the
+// stylesheet, so a rename there silently stops highlighting. A test asserts
+// every class here is defined in styles.css.
+export const HL = {
+  warn: 'h-warn', // a sign with an inconsistency
+  dis: 'h-dis', // a sign whose errors were dismissed
+  ok: 'h-ok', // a consistent sign
+  signTerm: 'h-wt', // the term attached to a warned sign
+  art: 'h-art',
+  bare: 'h-bare',
+  num: 'h-num',
+  dep: 'h-dep',
+  focus: 'h-focus', // added to the sign the sidebar currently focuses
+};
+
+// Re-exported under its historical name; the implementation is shared with the
+// .docx writer now.
+export const esc = escapeMarkup;
 
 /**
  * Build the highlighted HTML for the backdrop overlay. Invariant: stripping the
@@ -16,39 +35,31 @@ export const esc = s => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/
  */
 export function buildHtml(text, res, mode, dis, focusSign) {
   if (!text) return '';
-  const { signData, termData, artErrors, bareTerms, numErrors, depErrors } = res;
   const spans = [];
-  for (const [sign, sData] of Object.entries(signData)) {
-    const isDis = dis.has(disKey.sign(sign));
-    const sev = isDis ? 'dis' : classify(sign, sData, termData, mode);
-    const focused = focusSign === sign;
-    for (const p of sData.positions) {
-      const cls = sev === 'warn' ? 'h-warn' : sev === 'dis' ? 'h-dis' : 'h-ok';
-      spans.push({ start: p.signStart, end: p.signEnd, cls: focused ? cls + ' h-focus' : cls, sign });
-      if (sev === 'warn') spans.push({ start: p.termStart, end: p.termEnd, cls: 'h-wt' });
+  eachErrorSpan(res, mode, dis, (sp) => {
+    if (sp.kind === 'sign') {
+      const cls = HL[sp.sev];
+      spans.push({
+        start: sp.start,
+        end: sp.end,
+        cls: focusSign === sp.sign ? `${cls} ${HL.focus}` : cls,
+        sign: sp.sign,
+      });
+    } else {
+      spans.push({ start: sp.start, end: sp.end, cls: HL[sp.kind] });
     }
-  }
-  for (const ae of artErrors) {
-    if (dis.has(disKey.art(ae.termStem))) continue;
-    spans.push({ start: ae.artStart, end: ae.artEnd, cls: 'h-art' });
-  }
-  for (const bt of bareTerms) {
-    if (dis.has(disKey.bare(bt.termStem))) continue;
-    spans.push({ start: bt.termStart, end: bt.termEnd, cls: 'h-bare' });
-  }
-  for (const ne of numErrors) {
-    if (dis.has(disKey.num(ne.key))) continue;
-    spans.push({ start: ne.start, end: ne.end, cls: 'h-num' });
-  }
-  for (const de of depErrors || []) {
-    if (dis.has(disKey.dep(de.key))) continue;
-    spans.push({ start: de.start, end: de.end, cls: 'h-dep' });
-  }
+  });
   spans.sort((a, b) => a.start - b.start || a.end - b.end);
   const clean = [];
   let cur = 0;
-  for (const sp of spans) { if (sp.start >= cur) { clean.push(sp); cur = sp.end; } }
-  let html = '', pos = 0;
+  for (const sp of spans) {
+    if (sp.start >= cur) {
+      clean.push(sp);
+      cur = sp.end;
+    }
+  }
+  let html = '',
+    pos = 0;
   for (const sp of clean) {
     if (sp.start > pos) html += esc(text.slice(pos, sp.start));
     const ds = sp.sign ? ` data-sign="${sp.sign}"` : '';

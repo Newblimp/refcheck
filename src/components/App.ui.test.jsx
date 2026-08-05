@@ -8,7 +8,8 @@ import { makeDocx, DE_BODY } from '../logic/docx/fixture.js';
 const docxFile = (body, name = 'application.docx') => {
   const bytes = makeDocx(body);
   const file = new File([bytes], name);
-  file.arrayBuffer = () => Promise.resolve(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength));
+  file.arrayBuffer = () =>
+    Promise.resolve(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength));
   return file;
 };
 
@@ -23,7 +24,9 @@ const typeInto = (text) => fireEvent.change(editor(), { target: { value: text } 
 const sidebar = (container) => within(container.querySelector('.ov-scroll'));
 
 beforeEach(() => {
-  try { localStorage.clear(); } catch {}
+  try {
+    localStorage.clear();
+  } catch {}
   vi.clearAllMocks();
 });
 
@@ -80,13 +83,13 @@ describe('App (interactive)', () => {
     const second = ed.value.indexOf('12', first + 1);
     expect(second).toBeGreaterThan(first);
 
-    fireEvent.click(card);                       // 1st click → first occurrence
+    fireEvent.click(card); // 1st click → first occurrence
     expect(ed.selectionStart).toBe(first);
-    fireEvent.click(card);                       // 2nd click → next occurrence
+    fireEvent.click(card); // 2nd click → next occurrence
     expect(ed.selectionStart).toBe(second);
-    fireEvent.click(card);                       // past the last → unfocus
+    fireEvent.click(card); // past the last → unfocus
     expect(container.querySelector('.sign-card.focused')).toBeFalsy();
-    fireEvent.click(card);                       // cycle restarts at the first
+    fireEvent.click(card); // cycle restarts at the first
     expect(ed.selectionStart).toBe(first);
   });
 
@@ -97,7 +100,9 @@ describe('App (interactive)', () => {
     fireEvent.click(container.querySelector('.reflist-hdr')); // expand
     fireEvent.click(container.querySelector('.reflist-section .restore-btn')); // copy
     expect(navigator.clipboard.writeText).toHaveBeenCalledWith('10\tdevice\n12\thousing');
-    expect(await within(container.querySelector('.reflist-section')).findByText('Copied')).toBeInTheDocument();
+    expect(
+      await within(container.querySelector('.reflist-section')).findByText('Copied')
+    ).toBeInTheDocument();
   });
 
   it('imports a dropped .docx into both buffers and sets the language', async () => {
@@ -105,14 +110,17 @@ describe('App (interactive)', () => {
     const file = docxFile(DE_BODY);
     fireEvent.drop(window, { dataTransfer: { types: ['Files'], files: [file] } });
 
-    await waitFor(() => expect(editor().value).toContain('Die Vorrichtung 10 umfasst ein Gehäuse 12.'));
+    await waitFor(() =>
+      expect(editor().value).toContain('Die Vorrichtung 10 umfasst ein Gehäuse 12.')
+    );
     // Only the detailed description — not the abstract, figure listing or sign list.
     expect(editor().value).not.toContain('Die Erfindung betrifft');
     expect(editor().value).not.toContain('Fig. 1 zeigt');
     expect(editor().value).not.toContain('10 Vorrichtung');
     // Language switched to German off the "Patentansprüche" heading.
     await waitFor(() =>
-      expect(container.querySelector('.lang-toggle button.active').textContent).toBe('DE'));
+      expect(container.querySelector('.lang-toggle button.active').textContent).toBe('DE')
+    );
     // Warnings render in the language the import just switched TO, not the one
     // that was active when the file was dropped.
     expect(await screen.findByText(/automatisch nummerierte Ansprüche/)).toBeInTheDocument();
@@ -184,9 +192,12 @@ describe('App (interactive)', () => {
     // The setting suppresses the RANDOM appearances, but typing "bee" is an
     // explicit by-name request; silently doing nothing just looks broken.
     const mm = window.matchMedia;
-    window.matchMedia = q => ({
+    window.matchMedia = (q) => ({
       matches: /prefers-reduced-motion/.test(q),
-      addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {},
+      addEventListener() {},
+      removeEventListener() {},
+      addListener() {},
+      removeListener() {},
     });
     try {
       const { container } = render(<App />);
@@ -262,7 +273,9 @@ describe('App (interactive)', () => {
     fireEvent.click(screen.getByText('Claims'));
     typeInto('1. A device (10) with a housing (12).');
     // Sign 10 exists only in the claims buffer → "in claims, not in description".
-    expect(await sidebar(container).findByText(/in claims, not in description/)).toBeInTheDocument();
+    expect(
+      await sidebar(container).findByText(/in claims, not in description/)
+    ).toBeInTheDocument();
   });
 
   it('flags a bad claim dependency and dismisses it from its card', async () => {
@@ -270,10 +283,13 @@ describe('App (interactive)', () => {
     fireEvent.click(screen.getByText('Claims'));
     typeInto('1. A device (10) according to claim 3.');
     expect(await sidebar(container).findByText(/nonexistent claim 3/)).toBeInTheDocument();
-    const card = sidebar(container).getByText(/nonexistent claim 3/).closest('.bare-card');
+    const card = sidebar(container)
+      .getByText(/nonexistent claim 3/)
+      .closest('.bare-card');
     fireEvent.click(card.querySelector('.dis-btn'));
     await waitFor(() =>
-      expect(sidebar(container).queryByText(/nonexistent claim 3/)).not.toBeInTheDocument());
+      expect(sidebar(container).queryByText(/nonexistent claim 3/)).not.toBeInTheDocument()
+    );
   });
 
   it('extends a term via the context menu', async () => {
@@ -318,5 +334,191 @@ describe('App (interactive)', () => {
     // The warned sign is already dismissed → dim badge, no warn badge.
     await waitFor(() => expect(container.querySelector('.badge.dim')).toBeTruthy());
     expect(container.querySelector('.badge.warn')).toBeFalsy();
+  });
+});
+
+describe('App (keyboard and accessibility)', () => {
+  const CONFLICT = 'The housing 12 is fixed. The casing 12 is fixed. A cover 14 is on.';
+
+  it('steps through errors with Ctrl+] and Ctrl+[', async () => {
+    const { container } = render(<App />);
+    typeInto(CONFLICT);
+    await sidebar(container).findByText('12');
+    const label = () => container.querySelector('.nav-lbl')?.textContent;
+    await waitFor(() => expect(label()).toBeTruthy());
+    const first = label();
+
+    fireEvent.keyDown(window, { key: ']', ctrlKey: true });
+    await waitFor(() => expect(label()).not.toBe(first));
+    const second = label();
+
+    fireEvent.keyDown(window, { key: '[', ctrlKey: true });
+    await waitFor(() => expect(label()).toBe(first));
+    expect(second).not.toBe(first);
+  });
+
+  it('the error-nav buttons have accessible names', async () => {
+    const { container } = render(<App />);
+    typeInto(CONFLICT);
+    await sidebar(container).findByText('12');
+    // These were SVG-only buttons with no name at all.
+    expect(screen.getByRole('button', { name: /previous error/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /next error/i })).toBeInTheDocument();
+  });
+
+  it('error cards are reachable and activatable by keyboard', async () => {
+    const { container } = render(<App />);
+    typeInto(CONFLICT);
+    await sidebar(container).findByText('12');
+    const card = container.querySelector('.sign-card');
+    // Was a plain <div onClick> — no role, no tab stop, no key handler.
+    expect(card).toHaveAttribute('role', 'button');
+    expect(card).toHaveAttribute('tabindex', '0');
+    fireEvent.keyDown(card, { key: 'Enter' });
+    await waitFor(() => expect(card.className).toMatch(/focused/));
+  });
+
+  it('activates a card with Space as well as Enter', async () => {
+    const { container } = render(<App />);
+    typeInto(CONFLICT);
+    await sidebar(container).findByText('12');
+    const card = container.querySelector('.sign-card');
+    fireEvent.keyDown(card, { key: ' ' });
+    await waitFor(() => expect(card.className).toMatch(/focused/));
+  });
+
+  it('collapsible section headers expose their expanded state', async () => {
+    const { container } = render(<App />);
+    typeInto(CONFLICT);
+    await sidebar(container).findByText('12');
+    const header = container.querySelector('.sec-lbl-toggle');
+    expect(header).toHaveAttribute('aria-expanded', 'true');
+    fireEvent.click(header);
+    await waitFor(() => expect(header).toHaveAttribute('aria-expanded', 'false'));
+  });
+
+  it('"/" focuses the sign filter, but not while typing in the editor', async () => {
+    const { container } = render(<App />);
+    typeInto(CONFLICT);
+    await sidebar(container).findByText('12');
+    const search = container.querySelector('.search-in');
+
+    // Fired at the editor: must be ignored, or the app is unusable.
+    fireEvent.keyDown(editor(), { key: '/', target: editor() });
+    expect(document.activeElement).not.toBe(search);
+
+    fireEvent.keyDown(document.body, { key: '/' });
+    await waitFor(() => expect(document.activeElement).toBe(search));
+  });
+
+  it('keeps <html lang> in step with the language toggle', async () => {
+    render(<App />);
+    expect(document.documentElement.lang).toBe('en');
+    fireEvent.click(screen.getByRole('button', { name: 'DE' }));
+    await waitFor(() => expect(document.documentElement.lang).toBe('de'));
+  });
+
+  it('marks the active language toggle with aria-pressed', async () => {
+    render(<App />);
+    expect(screen.getByRole('button', { name: 'EN' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('button', { name: 'DE' })).toHaveAttribute('aria-pressed', 'false');
+  });
+
+  it('exposes main and complementary landmarks', () => {
+    render(<App />);
+    expect(screen.getByRole('main')).toBeInTheDocument();
+    expect(screen.getByRole('complementary')).toBeInTheDocument();
+  });
+
+  it('gives the editor an accessible name', () => {
+    render(<App />);
+    expect(screen.getByRole('textbox', { name: /patent text/i })).toBeInTheDocument();
+  });
+});
+
+describe('App (reference-list check and claim statistics)', () => {
+  const refListInput = (container) => container.querySelector('.rlc-in');
+
+  it('reports a reference list that matches the text', async () => {
+    const { container } = render(<App />);
+    typeInto('A housing 12 is provided. The housing 12 holds a cover 14.');
+    await sidebar(container).findByText('12');
+    fireEvent.change(refListInput(container), {
+      target: { value: '12 housing\n14 cover' },
+    });
+    expect(await sidebar(container).findByText(/2 entries match the text/)).toBeInTheDocument();
+  });
+
+  it('flags a term that differs between the list and the text', async () => {
+    const { container } = render(<App />);
+    typeInto('A housing 12 is provided. The housing 12 holds a cover 14.');
+    await sidebar(container).findByText('12');
+    fireEvent.change(refListInput(container), {
+      target: { value: '12 casing\n14 cover' },
+    });
+    expect(
+      await sidebar(container).findByText(/list: "casing".*text: "housing"/)
+    ).toBeInTheDocument();
+  });
+
+  it('flags a sign listed but never used, and one used but not listed', async () => {
+    const { container } = render(<App />);
+    typeInto('A housing 12 is provided. The housing 12 holds a cover 14.');
+    await sidebar(container).findByText('12');
+    fireEvent.change(refListInput(container), {
+      target: { value: '12 housing\n99 flywheel' },
+    });
+    expect(await sidebar(container).findByText(/never used in the text/)).toBeInTheDocument();
+    expect(sidebar(container).getByText(/not listed/)).toBeInTheDocument();
+  });
+
+  it('persists the reference list across a remount', async () => {
+    const { container, unmount } = render(<App />);
+    typeInto('A housing 12 is provided.');
+    await sidebar(container).findByText('12');
+    fireEvent.change(refListInput(container), { target: { value: '12 housing' } });
+    // The text buffer write is debounced; the sidebar only renders its sections
+    // once the restored buffer produces signs, so wait for both to land.
+    await waitFor(() => expect(localStorage.getItem('rsc_reflist')).toBe('12 housing'));
+    await waitFor(() => expect(localStorage.getItem('rsc_desc')).toBeTruthy());
+    unmount();
+    const again = render(<App />);
+    expect(await again.findByDisplayValue('12 housing')).toBeInTheDocument();
+  });
+
+  it('fills the reference list from an imported .docx Bezugszeichenliste', async () => {
+    const { container } = render(<App />);
+    const file = docxFile(DE_BODY);
+    await waitFor(() => expect(document.querySelector('.editor-ta')).toBeInTheDocument());
+    const dt = { types: ['Files'], files: [file] };
+    fireEvent(
+      window,
+      Object.assign(new Event('dragenter', { bubbles: true }), { dataTransfer: dt })
+    );
+    fireEvent(window, Object.assign(new Event('drop', { bubbles: true }), { dataTransfer: dt }));
+    await waitFor(() => expect(refListInput(container).value).toBe('10 Vorrichtung\n12 Gehäuse'));
+  });
+
+  it('shows claim-set statistics in claims mode', async () => {
+    const { container } = render(<App />);
+    fireEvent.click(screen.getByText('Claims'));
+    typeInto(
+      [
+        '1. A device (10) comprising a housing (12).',
+        '2. The device (10) of claim 1, wherein the housing (12) is metal.',
+        '3. The device (10) according to claim 1 or 2, further comprising a cover (14).',
+      ].join('\n')
+    );
+    await waitFor(() => expect(container.querySelector('.cs-body')).toBeInTheDocument());
+    const stats = within(container.querySelector('.cs-body'));
+    expect(stats.getByText('Count').previousSibling).toHaveTextContent('3');
+    expect(stats.getByText(/multiple dependency: claim 3/)).toBeInTheDocument();
+  });
+
+  it('does not show claim statistics in description mode', async () => {
+    const { container } = render(<App />);
+    typeInto('A housing 12 is provided.');
+    await sidebar(container).findByText('12');
+    expect(container.querySelector('.cs-body')).not.toBeInTheDocument();
   });
 });

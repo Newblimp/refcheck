@@ -34,12 +34,20 @@ export function ImportBanner({ report, t, onUndo, onDismiss }) {
       </span>
       {warnings.length > 0 && (
         <span className="imp-warnings">
-          {warnings.map((w, i) => <span key={i}>⚠ {str(w.key, w.arg)}</span>)}
+          {warnings.map((w, i) => (
+            <span key={i}>⚠ {str(w.key, w.arg)}</span>
+          ))}
         </span>
       )}
       <span className="imp-actions">
-        {onUndo && <button className="restore-btn" onClick={onUndo}>↩ {t.impUndo}</button>}
-        <button className="imp-x" onClick={onDismiss} aria-label="Dismiss">×</button>
+        {onUndo && (
+          <button className="restore-btn" onClick={onUndo}>
+            ↩ {t.impUndo}
+          </button>
+        )}
+        <button className="imp-x" onClick={onDismiss} aria-label="Dismiss">
+          ×
+        </button>
       </span>
     </div>
   );

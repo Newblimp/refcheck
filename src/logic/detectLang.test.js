@@ -3,14 +3,18 @@ import { detectLang, detectLangFromText } from './detectLang.js';
 
 describe('detectLangFromText', () => {
   it('recognises German prose', () => {
-    expect(detectLangFromText(
-      'Die Vorrichtung 10 umfasst ein Gehäuse 12, wobei das Gehäuse 12 aus Aluminium besteht.'
-    )).toBe('de');
+    expect(
+      detectLangFromText(
+        'Die Vorrichtung 10 umfasst ein Gehäuse 12, wobei das Gehäuse 12 aus Aluminium besteht.'
+      )
+    ).toBe('de');
   });
   it('recognises English prose', () => {
-    expect(detectLangFromText(
-      'The device 10 comprises a housing 12, wherein the housing 12 is made of aluminium.'
-    )).toBe('en');
+    expect(
+      detectLangFromText(
+        'The device 10 comprises a housing 12, wherein the housing 12 is made of aluminium.'
+      )
+    ).toBe('en');
   });
   it('uses umlauts as a strong German signal on short text', () => {
     expect(detectLangFromText('Gehäuse Schlüssel Größe')).toBe('de');
@@ -28,7 +32,10 @@ describe('detectLang', () => {
     expect(r).toEqual({ lang: 'de', from: 'headings' });
   });
   it('falls back to text scoring when no heading matched', () => {
-    const r = detectLang({ lang: null }, 'Die Vorrichtung 10 umfasst ein Gehäuse 12 und wird dadurch gehalten.');
+    const r = detectLang(
+      { lang: null },
+      'Die Vorrichtung 10 umfasst ein Gehäuse 12 und wird dadurch gehalten.'
+    );
     expect(r).toEqual({ lang: 'de', from: 'text' });
   });
   it('handles a missing split object', () => {

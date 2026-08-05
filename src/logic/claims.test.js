@@ -15,9 +15,10 @@ const nums = (text) => {
 
 describe('segmentClaims', () => {
   it('splits the buffer into contiguous per-claim spans', () => {
-    const text = '1. A device (10).\n2. The device (10) of claim 1.\n3. The device (10) of claim 2.';
+    const text =
+      '1. A device (10).\n2. The device (10) of claim 1.\n3. The device (10) of claim 2.';
     const claims = segmentClaims(text, nums(text));
-    expect(claims.map(c => c.num)).toEqual([1, 2, 3]);
+    expect(claims.map((c) => c.num)).toEqual([1, 2, 3]);
     expect(claims[0].end).toBe(claims[1].start);
     expect(claims[1].end).toBe(claims[2].start);
     expect(claims[2].end).toBe(text.length);
@@ -40,18 +41,18 @@ describe('parseClaimRefs', () => {
 
   it('parses a comma/or list', () => {
     const { refs, nums: n } = parseClaimRefs('according to claims 1, 2 or 4');
-    expect(refs.map(r => r.num)).toEqual([1, 2, 4]);
+    expect(refs.map((r) => r.num)).toEqual([1, 2, 4]);
     expect([...n].sort()).toEqual([1, 2, 4]);
   });
 
   it('expands a "to" range into intermediates (nums) but keeps refs literal', () => {
     const { refs, nums: n } = parseClaimRefs('according to any one of claims 1 to 4');
-    expect(refs.map(r => r.num)).toEqual([1, 4]);
+    expect(refs.map((r) => r.num)).toEqual([1, 4]);
     expect([...n].sort()).toEqual([1, 2, 3, 4]);
   });
 
   it('parses German references and "bis" ranges', () => {
-    expect(parseClaimRefs('nach Anspruch 2').refs.map(r => r.num)).toEqual([2]);
+    expect(parseClaimRefs('nach Anspruch 2').refs.map((r) => r.num)).toEqual([2]);
     const { nums: n } = parseClaimRefs('nach einem der Ansprüche 1 bis 3');
     expect([...n].sort()).toEqual([1, 2, 3]);
   });
@@ -64,7 +65,7 @@ describe('parseClaimRefs', () => {
 
   it('does not let a trailing comma swallow following words ("claim 1, wherein")', () => {
     const { refs } = parseClaimRefs('The device of claim 1, wherein the seal is round.');
-    expect(refs.map(r => r.num)).toEqual([1]);
+    expect(refs.map((r) => r.num)).toEqual([1]);
   });
 
   it('returns nothing for a claim without references', () => {
@@ -97,7 +98,8 @@ describe('computeClaimGraph', () => {
   });
 
   it('"preceding claims" makes every earlier claim an ancestor', () => {
-    const text = '1. A device (10).\n2. The device of claim 1.\n3. The device of any preceding claims.';
+    const text =
+      '1. A device (10).\n2. The device of claim 1.\n3. The device of any preceding claims.';
     const g = computeClaimGraph(text, nums(text));
     expect([...g.ancestors.get(3)].sort()).toEqual([1, 2]);
   });
@@ -108,7 +110,7 @@ describe('computeClaimGraph', () => {
       '2. The device of claim 2.\n' + // self
       '3. The device of claim 9.'; // missing
     const g = computeClaimGraph(text, nums(text));
-    expect(g.depErrors.map(e => [e.claim, e.ref, e.type])).toEqual([
+    expect(g.depErrors.map((e) => [e.claim, e.ref, e.type])).toEqual([
       [1, 3, 'forward'],
       [2, 2, 'self'],
       [3, 9, 'missing'],
@@ -118,7 +120,7 @@ describe('computeClaimGraph', () => {
   it('gives duplicate bad references distinct, stable keys', () => {
     const text = '1. A device of claim 9 or claim 9.';
     const g = computeClaimGraph(text, nums(text));
-    expect(g.depErrors.map(e => e.key)).toEqual(['1>9#1', '1>9#2']);
+    expect(g.depErrors.map((e) => e.key)).toEqual(['1>9#1', '1>9#2']);
   });
 
   it('bad references never create dependency edges (graph stays acyclic)', () => {

@@ -10,30 +10,44 @@
 // corrections ("12" → "14", fixing an article) touch a handful of paragraphs.
 
 import { unzipSync, zipSync, strToU8, strFromU8 } from 'fflate';
+import { escapeMarkup } from '../escape.js';
+import { blankEdges } from '../blankEdges.js';
 
-const esc = s => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+// Shared with the HTML backdrop builder — same three characters, same rules.
+const esc = escapeMarkup;
 
 /** Longest common subsequence of two line arrays → aligned index pairs. */
+// Cell budget for the LCS table. Beyond this the diff falls back to positional
+// pairing: a 2000x2000 table is already 16MB and 4M iterations, which is not a
+// reasonable thing to do in a browser tab for a cosmetic alignment improvement.
+const MAX_LCS_CELLS = 4_000_000;
+
 function lcsPairs(a, b) {
-  const n = a.length, m = b.length;
+  const n = a.length,
+    m = b.length;
   const pairs = [];
   if (!n || !m) return pairs;
   // Bounded: past this size the prefix/suffix trim below has already failed to
   // reduce the problem, and a positional pairing is good enough.
-  if (n * m > 4_000_000) return pairs;
+  if (n * m > MAX_LCS_CELLS) return pairs;
   const dp = new Int32Array((n + 1) * (m + 1));
   const w = m + 1;
   for (let i = n - 1; i >= 0; i--) {
     for (let j = m - 1; j >= 0; j--) {
-      dp[i * w + j] = a[i] === b[j]
-        ? dp[(i + 1) * w + (j + 1)] + 1
-        : Math.max(dp[(i + 1) * w + j], dp[i * w + (j + 1)]);
+      dp[i * w + j] =
+        a[i] === b[j]
+          ? dp[(i + 1) * w + (j + 1)] + 1
+          : Math.max(dp[(i + 1) * w + j], dp[i * w + (j + 1)]);
     }
   }
-  let i = 0, j = 0;
+  let i = 0,
+    j = 0;
   while (i < n && j < m) {
-    if (a[i] === b[j]) { pairs.push([i, j]); i++; j++; }
-    else if (dp[(i + 1) * w + j] >= dp[i * w + (j + 1)]) i++;
+    if (a[i] === b[j]) {
+      pairs.push([i, j]);
+      i++;
+      j++;
+    } else if (dp[(i + 1) * w + j] >= dp[i * w + (j + 1)]) i++;
     else j++;
   }
   return pairs;
@@ -51,9 +65,16 @@ export function alignLines(a, b) {
   const insertAfter = new Map();
   // Trim the common head and tail first; in practice this leaves a tiny middle.
   let lo = 0;
-  while (lo < a.length && lo < b.length && a[lo] === b[lo]) { map[lo] = lo; lo++; }
+  while (lo < a.length && lo < b.length && a[lo] === b[lo]) {
+    map[lo] = lo;
+    lo++;
+  }
   let hi = 0;
-  while (hi < a.length - lo && hi < b.length - lo && a[a.length - 1 - hi] === b[b.length - 1 - hi]) {
+  while (
+    hi < a.length - lo &&
+    hi < b.length - lo &&
+    a[a.length - 1 - hi] === b[b.length - 1 - hi]
+  ) {
     map[a.length - 1 - hi] = b.length - 1 - hi;
     hi++;
   }
@@ -64,17 +85,20 @@ export function alignLines(a, b) {
   const anchors = lcsPairs(aMid, bMid).map(([i, j]) => [i + lo, j + lo]);
   // Walk anchor to anchor, pairing the lines in between positionally.
   const blocks = [];
-  let pi = lo, pj = lo;
+  let pi = lo,
+    pj = lo;
   for (const [ai, bj] of anchors) {
     blocks.push([pi, ai, pj, bj]);
     map[ai] = bj;
-    pi = ai + 1; pj = bj + 1;
+    pi = ai + 1;
+    pj = bj + 1;
   }
   blocks.push([pi, a.length - hi, pj, b.length - hi]);
 
   const tail = [];
   for (const [a0, a1, b0, b1] of blocks) {
-    const oldN = a1 - a0, newN = b1 - b0;
+    const oldN = a1 - a0,
+      newN = b1 - b0;
     const paired = Math.min(oldN, newN);
     for (let k = 0; k < paired; k++) map[a0 + k] = b0 + k;
     // Surplus old lines were deleted (map stays null).
@@ -124,13 +148,14 @@ export function planEdits(paras, editedText) {
   const owner = []; // line index → paragraph index
   paras.forEach((p, pi) => {
     const ls = p.text.split('\n');
-    for (const l of ls) { oldLines.push(l); owner.push(pi); }
+    for (const l of ls) {
+      oldLines.push(l);
+      owner.push(pi);
+    }
   });
-  // toText() trimmed leading/trailing blank lines; mirror that here.
-  let head = 0;
-  while (head < oldLines.length && !oldLines[head].trim()) head++;
-  let tailBlank = 0;
-  while (tailBlank < oldLines.length - head && !oldLines[oldLines.length - 1 - tailBlank].trim()) tailBlank++;
+  // toText() trimmed leading/trailing blank lines; the same rule has to apply
+  // here or the diff lines up against text the user never saw.
+  const { head, tail: tailBlank } = blankEdges(oldLines);
   const visOld = oldLines.slice(head, oldLines.length - tailBlank);
   const visOwner = owner.slice(head, oldLines.length - tailBlank);
 
@@ -144,9 +169,15 @@ export function planEdits(paras, editedText) {
   visOwner.forEach((pi, li) => {
     if (!byPara.has(pi)) byPara.set(pi, { lines: [], deleted: true });
     const rec = byPara.get(pi);
-    if (map[li] != null) { rec.lines.push(newLines[map[li]]); rec.deleted = false; }
+    if (map[li] != null) {
+      rec.lines.push(newLines[map[li]]);
+      rec.deleted = false;
+    }
     const ins = insertAfter.get(li);
-    if (ins) { rec.lines.push(...ins); rec.deleted = false; }
+    if (ins) {
+      rec.lines.push(...ins);
+      rec.deleted = false;
+    }
   });
 
   const splices = [];
@@ -156,19 +187,24 @@ export function planEdits(paras, editedText) {
     // Never write our synthesized claim numbers back — the paragraph already
     // carries <w:numPr> and Word would render "1. 1. A device…".
     const prefix = para.src.synthesizedPrefix;
-    const wasText = prefix && para.text.startsWith(prefix) ? para.text.slice(prefix.length) : para.text;
+    const wasText =
+      prefix && para.text.startsWith(prefix) ? para.text.slice(prefix.length) : para.text;
     if (prefix && next.startsWith(prefix)) next = next.slice(prefix.length);
     if (rec.deleted) {
       splices.push({ xmlStart: para.src.xmlStart, xmlEnd: para.src.xmlEnd, xml: '' });
     } else if (next !== wasText) {
-      splices.push({ xmlStart: para.src.xmlStart, xmlEnd: para.src.xmlEnd, xml: buildParagraph(para, next) });
+      splices.push({
+        xmlStart: para.src.xmlStart,
+        xmlEnd: para.src.xmlEnd,
+        xml: buildParagraph(para, next),
+      });
     }
   }
 
   // Lines added past the end become new paragraphs cloned from the last one.
   if (tail.length) {
     const last = paras[paras.length - 1];
-    const xml = tail.map(l => buildParagraph(last, l)).join('');
+    const xml = tail.map((l) => buildParagraph(last, l)).join('');
     splices.push({ xmlStart: last.src.xmlEnd, xmlEnd: last.src.xmlEnd, xml, append: true });
   }
   return splices;
@@ -197,12 +233,18 @@ export function writeDocx(doc, buffers) {
 
 /** Build a minimal .docx from plain text, for buffers that were never imported. */
 export function createDocx(sections) {
-  const body = sections.map(sec => {
-    const head = sec.heading ? `<w:p><w:pPr><w:pStyle w:val="Heading1"/></w:pPr><w:r><w:t xml:space="preserve">${esc(sec.heading)}</w:t></w:r></w:p>` : '';
-    const paras = String(sec.text || '').split('\n')
-      .map(l => `<w:p><w:r><w:t xml:space="preserve">${esc(l)}</w:t></w:r></w:p>`).join('');
-    return head + paras;
-  }).join('');
+  const body = sections
+    .map((sec) => {
+      const head = sec.heading
+        ? `<w:p><w:pPr><w:pStyle w:val="Heading1"/></w:pPr><w:r><w:t xml:space="preserve">${esc(sec.heading)}</w:t></w:r></w:p>`
+        : '';
+      const paras = String(sec.text || '')
+        .split('\n')
+        .map((l) => `<w:p><w:r><w:t xml:space="preserve">${esc(l)}</w:t></w:r></w:p>`)
+        .join('');
+      return head + paras;
+    })
+    .join('');
 
   const documentXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>${body}</w:body></w:document>`;
@@ -213,14 +255,19 @@ export function createDocx(sections) {
   const rels = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>`;
 
-  return zipSync({
-    '[Content_Types].xml': strToU8(contentTypes),
-    '_rels/.rels': strToU8(rels),
-    'word/document.xml': strToU8(documentXml),
-  }, { level: 6 });
+  return zipSync(
+    {
+      '[Content_Types].xml': strToU8(contentTypes),
+      '_rels/.rels': strToU8(rels),
+      'word/document.xml': strToU8(documentXml),
+    },
+    { level: 6 }
+  );
 }
 
 /** Read back document.xml from a produced file — used by the tests. */
 export function documentXmlOf(bytes) {
-  return strFromU8(unzipSync(bytes, { filter: f => f.name === 'word/document.xml' })['word/document.xml']);
+  return strFromU8(
+    unzipSync(bytes, { filter: (f) => f.name === 'word/document.xml' })['word/document.xml']
+  );
 }

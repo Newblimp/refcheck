@@ -8,8 +8,10 @@ if (typeof window !== 'undefined') {
   if (!window.matchMedia) {
     window.matchMedia = () => ({
       matches: false,
-      addEventListener() {}, removeEventListener() {},
-      addListener() {}, removeListener() {},
+      addEventListener() {},
+      removeEventListener() {},
+      addListener() {},
+      removeListener() {},
     });
   }
 

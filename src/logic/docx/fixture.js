@@ -1,6 +1,7 @@
 // Test helper: build real .docx bytes in memory, so no binary fixture has to be
 // committed. Shared by read/write/import tests.
 import { zipSync, strToU8 } from 'fflate';
+import { escapeMarkup } from '../escape.js';
 
 /** One `<w:p>`. opts: {style, num, ilvl, numId, bold, italic, raw} */
 export function para(text, opts = {}) {
@@ -8,19 +9,25 @@ export function para(text, opts = {}) {
   const props = [];
   if (opts.style) props.push(`<w:pStyle w:val="${opts.style}"/>`);
   if (opts.num) {
-    props.push(`<w:numPr><w:ilvl w:val="${opts.ilvl ?? 0}"/><w:numId w:val="${opts.numId ?? 1}"/></w:numPr>`);
+    props.push(
+      `<w:numPr><w:ilvl w:val="${opts.ilvl ?? 0}"/><w:numId w:val="${opts.numId ?? 1}"/></w:numPr>`
+    );
   }
   const pPr = props.length ? `<w:pPr>${props.join('')}</w:pPr>` : '';
-  const rPr = opts.bold || opts.italic
-    ? `<w:rPr>${opts.bold ? '<w:b/>' : ''}${opts.italic ? '<w:i/>' : ''}</w:rPr>` : '';
-  const esc = String(text).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const rPr =
+    opts.bold || opts.italic
+      ? `<w:rPr>${opts.bold ? '<w:b/>' : ''}${opts.italic ? '<w:i/>' : ''}</w:rPr>`
+      : '';
+  const esc = escapeMarkup(text);
   return `<w:p>${pPr}<w:r>${rPr}<w:t xml:space="preserve">${esc}</w:t></w:r></w:p>`;
 }
 
 export function documentXml(body) {
-  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>` +
+  return (
+    `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>` +
     `<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">` +
-    `<w:body>${body}</w:body></w:document>`;
+    `<w:body>${body}</w:body></w:document>`
+  );
 }
 
 /** A complete .docx (plus a header part, to prove headers are excluded). */

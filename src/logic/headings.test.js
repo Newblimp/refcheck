@@ -1,8 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import { matchHeading, normalizeHeading, SECTION_KINDS, HEADINGS } from './headings.js';
 
-const kindOf = s => matchHeading(s)?.kind ?? null;
-const langOf = s => matchHeading(s)?.lang ?? null;
+const kindOf = (s) => matchHeading(s)?.kind ?? null;
+const langOf = (s) => matchHeading(s)?.lang ?? null;
 
 describe('normalizeHeading', () => {
   it('unifies whitespace, strips leading labels and trailing punctuation', () => {
@@ -28,7 +28,13 @@ describe('matchHeading — claims', () => {
     }
   });
   it('matches the English claim headings', () => {
-    for (const h of ['Claims', 'CLAIMS', 'What is claimed is:', 'We claim', 'The invention claimed is']) {
+    for (const h of [
+      'Claims',
+      'CLAIMS',
+      'What is claimed is:',
+      'We claim',
+      'The invention claimed is',
+    ]) {
       expect(kindOf(h)).toBe(SECTION_KINDS.CLAIMS);
       expect(langOf(h)).toBe('en');
     }
@@ -37,15 +43,24 @@ describe('matchHeading — claims', () => {
 
 describe('matchHeading — detailed description', () => {
   it('matches German variants', () => {
-    for (const h of ['Detaillierte Beschreibung', 'Detailierte Beschreibung', 'Figurenbeschreibung',
-      'Beschreibung der Ausführungsbeispiele', 'Ausführungsbeispiele']) {
+    for (const h of [
+      'Detaillierte Beschreibung',
+      'Detailierte Beschreibung',
+      'Figurenbeschreibung',
+      'Beschreibung der Ausführungsbeispiele',
+      'Ausführungsbeispiele',
+    ]) {
       expect(kindOf(h)).toBe(SECTION_KINDS.DETAILED_DESC);
       expect(langOf(h)).toBe('de');
     }
   });
   it('matches English variants', () => {
-    for (const h of ['Detailed Description', 'DETAILED DESCRIPTION OF THE INVENTION',
-      'Description of Embodiments', 'Detailed description of the preferred embodiments']) {
+    for (const h of [
+      'Detailed Description',
+      'DETAILED DESCRIPTION OF THE INVENTION',
+      'Description of Embodiments',
+      'Detailed description of the preferred embodiments',
+    ]) {
       expect(kindOf(h)).toBe(SECTION_KINDS.DETAILED_DESC);
       expect(langOf(h)).toBe('en');
     }
@@ -60,8 +75,12 @@ describe('matchHeading — the BRIEF DESCRIPTION collision', () => {
     expect(kindOf('DESCRIPTION OF THE DRAWINGS')).toBe(SECTION_KINDS.DETAILED_DESC);
   });
   it('the prefix fallback keeps them apart too', () => {
-    expect(kindOf('Brief description of the drawings of the invention')).toBe(SECTION_KINDS.FIGURE_LISTING);
-    expect(kindOf('Kurzbeschreibung der Zeichnungen des Gerätes')).toBe(SECTION_KINDS.FIGURE_LISTING);
+    expect(kindOf('Brief description of the drawings of the invention')).toBe(
+      SECTION_KINDS.FIGURE_LISTING
+    );
+    expect(kindOf('Kurzbeschreibung der Zeichnungen des Gerätes')).toBe(
+      SECTION_KINDS.FIGURE_LISTING
+    );
   });
 });
 
@@ -76,9 +95,17 @@ describe('matchHeading — other kinds', () => {
 
 describe('matchHeading — negatives (the whole-line requirement)', () => {
   it('does not match a sentence that merely mentions a heading word', () => {
-    expect(matchHeading('Die Ansprüche 1 bis 4 betreffen eine Vorrichtung, die ein Gehäuse aufweist.')).toBeNull();
-    expect(matchHeading('The claims are directed to a device comprising a housing and a cover thereof.')).toBeNull();
-    expect(matchHeading('Vorrichtung nach Anspruch 1, dadurch gekennzeichnet, dass das Gehäuse aus Alu ist.')).toBeNull();
+    expect(
+      matchHeading('Die Ansprüche 1 bis 4 betreffen eine Vorrichtung, die ein Gehäuse aufweist.')
+    ).toBeNull();
+    expect(
+      matchHeading('The claims are directed to a device comprising a housing and a cover thereof.')
+    ).toBeNull();
+    expect(
+      matchHeading(
+        'Vorrichtung nach Anspruch 1, dadurch gekennzeichnet, dass das Gehäuse aus Alu ist.'
+      )
+    ).toBeNull();
   });
   it('does not match ordinary prose or empty lines', () => {
     expect(matchHeading('')).toBeNull();
@@ -86,7 +113,8 @@ describe('matchHeading — negatives (the whole-line requirement)', () => {
     expect(matchHeading('Die Vorrichtung 10 umfasst ein Gehäuse 12.')).toBeNull();
   });
   it('rejects a long line even when it starts with a heading phrase', () => {
-    const long = 'Detailed description of how the housing 12 is secured to the cover 14 by means of screws 18';
+    const long =
+      'Detailed description of how the housing 12 is secured to the cover 14 by means of screws 18';
     expect(long.length).toBeGreaterThan(60);
     expect(matchHeading(long)).toBeNull();
   });
@@ -100,7 +128,7 @@ describe('HEADINGS dictionary', () => {
       for (const lang of ['de', 'en']) {
         expect(Array.isArray(entry[lang]), `${kind}.${lang}`).toBe(true);
         expect(entry[lang].length).toBeGreaterThan(0);
-        entry[lang].forEach(h => expect(typeof h).toBe('string'));
+        entry[lang].forEach((h) => expect(typeof h).toBe('string'));
       }
     }
   });

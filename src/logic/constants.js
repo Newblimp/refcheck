@@ -2,34 +2,271 @@
 // Words that, when they precede a number, should NOT be treated as the term for
 // that reference sign (articles, prepositions, cross-reference words, etc.).
 export const EXCL = new Set([
-  'figure', 'figures', 'fig', 'figs', 'claim', 'claims', 'paragraph', 'page',
-  'table', 'equation', 'reference', 'numeral', 'number', 'no', 'nr', 'see', 'note',
-  'wherein', 'whereby', 'comprising', 'having', 'including', 'being', 'said', 'respective',
-  'at', 'in', 'of', 'on', 'to', 'by', 'as', 'an', 'a', 'the', 'with', 'from', 'via', 'and', 'or',
-  'is', 'are', 'was', 'were', 'be', 'been', 'has', 'have', 'had', 'that', 'this', 'these', 'those',
-  'such', 'each', 'least', 'more', 'less', 'than', 'about', 'approximately', 'around',
-  'roughly', 'substantially', 'maximal', 'minimal', 'maximum', 'minimum', 'between', 'through', 'into',
-  'according', 'further', 'also', 'only', 'each', 'any', 'all', 'both',
+  'figure',
+  'figures',
+  'fig',
+  'figs',
+  'claim',
+  'claims',
+  'paragraph',
+  'page',
+  'table',
+  'equation',
+  'reference',
+  'numeral',
+  'number',
+  'no',
+  'nr',
+  'see',
+  'note',
+  'wherein',
+  'whereby',
+  'comprising',
+  'having',
+  'including',
+  'being',
+  'said',
+  'respective',
+  'at',
+  'in',
+  'of',
+  'on',
+  'to',
+  'by',
+  'as',
+  'an',
+  'a',
+  'the',
+  'with',
+  'from',
+  'via',
+  'and',
+  'or',
+  'is',
+  'are',
+  'was',
+  'were',
+  'be',
+  'been',
+  'has',
+  'have',
+  'had',
+  'that',
+  'this',
+  'these',
+  'those',
+  'such',
+  'each',
+  'least',
+  'more',
+  'less',
+  'than',
+  'about',
+  'approximately',
+  'around',
+  'roughly',
+  'substantially',
+  'maximal',
+  'minimal',
+  'maximum',
+  'minimum',
+  'between',
+  'through',
+  'into',
+  'according',
+  'further',
+  'also',
+  'only',
+  'each',
+  'any',
+  'all',
+  'both',
   // German
-  'figur', 'figuren', 'abbildung', 'abbildungen', 'abb', 'anspruch', 'ansprüche', 'ansprüchen',
-  'anspruchs', 'anspruches', 'seite', 'schritt',
-  'tabelle', 'bezugszeichen', 'ziffer', 'wobei', 'umfassend', 'aufweisend', 'gemäß',
-  'bei', 'nach', 'vor', 'über', 'unter', 'durch', 'für', 'von', 'mit', 'zu', 'an', 'am', 'bis',
-  'um', 'ca', 'circa', 'etwa', 'ungefähr', 'wesentlichen', 'maximal', 'minimal',
-  'im', 'in', 'der', 'die', 'das', 'dem', 'den', 'des', 'ein', 'eine', 'einen', 'einem',
-  'eines', 'einer', 'und', 'oder', 'ist', 'sind', 'war', 'waren', 'hat', 'haben', 'sich',
-  'auch', 'nur', 'noch', 'bereits', 'dabei', 'hierbei', 'hierdurch', 'hierzu',
+  'figur',
+  'figuren',
+  'abbildung',
+  'abbildungen',
+  'abb',
+  'anspruch',
+  'ansprüche',
+  'ansprüchen',
+  'anspruchs',
+  'anspruches',
+  'seite',
+  'schritt',
+  'tabelle',
+  'bezugszeichen',
+  'ziffer',
+  'wobei',
+  'umfassend',
+  'aufweisend',
+  'gemäß',
+  'bei',
+  'nach',
+  'vor',
+  'über',
+  'unter',
+  'durch',
+  'für',
+  'von',
+  'mit',
+  'zu',
+  'an',
+  'am',
+  'bis',
+  'um',
+  'ca',
+  'circa',
+  'etwa',
+  'ungefähr',
+  'wesentlichen',
+  'maximal',
+  'minimal',
+  'im',
+  'in',
+  'der',
+  'die',
+  'das',
+  'dem',
+  'den',
+  'des',
+  'ein',
+  'eine',
+  'einen',
+  'einem',
+  'eines',
+  'einer',
+  'und',
+  'oder',
+  'ist',
+  'sind',
+  'war',
+  'waren',
+  'hat',
+  'haben',
+  'sich',
+  'auch',
+  'nur',
+  'noch',
+  'bereits',
+  'dabei',
+  'hierbei',
+  'hierdurch',
+  'hierzu',
 ]);
 
 export const EN_ART = new Set(['a', 'an', 'the']);
-export const DE_ART = new Set(['der', 'die', 'das', 'des', 'dem', 'den', 'ein', 'eine', 'eines', 'einer', 'einem', 'einen']);
-export const EN_ORD = new Set(['first', 'second', 'third', 'fourth', 'fifth', 'sixth', 'seventh', 'eighth', 'ninth', 'tenth', 'further', 'other', 'another', 'next', 'upper', 'lower', 'inner', 'outer', 'front', 'rear', 'left', 'right', 'top', 'bottom', 'primary', 'secondary', 'main', 'auxiliary', 'additional']);
-export const DE_ORD = new Set(['erste', 'ersten', 'erstem', 'erster', 'erstes', 'zweite', 'zweiten', 'zweitem', 'zweiter', 'zweites', 'dritte', 'dritten', 'vierte', 'vierten', 'weitere', 'weiteren', 'weiterer', 'zusätzliche', 'zusätzlichen', 'primäre', 'primären', 'sekundäre', 'sekundären', 'obere', 'oberen', 'untere', 'unteren', 'innere', 'inneren', 'äußere', 'äußeren', 'vordere', 'vorderen', 'hintere', 'hinteren', 'linke', 'linken', 'rechte', 'rechten', 'andere', 'anderen', 'anderer']);
+export const DE_ART = new Set([
+  'der',
+  'die',
+  'das',
+  'des',
+  'dem',
+  'den',
+  'ein',
+  'eine',
+  'eines',
+  'einer',
+  'einem',
+  'einen',
+]);
+export const EN_ORD = new Set([
+  'first',
+  'second',
+  'third',
+  'fourth',
+  'fifth',
+  'sixth',
+  'seventh',
+  'eighth',
+  'ninth',
+  'tenth',
+  'further',
+  'other',
+  'another',
+  'next',
+  'upper',
+  'lower',
+  'inner',
+  'outer',
+  'front',
+  'rear',
+  'left',
+  'right',
+  'top',
+  'bottom',
+  'primary',
+  'secondary',
+  'main',
+  'auxiliary',
+  'additional',
+]);
+export const DE_ORD = new Set([
+  'erste',
+  'ersten',
+  'erstem',
+  'erster',
+  'erstes',
+  'zweite',
+  'zweiten',
+  'zweitem',
+  'zweiter',
+  'zweites',
+  'dritte',
+  'dritten',
+  'vierte',
+  'vierten',
+  'weitere',
+  'weiteren',
+  'weiterer',
+  'zusätzliche',
+  'zusätzlichen',
+  'primäre',
+  'primären',
+  'sekundäre',
+  'sekundären',
+  'obere',
+  'oberen',
+  'untere',
+  'unteren',
+  'innere',
+  'inneren',
+  'äußere',
+  'äußeren',
+  'vordere',
+  'vorderen',
+  'hintere',
+  'hinteren',
+  'linke',
+  'linken',
+  'rechte',
+  'rechten',
+  'andere',
+  'anderen',
+  'anderer',
+]);
 
 export const isArt = (w, l) => (l === 'de' ? DE_ART : EN_ART).has(w.toLowerCase());
 export const isOrd = (w, l) => (l === 'de' ? DE_ORD : EN_ORD).has(w.toLowerCase());
-export const artType = w => ['a', 'an', 'ein', 'eine', 'einer', 'eines', 'einem', 'einen'].includes(w.toLowerCase()) ? 'indef' : 'def';
-export const likelySign = s => { const n = parseInt(s, 10); return n >= 1 && n <= 99999; };
+// Indefinite articles, EN + DE. A module-level Set: artType runs once per
+// article occurrence, and the array literal was rebuilt on every call.
+const INDEF_ARTS = new Set(['a', 'an', 'ein', 'eine', 'einer', 'eines', 'einem', 'einen']);
+export const artType = (w) => (INDEF_ARTS.has(w.toLowerCase()) ? 'indef' : 'def');
+export const likelySign = (s) => {
+  const n = parseInt(s, 10);
+  return n >= 1 && n <= 99999;
+};
+
+// ── LIST / RANGE CONNECTORS ──────────────────────────────────────────────────
+// The words and dashes that join two numbers into a list or range, EN + DE.
+// Shared by the sign-list scan (extract.js: "the bearings 18, 20 and 22") and the
+// claim-reference parser (claims.js: "any one of claims 1 to 4"). These were two
+// separate literals that had drifted apart — the sign scan was missing
+// "or"/"oder"/"through", so "the bearings 18 or 22" registered only the first.
+export const CONNECTOR_WORDS = ['and', 'und', 'or', 'oder', 'to', 'through', 'bis'];
+export const RANGE_DASHES = '[-–—]';
+// Alternation fragment, longest-first so "through" is not shadowed by a prefix.
+export const CONNECTOR_ALT = [...CONNECTOR_WORDS].sort((a, b) => b.length - a.length).join('|');
 
 // ── REFERENCE-SIGN PATTERN ───────────────────────────────────────────────────
 // Single source of truth for what a reference sign looks like: 1–5 digits, an
@@ -47,12 +284,12 @@ export const SIGN_RE_ANCHORED = new RegExp('^(?:' + SIGN_RE + ')$');
 // numeral (1–3999). ROMAN_RE is a bare fragment for interpolation, mirroring
 // SIGN_RE. Only capital letters match, so lowercase units (mm, cm) are safe.
 export const ROMAN_RE =
-  "(?=[IVXLCDM])M{0,3}(?:CM|CD|D?C{0,3})(?:XC|XL|L?X{0,3})(?:IX|IV|V?I{0,3})(?:\\.\\d{1,3})?";
+  '(?=[IVXLCDM])M{0,3}(?:CM|CD|D?C{0,3})(?:XC|XL|L?X{0,3})(?:IX|IV|V?I{0,3})(?:\\.\\d{1,3})?';
 export const ROMAN_RE_ANCHORED = new RegExp('^(?:' + ROMAN_RE + ')$');
 
 // A token is a sign if it is an Arabic sign (right shape AND numeric value in
 // range) OR a Roman-numeral step/substep.
-export const isSignToken = s =>
+export const isSignToken = (s) =>
   (SIGN_RE_ANCHORED.test(s) && likelySign(s)) || ROMAN_RE_ANCHORED.test(s);
 
 // Value of a Roman-numeral string (e.g. "XIV" → 14). Assumes a valid numeral.
@@ -60,8 +297,9 @@ const ROMAN_VAL = { I: 1, V: 5, X: 10, L: 50, C: 100, D: 500, M: 1000 };
 export function romanToInt(r) {
   let n = 0;
   for (let i = 0; i < r.length; i++) {
-    const cur = ROMAN_VAL[r[i]], nxt = ROMAN_VAL[r[i + 1]];
-    n += (nxt && cur < nxt) ? -cur : cur;
+    const cur = ROMAN_VAL[r[i]],
+      nxt = ROMAN_VAL[r[i + 1]];
+    n += nxt && cur < nxt ? -cur : cur;
   }
   return n;
 }
@@ -78,9 +316,10 @@ export function signVal(s) {
 // never interleaved. Plain `+a-+b` yields NaN for primed/lettered/Roman signs,
 // so always sort through this.
 export const compareSigns = (a, b) => {
-  const ra = ROMAN_RE_ANCHORED.test(a), rb = ROMAN_RE_ANCHORED.test(b);
+  const ra = ROMAN_RE_ANCHORED.test(a),
+    rb = ROMAN_RE_ANCHORED.test(b);
   if (ra !== rb) return ra ? 1 : -1;
-  return (signVal(a) - signVal(b)) || a.localeCompare(b);
+  return signVal(a) - signVal(b) || a.localeCompare(b);
 };
 
 // ── DISMISSAL KEYS ───────────────────────────────────────────────────────────
@@ -88,11 +327,11 @@ export const compareSigns = (a, b) => {
 // dismissed error. Shared by App, getAllErrors, buildHtml and the sidebar
 // cards — never assemble these strings by hand.
 export const disKey = {
-  sign: sign => 's:' + sign,      // id: the sign itself
-  art: termStem => 'a:' + termStem, // id: the term stem
-  bare: termStem => 'b:' + termStem, // id: the term stem
-  num: key => 'n:' + key,         // id: numError.key (value#ordinal — edit-stable)
-  dep: key => 'd:' + key,         // id: depError.key (claim>ref#ordinal)
+  sign: (sign) => 's:' + sign, // id: the sign itself
+  art: (termStem) => 'a:' + termStem, // id: the term stem
+  bare: (termStem) => 'b:' + termStem, // id: the term stem
+  num: (key) => 'n:' + key, // id: numError.key (value#ordinal — edit-stable)
+  dep: (key) => 'd:' + key, // id: depError.key (claim>ref#ordinal)
 };
 
 // A numeric token that starts a line and is followed by '.' or ')' → claim number.

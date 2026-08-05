@@ -29,14 +29,17 @@ export function Bee({ t, onDone }) {
 
     const bee = spawnBee(w(), h());
     const mouse = { x: -9999, y: -9999 };
-    const onMove = e => { mouse.x = e.clientX; mouse.y = e.clientY; };
+    const onMove = (e) => {
+      mouse.x = e.clientX;
+      mouse.y = e.clientY;
+    };
     window.addEventListener('mousemove', onMove, { passive: true });
 
     let raf = 0;
     let last = performance.now();
     let stopped = false;
 
-    const frame = now => {
+    const frame = (now) => {
       if (stopped) return;
       // Clamp dt so a backgrounded tab does not teleport the bee on return.
       const dt = Math.min(0.05, (now - last) / 1000);
@@ -47,14 +50,19 @@ export function Bee({ t, onDone }) {
       // A little wing-beat bob, independent of the flight path. The heading flip
       // goes on the sprite alone — on the wrapper it would mirror the bubble.
       const bob = Math.sin(now / 55) * 2.5;
-      el.style.transform =
-        `translate3d(${bee.x.toFixed(1)}px, ${(bee.y + bob).toFixed(1)}px, 0)`;
+      el.style.transform = `translate3d(${bee.x.toFixed(1)}px, ${(bee.y + bob).toFixed(1)}px, 0)`;
       if (imgRef.current) imgRef.current.style.transform = `scaleX(${bee.dir})`;
 
       const hit = Math.hypot(mouse.x - bee.x, mouse.y - bee.y) < 34;
-      if (hit !== nearRef.current) { nearRef.current = hit; setNear(hit); }
+      if (hit !== nearRef.current) {
+        nearRef.current = hit;
+        setNear(hit);
+      }
 
-      if (beeGone(bee, w(), h())) { doneRef.current?.(); return; }
+      if (beeGone(bee, w(), h())) {
+        doneRef.current?.();
+        return;
+      }
       raf = requestAnimationFrame(frame);
     };
     raf = requestAnimationFrame(frame);
@@ -69,7 +77,15 @@ export function Bee({ t, onDone }) {
   return (
     <div className="bee-wrap" ref={wrapRef} aria-hidden="true">
       <div className={`bee-bubble${near ? ' show' : ''}`}>{t.beeSays}</div>
-      <img className="bee-img" ref={imgRef} src={beeUrl} alt="" width="34" height="34" draggable="false" />
+      <img
+        className="bee-img"
+        ref={imgRef}
+        src={beeUrl}
+        alt=""
+        width="34"
+        height="34"
+        draggable="false"
+      />
     </div>
   );
 }
