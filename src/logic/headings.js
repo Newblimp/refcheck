@@ -101,7 +101,7 @@ export const HEADINGS = {
   },
   [SECTION_KINDS.ABSTRACT]: {
     de: ['Zusammenfassung'],
-    en: ['Abstract', 'Abstract of the Disclosure'],
+    en: ['Abstract', 'Abstract of the Disclosure', 'Summary'],
   },
 };
 

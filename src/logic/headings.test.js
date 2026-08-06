@@ -98,6 +98,11 @@ describe('matchHeading — other kinds', () => {
     expect(kindOf('Zusammenfassung')).toBe(SECTION_KINDS.ABSTRACT);
     expect(kindOf('ABSTRACT')).toBe(SECTION_KINDS.ABSTRACT);
   });
+  it('matches "Summary" as an English abstract heading', () => {
+    expect(kindOf('Summary')).toBe(SECTION_KINDS.ABSTRACT);
+    expect(kindOf('SUMMARY')).toBe(SECTION_KINDS.ABSTRACT);
+    expect(langOf('Summary')).toBe('en');
+  });
 });
 
 describe('matchHeading — negatives (the whole-line requirement)', () => {

@@ -117,11 +117,15 @@ export function splitPatentDoc(doc) {
 
   // The reference-sign list: excluded from the description and claims buffers,
   // but returned so it can be reconciled against them rather than discarded.
-  // Runs to the abstract, or to the end of the document.
+  // Runs to the claims or the abstract — whichever comes first — or to the end
+  // of the document. The list is commonly placed BEFORE the claims (Description
+  // → Bezugszeichenliste/reference signs → Claims), not just after them, so
+  // both stop kinds are needed or a list preceding the claims would run straight
+  // through the claims heading and swallow the claims section too.
   let signListParas = [];
   const signListH = firstOf(headings, SECTION_KINDS.SIGN_LIST);
   if (signListH) {
-    const stop = nextOf(headings, [SECTION_KINDS.ABSTRACT], signListH.index);
+    const stop = nextOf(headings, [SECTION_KINDS.CLAIMS, SECTION_KINDS.ABSTRACT], signListH.index);
     signListParas = paragraphs.slice(signListH.index + 1, stop ? stop.index : paragraphs.length);
   }
 
