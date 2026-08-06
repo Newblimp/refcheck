@@ -33,10 +33,15 @@ jobs:
       - run: npm test
       - run: npm run build
 
-  # Build and publish to GitHub Pages — only on pushes to main.
+  # Build and publish to GitHub Pages from main. workflow_dispatch deploys too,
+  # so a deployment the Pages queue dropped can be retried from the Actions tab
+  # without an empty commit. Without it "Run workflow" ran the tests, skipped
+  # this job and reported the whole run green, having published nothing.
   deploy:
     needs: test
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    if: >-
+      github.ref == 'refs/heads/main' &&
+      (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-latest
     environment:
       name: github-pages
@@ -64,3 +69,8 @@ jobs:
         uses: actions/deploy-pages@v5
         with:
           artifact_name: github-pages-${{ github.run_attempt }}
+          # Two of three deployments have stalled in the Pages queue past the
+          # 10-minute default, which cancels a deployment that would otherwise
+          # have landed. The action only polls while it waits, so a higher
+          # ceiling costs nothing and rides the queue out instead.
+          timeout: 1800000 # 30 minutes (default 600000)
