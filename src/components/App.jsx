@@ -7,6 +7,7 @@ import { computeCrossRef } from '../logic/crossref.js';
 import { reconcileRefList } from '../logic/reconcile.js';
 import { claimStats } from '../logic/claimStats.js';
 import { compareSigns, disKey } from '../logic/constants.js';
+import { backdropScroll } from '../logic/scrollSync.js';
 import { stem } from '../logic/stem.js';
 import { useDebounced } from '../hooks/useDebounced.js';
 import { usePersistentState, jsonCodec, setCodec, oneOf } from '../hooks/usePersistentState.js';
@@ -144,8 +145,21 @@ export function App() {
     [debText, res, mode, dis, focusSign]
   );
 
+  // Mirror the textarea's scroll position onto the backdrop. At the ends of
+  // the document an elastic-overscroll browser slides the textarea's content
+  // past its own scroll range and springs it back; the backdrop clamps that
+  // position, so the text bounced while the highlights sat pinned to the edge.
+  // styles.css turns the rubber-band off, and the overshoot the geometry still
+  // reports (iOS Safari puts it in scrollTop) is applied as a translation,
+  // which the backdrop's scrollTop cannot express. See logic/scrollSync.js.
   const syncScroll = useCallback(() => {
-    if (taRef.current && bdRef.current) bdRef.current.scrollTop = taRef.current.scrollTop;
+    const ta = taRef.current,
+      bd = bdRef.current;
+    if (!ta || !bd) return;
+    const { top, shift } = backdropScroll(ta.scrollTop, ta.scrollHeight, ta.clientHeight);
+    bd.scrollTop = top;
+    const tf = shift ? `translateY(${-shift}px)` : '';
+    if (bd.style.transform !== tf) bd.style.transform = tf;
   }, []);
 
   // Re-mirror the scroll position whenever the backdrop's highlight content

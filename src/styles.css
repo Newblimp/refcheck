@@ -488,6 +488,13 @@ body,
   word-break: break-word;
   overflow-y: auto;
   overflow-x: hidden;
+  /* Suppress elastic overscroll. Scrolling past either end on macOS/iOS
+     rubber-bands the textarea's content beyond its own scroll range, and a
+     scroll offset outside [0, scrollHeight - clientHeight] is exactly what the
+     backdrop cannot be set to — so the text bounced and the highlights stayed
+     pinned to the edge of the box. This also stops the gesture chaining out to
+     the page. See syncScroll in App.jsx for the residual-overshoot handling. */
+  overscroll-behavior: none;
   tab-size: 2;
 }
 .backdrop {
