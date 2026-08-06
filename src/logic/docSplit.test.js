@@ -155,4 +155,21 @@ describe('reference-sign list', () => {
     expect(r.signList).toBe('');
     expect(r.detected.signList).toBe(false);
   });
+
+  it('stops at the claims heading when the list is placed before the claims', () => {
+    // Common layout: Description -> reference signs list -> Claims, rather
+    // than Description -> Claims -> reference signs list.
+    const body =
+      para('DETAILED DESCRIPTION', { style: 'Heading1' }) +
+      para('The device 10 comprises a housing 12.') +
+      para('LIST OF REFERENCE SIGNS', { style: 'Heading1' }) +
+      para('10 device') +
+      para('12 housing') +
+      para('PATENT CLAIMS', { style: 'Heading1' }) +
+      para('1. A device (10) comprising a housing (12).');
+    const r = split(body);
+    expect(r.signList).toBe('10 device\n12 housing');
+    expect(r.claims).toBe('1. A device (10) comprising a housing (12).');
+    expect(r.signList).not.toContain('PATENT CLAIMS');
+  });
 });
