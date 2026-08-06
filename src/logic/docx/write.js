@@ -96,21 +96,37 @@ export function alignLines(a, b) {
   blocks.push([pi, a.length - hi, pj, b.length - hi]);
 
   const tail = [];
+  const isBlank = (s) => !s.trim();
+  // `at` is the first old line not yet consumed, so the new line belongs after
+  // old line at-1. With no old line before it, or none left after it anywhere,
+  // it belongs to the tail.
+  const addInsert = (line, at) => {
+    const anchor = at - 1;
+    if (anchor < 0 || at >= a.length) tail.push(line);
+    else insertAfter.set(anchor, [...(insertAfter.get(anchor) || []), line]);
+  };
+
   for (const [a0, a1, b0, b1] of blocks) {
-    const oldN = a1 - a0,
-      newN = b1 - b0;
-    const paired = Math.min(oldN, newN);
-    for (let k = 0; k < paired; k++) map[a0 + k] = b0 + k;
-    // Surplus old lines were deleted (map stays null).
-    // Surplus new lines are insertions; attach them to the last old line in the
-    // block, or to the tail when the block sits at the very end.
-    if (newN > oldN) {
-      const extra = [];
-      for (let k = paired; k < newN; k++) extra.push(b[b0 + k]);
-      const anchorLine = a0 + paired - 1 >= 0 ? a0 + paired - 1 : a0 - 1;
-      if (anchorLine < 0 || a1 >= a.length) tail.push(...extra);
-      else insertAfter.set(anchorLine, [...(insertAfter.get(anchorLine) || []), ...extra]);
+    let ai = a0,
+      bj = b0;
+    // Pair line for line, but never pair a blank line with a real one. A spacer
+    // paragraph between claims carries none of a claim's numbering or
+    // indentation, so writing claim text into it strands that claim at a
+    // different alignment from the rest — and deletes the paragraph that had
+    // the right formatting.
+    while (ai < a1 && bj < b1) {
+      if (isBlank(a[ai]) === isBlank(b[bj])) {
+        map[ai] = bj;
+        ai++;
+        bj++;
+      } else if (isBlank(a[ai])) {
+        ai++; // the edit removed a spacer
+      } else {
+        addInsert(b[bj++], ai); // the edit added a spacer
+      }
     }
+    // Surplus new lines are insertions; surplus old lines stay null (deleted).
+    while (bj < b1) addInsert(b[bj++], ai);
   }
   return { map, insertAfter, tail };
 }
@@ -132,6 +148,52 @@ function runsFor(text, rPrXml) {
 function buildParagraph(para, text) {
   const { pAttrs, pPrXml, rPrXml } = para.src;
   return `<w:p${pAttrs || ''}>${pPrXml || ''}${runsFor(text, rPrXml || '')}</w:p>`;
+}
+
+// A leading claim number, in the same shape isClaimNumber() recognises.
+const AUTO_NUM_RE = /^\s*\d{1,4}\s*[.)]\s*/;
+const NUMPR_RE = /<w:numPr\b(?:[^>]*\/>|[^>]*>[\s\S]*?<\/w:numPr>)/g;
+// w14:paraId / w14:textId must be unique per paragraph, so a clone cannot keep
+// the original's — Word uses them to anchor comments and revisions.
+const CLONE_DROP_ATTR = /\s+w14:(?:paraId|textId)="[^"]*"/g;
+
+/**
+ * Text to write into a paragraph whose number comes from Word's list numbering.
+ *
+ * The import synthesizes "N. " for auto-numbered claims (they carry no number
+ * in the text at all), and writing that back would make Word render "1. 1. A
+ * device…". Stripping the *recorded* prefix is not enough: an edit that inserts
+ * a claim renumbers the ones below it, so the paragraph whose prefix was "2. "
+ * now reads "3. …" and the literal number survives. A synthesized prefix is
+ * proof that the numbering is Word's, so any leading claim number goes.
+ */
+function stripAutoNumber(text, para) {
+  return para.src.synthesizedPrefix ? String(text).replace(AUTO_NUM_RE, '') : text;
+}
+
+/**
+ * The paragraph a newly inserted one should copy its formatting from.
+ *
+ * Not simply the neighbour: a blank spacer paragraph carries neither the claim
+ * indentation nor the `<w:numPr>`, so cloning it drops the new claim to a
+ * different alignment from every other claim — and, on an auto-numbered list,
+ * leaves it unnumbered.
+ */
+function templateNear(paras, i) {
+  for (let k = Math.min(i, paras.length - 1); k >= 0; k--)
+    if (paras[k].text.trim()) return paras[k];
+  for (let k = i + 1; k < paras.length; k++) if (paras[k].text.trim()) return paras[k];
+  return paras[Math.max(0, Math.min(i, paras.length - 1))];
+}
+
+/** A brand-new `<w:p>` carrying the surrounding claims' formatting. */
+function clonedParagraph(paras, i, line) {
+  const tpl = templateNear(paras, i);
+  const src = { ...tpl.src, pAttrs: (tpl.src.pAttrs || '').replace(CLONE_DROP_ATTR, '') };
+  // An empty line is a spacer, and an empty list item would still consume a
+  // claim number, so it inherits the formatting but never the numbering.
+  if (!line.trim()) src.pPrXml = (src.pPrXml || '').replace(NUMPR_RE, '');
+  return buildParagraph({ ...tpl, src }, stripAutoNumber(line, tpl));
 }
 
 /**
@@ -166,6 +228,10 @@ export function planEdits(paras, editedText) {
 
   // Gather each paragraph's new text from its (possibly re-mapped) lines.
   const byPara = new Map();
+  const added = new Map(); // paragraph index → lines to add as new paragraphs after it
+  const lastLineOf = new Map(); // paragraph index → its last visible line
+  visOwner.forEach((pi, li) => lastLineOf.set(pi, li));
+
   visOwner.forEach((pi, li) => {
     if (!byPara.has(pi)) byPara.set(pi, { lines: [], deleted: true });
     const rec = byPara.get(pi);
@@ -174,7 +240,16 @@ export function planEdits(paras, editedText) {
       rec.deleted = false;
     }
     const ins = insertAfter.get(li);
-    if (ins) {
+    if (!ins) return;
+    if (li === lastLineOf.get(pi)) {
+      // A line added after this paragraph is a new paragraph. Folding it in as
+      // a <w:br/> instead is what made an inserted claim show up indented and
+      // unnumbered: a soft break inside a hanging-indent paragraph renders at
+      // the indent, and Word's list numbering only counts paragraphs.
+      added.set(pi, [...(added.get(pi) || []), ...ins]);
+    } else {
+      // ...but a line added between two lines of ONE paragraph (a paragraph
+      // holding <w:br/>s of its own) really does belong inside it.
       rec.lines.push(...ins);
       rec.deleted = false;
     }
@@ -183,13 +258,10 @@ export function planEdits(paras, editedText) {
   const splices = [];
   for (const [pi, rec] of byPara) {
     const para = paras[pi];
-    let next = rec.lines.join('\n');
     // Never write our synthesized claim numbers back — the paragraph already
     // carries <w:numPr> and Word would render "1. 1. A device…".
-    const prefix = para.src.synthesizedPrefix;
-    const wasText =
-      prefix && para.text.startsWith(prefix) ? para.text.slice(prefix.length) : para.text;
-    if (prefix && next.startsWith(prefix)) next = next.slice(prefix.length);
+    const next = stripAutoNumber(rec.lines.join('\n'), para);
+    const wasText = stripAutoNumber(para.text, para);
     if (rec.deleted) {
       splices.push({ xmlStart: para.src.xmlStart, xmlEnd: para.src.xmlEnd, xml: '' });
     } else if (next !== wasText) {
@@ -201,11 +273,22 @@ export function planEdits(paras, editedText) {
     }
   }
 
-  // Lines added past the end become new paragraphs cloned from the last one.
+  // Lines added mid-buffer become new paragraphs after the one they follow.
+  for (const [pi, lines] of added) {
+    const at = paras[pi].src.xmlEnd;
+    const xml = lines.map((l) => clonedParagraph(paras, pi, l)).join('');
+    splices.push({ xmlStart: at, xmlEnd: at, xml, append: true });
+  }
+
+  // Lines added past the end follow the last paragraph the user could SEE.
+  // Not the last paragraph in the section: toText() trims trailing blank ones,
+  // so appending after those puts a blank line between the last claim and the
+  // new one that the buffer never showed.
   if (tail.length) {
-    const last = paras[paras.length - 1];
-    const xml = tail.map((l) => buildParagraph(last, l)).join('');
-    splices.push({ xmlStart: last.src.xmlEnd, xmlEnd: last.src.xmlEnd, xml, append: true });
+    const li = visOwner.length ? visOwner[visOwner.length - 1] : paras.length - 1;
+    const at = paras[li].src.xmlEnd;
+    const xml = tail.map((l) => clonedParagraph(paras, li, l)).join('');
+    splices.push({ xmlStart: at, xmlEnd: at, xml, append: true });
   }
   return splices;
 }

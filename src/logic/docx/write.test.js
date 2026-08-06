@@ -152,6 +152,159 @@ describe('writeDocx — round trip', () => {
   });
 });
 
+// Every exported claim has to land at the same alignment as its neighbours.
+// Word takes both the indent and the list number from the PARAGRAPH, so a claim
+// that ends up as a <w:br/> inside the previous one, or in a blank spacer
+// paragraph, or cloned from one, renders shifted and unnumbered — while the
+// buffer the user was looking at said nothing of the sort.
+describe('exported claims keep one alignment', () => {
+  const claimsBody = (...claims) =>
+    [
+      para('CLAIMS', { style: 'Heading1' }),
+      ...claims,
+      para('REFERENCE SIGNS', { style: 'Heading1' }),
+      para('1 warning device'),
+    ].join('');
+  // A claim with the hanging indent a real draft uses, numbered in the text.
+  const IND = '<w:pPr><w:ind w:left="720" w:hanging="360"/></w:pPr>';
+  const indented = (t) => `<w:p>${IND}<w:r><w:t xml:space="preserve">${t}</w:t></w:r></w:p>`;
+
+  const paras = (xml) => xml.match(/<w:p[ >][\s\S]*?<\/w:p>/g) || [];
+  const claimParas = (xml) => paras(xml).filter((p) => /A warning device|A device \(1\)/.test(p));
+  const pPrOf = (p) => (p.match(/<w:pPr>[\s\S]*?<\/w:pPr>/) || [''])[0];
+  const textOf = (p) =>
+    (p.match(/<w:t[^>]*>[^<]*<\/w:t>/g) || []).map((t) => t.replace(/<[^>]+>/g, '')).join('');
+
+  const exportClaims = (body, text) => {
+    const { doc, split } = load(body);
+    return documentXmlOf(writeDocx(doc, [{ paras: split.claimsParas, text }]));
+  };
+
+  // The reported case: two claims typed over an imported set.
+  const TWO = '1. A warning device (1) with a bee.\n2. A warning device (1) without a bee.';
+
+  it('gives an added claim its own paragraph, not a <w:br/> inside the one above', () => {
+    // Both neighbours stay byte-identical, so the new claim is a pure insertion
+    // — the shape that used to be folded in as a soft break.
+    const xml = exportClaims(
+      claimsBody(indented('1. A device (1).'), indented('2. A device (1) of claim 1.')),
+      '1. A device (1).\n1a. A warning device (1) with a bee.\n2. A device (1) of claim 1.'
+    );
+    expect(xml).not.toContain('<w:br/>');
+    const cs = claimParas(xml);
+    expect(cs).toHaveLength(3);
+    expect(cs.map(textOf)).toEqual([
+      '1. A device (1).',
+      '1a. A warning device (1) with a bee.',
+      '2. A device (1) of claim 1.',
+    ]);
+    // The point of the exercise: identical paragraph properties throughout.
+    expect(new Set(cs.map(pPrOf)).size).toBe(1);
+    expect(pPrOf(cs[1])).toContain('w:hanging="360"');
+  });
+
+  it('numbers an inserted claim as a list item when the source was a list', () => {
+    const xml = exportClaims(
+      claimsBody(
+        para('A device (1).', { num: true }),
+        para('A device (1) of claim 1.', { num: true })
+      ),
+      '1. A device (1).\n2. A warning device (1) with a bee.\n2. A device (1) of claim 1.'
+    );
+    const cs = claimParas(xml);
+    expect(cs).toHaveLength(3);
+    expect(cs.every((p) => /<w:numPr>/.test(p))).toBe(true);
+    // Word supplies the number, so the typed one must not survive as text.
+    expect(textOf(cs[1])).toBe('A warning device (1) with a bee.');
+  });
+
+  it('strips the typed number when an edit renumbers an auto-numbered claim', () => {
+    // The paragraph whose synthesized prefix was "2. " now reads "3. ", so
+    // matching the recorded prefix is not enough to catch it.
+    const xml = exportClaims(
+      claimsBody(
+        para('A device (1).', { num: true }),
+        para('A device (1) of claim 1.', { num: true })
+      ),
+      '1. A device (1).\n3. A warning device (1) with a bee.'
+    );
+    expect(textOf(claimParas(xml)[1])).toBe('A warning device (1) with a bee.');
+  });
+
+  it('does not double-number a claim appended past the end of a list', () => {
+    const xml = exportClaims(claimsBody(para('A device (1).', { num: true })), TWO);
+    const cs = claimParas(xml);
+    expect(cs).toHaveLength(2);
+    expect(cs.every((p) => /<w:numPr>/.test(p))).toBe(true);
+    expect(cs.map(textOf)).toEqual([
+      'A warning device (1) with a bee.',
+      'A warning device (1) without a bee.',
+    ]);
+  });
+
+  it('writes a claim into a claim paragraph, never into a blank spacer', () => {
+    // Claims separated by empty paragraphs: pairing line for line used to drop
+    // claim 2 into the spacer and delete the paragraph that carried the indent.
+    const xml = exportClaims(
+      claimsBody(indented('1. A device (1).'), para(''), indented('2. A device (1) of claim 1.')),
+      TWO
+    );
+    const cs = claimParas(xml);
+    expect(cs).toHaveLength(2);
+    expect(cs.map(textOf)).toEqual([
+      '1. A warning device (1) with a bee.',
+      '2. A warning device (1) without a bee.',
+    ]);
+    expect(new Set(cs.map(pPrOf)).size).toBe(1);
+    expect(pPrOf(cs[1])).toContain('w:hanging="360"');
+    // The spacer had no text to keep, so it goes rather than being repurposed.
+    expect(paras(xml).filter((p) => textOf(p) === '' && /w:hanging/.test(p))).toHaveLength(0);
+  });
+
+  it('clones a real claim when the last paragraph of the section is blank', () => {
+    const text = `${TWO}\n3. A warning device (1) with two bees.`;
+    const body = claimsBody(para('A device (1).', { num: true }), para(''));
+    const xml = exportClaims(body, text);
+    const cs = claimParas(xml);
+    expect(cs).toHaveLength(3);
+    expect(cs.every((p) => /<w:numPr>/.test(p))).toBe(true);
+    expect(textOf(cs[2])).toBe('A warning device (1) with two bees.');
+    // ...and they follow the last claim, not the trailing spacer — appending
+    // after that opens a blank line the buffer never had.
+    const { doc, split } = load(body);
+    const out = writeDocx(doc, [{ paras: split.claimsParas, text }]);
+    expect(splitPatentDoc(readDocx(out)).claims).toBe(text);
+  });
+
+  it('keeps an added blank line out of the numbering', () => {
+    // An empty list item still consumes a claim number in Word.
+    const xml = exportClaims(
+      claimsBody(
+        para('A device (1).', { num: true }),
+        para('A device (1) of claim 1.', { num: true })
+      ),
+      '1. A device (1).\n\n2. A device (1) of claim 1.'
+    );
+    const blanks = paras(xml).filter((p) => textOf(p) === '' && !/CLAIMS|REFERENCE/.test(p));
+    expect(blanks).toHaveLength(1);
+    expect(blanks[0]).not.toContain('<w:numPr>');
+  });
+
+  it('survives the round trip: the re-imported claims match the buffer', () => {
+    const { doc, split } = load(
+      claimsBody(
+        para('A device (1).', { num: true }),
+        para('A device (1) of claim 1.', { num: true })
+      )
+    );
+    const out = writeDocx(doc, [
+      { paras: split.descParas, text: split.description },
+      { paras: split.claimsParas, text: TWO },
+    ]);
+    expect(splitPatentDoc(readDocx(out)).claims).toBe(TWO);
+  });
+});
+
 describe('createDocx', () => {
   it('builds a readable document from plain text', () => {
     const bytes = createDocx([
