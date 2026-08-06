@@ -187,8 +187,9 @@ function templateNear(paras, i) {
 }
 
 /** A brand-new `<w:p>` carrying the surrounding claims' formatting. */
-function clonedParagraph(paras, i, line) {
-  const tpl = templateNear(paras, i);
+function clonedParagraph(paras, i, line, listTpl) {
+  // A claim always copies the list, wherever in the section it is being added.
+  const tpl = listTpl && AUTO_NUM_RE.test(line) ? listTpl : templateNear(paras, i);
   const src = { ...tpl.src, pAttrs: (tpl.src.pAttrs || '').replace(CLONE_DROP_ATTR, '') };
   // An empty line is a spacer, and an empty list item would still consume a
   // claim number, so it inherits the formatting but never the numbering.
@@ -197,12 +198,70 @@ function clonedParagraph(paras, i, line) {
 }
 
 /**
+ * The claim paragraph that shows how this section numbers its claims, or null
+ * when the numbers are typed into the text.
+ *
+ * A synthesized prefix is the marker: the import injects one exactly when Word
+ * numbers the paragraph itself (single-level decimal `<w:numPr>`), so its
+ * presence proves the section is a Word list rather than typed "1. " text.
+ */
+function claimListTemplate(paras) {
+  return paras.find((p) => p.numbered && p.ilvl === 0 && p.src.synthesizedPrefix) || null;
+}
+
+/**
+ * Put a claim line in a paragraph that numbers claims the way the rest of the
+ * section does.
+ *
+ * Paragraph identity is positional, so a claim line can land in a paragraph
+ * that was never a claim — the plain paragraph after the last list item, or a
+ * "What is claimed is:" lead-in — and it used to keep whatever that paragraph
+ * was. The result was a claim set half in Word's list and half as typed text.
+ * Which paragraph a line lands in is an artefact of the diff; how the section
+ * numbers claims is not, so the section wins.
+ *
+ * Only lines that open with a claim number are touched, which is what leaves a
+ * lead-in line alone: it is not a claim, so it must not join the list and take
+ * a number of its own.
+ */
+function conformClaim(para, line, listTpl) {
+  // Multi-level numbering is the case docSplit refuses to guess at (it
+  // synthesizes no number and flags `unusualNumbering`); guessing here instead
+  // would be no better informed.
+  if (para.ilvl > 0 || !AUTO_NUM_RE.test(line)) return { para, text: stripAutoNumber(line, para) };
+
+  if (listTpl) {
+    // Word supplies the number, so the paragraph must be a list item and the
+    // typed number must go.
+    const src = {
+      ...para.src,
+      pPrXml: listTpl.src.pPrXml,
+      synthesizedPrefix: listTpl.src.synthesizedPrefix,
+    };
+    return { para: { ...para, src, numbered: true }, text: line.replace(AUTO_NUM_RE, '') };
+  }
+  // The number is part of the text, so nothing may carry list numbering that
+  // would add a second one in front of it.
+  if (!para.numbered) return { para, text: line };
+  const src = {
+    ...para.src,
+    pPrXml: (para.src.pPrXml || '').replace(NUMPR_RE, ''),
+    synthesizedPrefix: '',
+  };
+  return { para: { ...para, src, numbered: false }, text: line };
+}
+
+/**
  * Work out which paragraphs changed, for one buffer.
  * @param {import('./read.js').Para[]} paras Paragraphs as imported
  * @param {string} editedText                Current buffer contents
+ * @param {{claims?: boolean}} [opts]        `claims` makes every claim line
+ *   follow the section's own numbering style (see conformClaim). It is opt-in
+ *   because only the claims buffer holds claims: a description line that
+ *   happens to start with "1." is prose, not a list item.
  * @returns {{xmlStart:number, xmlEnd:number, xml:string}[]} splices into document.xml
  */
-export function planEdits(paras, editedText) {
+export function planEdits(paras, editedText, opts = {}) {
   if (!paras || !paras.length) return [];
   // Rebuild the line array exactly as the importer assembled the buffer, so the
   // diff lines up with what the user actually saw.
@@ -255,19 +314,29 @@ export function planEdits(paras, editedText) {
     }
   });
 
+  // How this section numbers its claims — Word's list, or numbers typed into
+  // the text. Every claim line written below is made to match it.
+  const listTpl = opts.claims ? claimListTemplate(paras) : null;
+  // Never write our synthesized claim numbers back — the paragraph already
+  // carries <w:numPr> and Word would render "1. 1. A device…".
+  const finalise = (para, line) =>
+    opts.claims ? conformClaim(para, line, listTpl) : { para, text: stripAutoNumber(line, para) };
+
   const splices = [];
   for (const [pi, rec] of byPara) {
-    const para = paras[pi];
-    // Never write our synthesized claim numbers back — the paragraph already
-    // carries <w:numPr> and Word would render "1. 1. A device…".
-    const next = stripAutoNumber(rec.lines.join('\n'), para);
-    const wasText = stripAutoNumber(para.text, para);
+    const was = paras[pi];
+    const { para, text: next } = finalise(was, rec.lines.join('\n'));
+    const wasText = stripAutoNumber(was.text, was);
+    // A paragraph also has to be rewritten when only its numbering changed —
+    // the claim text can be identical and still be sitting in the wrong kind
+    // of paragraph.
+    const reshaped = (para.src.pPrXml || '') !== (was.src.pPrXml || '');
     if (rec.deleted) {
-      splices.push({ xmlStart: para.src.xmlStart, xmlEnd: para.src.xmlEnd, xml: '' });
-    } else if (next !== wasText) {
+      splices.push({ xmlStart: was.src.xmlStart, xmlEnd: was.src.xmlEnd, xml: '' });
+    } else if (next !== wasText || reshaped) {
       splices.push({
-        xmlStart: para.src.xmlStart,
-        xmlEnd: para.src.xmlEnd,
+        xmlStart: was.src.xmlStart,
+        xmlEnd: was.src.xmlEnd,
         xml: buildParagraph(para, next),
       });
     }
@@ -276,7 +345,7 @@ export function planEdits(paras, editedText) {
   // Lines added mid-buffer become new paragraphs after the one they follow.
   for (const [pi, lines] of added) {
     const at = paras[pi].src.xmlEnd;
-    const xml = lines.map((l) => clonedParagraph(paras, pi, l)).join('');
+    const xml = lines.map((l) => clonedParagraph(paras, pi, l, listTpl)).join('');
     splices.push({ xmlStart: at, xmlEnd: at, xml, append: true });
   }
 
@@ -287,7 +356,7 @@ export function planEdits(paras, editedText) {
   if (tail.length) {
     const li = visOwner.length ? visOwner[visOwner.length - 1] : paras.length - 1;
     const at = paras[li].src.xmlEnd;
-    const xml = tail.map((l) => clonedParagraph(paras, li, l)).join('');
+    const xml = tail.map((l) => clonedParagraph(paras, li, l, listTpl)).join('');
     splices.push({ xmlStart: at, xmlEnd: at, xml, append: true });
   }
   return splices;
@@ -296,12 +365,14 @@ export function planEdits(paras, editedText) {
 /**
  * Produce an edited .docx.
  * @param {import('./read.js').PatentDoc} doc  The imported document
- * @param {{paras: import('./read.js').Para[], text: string}[]} buffers
+ * @param {{paras: import('./read.js').Para[], text: string, claims?: boolean}[]} buffers
+ *   Mark the claims buffer with `claims: true` so its claim lines keep the
+ *   section's numbering style.
  * @returns {Uint8Array} the new file
  */
 export function writeDocx(doc, buffers) {
   const splices = [];
-  for (const b of buffers) splices.push(...planEdits(b.paras, b.text));
+  for (const b of buffers) splices.push(...planEdits(b.paras, b.text, { claims: b.claims }));
   // Apply back-to-front so earlier offsets stay valid. Appends sort after
   // replacements at the same offset.
   splices.sort((x, y) => y.xmlStart - x.xmlStart || (x.append ? -1 : 1));

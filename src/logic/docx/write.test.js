@@ -177,7 +177,7 @@ describe('exported claims keep one alignment', () => {
 
   const exportClaims = (body, text) => {
     const { doc, split } = load(body);
-    return documentXmlOf(writeDocx(doc, [{ paras: split.claimsParas, text }]));
+    return documentXmlOf(writeDocx(doc, [{ paras: split.claimsParas, text, claims: true }]));
   };
 
   // The reported case: two claims typed over an imported set.
@@ -272,7 +272,7 @@ describe('exported claims keep one alignment', () => {
     // ...and they follow the last claim, not the trailing spacer — appending
     // after that opens a blank line the buffer never had.
     const { doc, split } = load(body);
-    const out = writeDocx(doc, [{ paras: split.claimsParas, text }]);
+    const out = writeDocx(doc, [{ paras: split.claimsParas, text, claims: true }]);
     expect(splitPatentDoc(readDocx(out)).claims).toBe(text);
   });
 
@@ -299,9 +299,102 @@ describe('exported claims keep one alignment', () => {
     );
     const out = writeDocx(doc, [
       { paras: split.descParas, text: split.description },
-      { paras: split.claimsParas, text: TWO },
+      { paras: split.claimsParas, text: TWO, claims: true },
     ]);
     expect(splitPatentDoc(readDocx(out)).claims).toBe(TWO);
+  });
+});
+
+// Whichever paragraph a claim line lands in is an artefact of the diff; how the
+// section numbers its claims is not. A .docx whose claims are a Word list must
+// export claims that are ALL list items; one with numbers typed into the text
+// must export claims that are all plain text, with no <w:numPr> to add a second
+// number in front of the typed one.
+describe('exported claims keep the source numbering style', () => {
+  const section = (...claims) => [para('CLAIMS', { style: 'Heading1' }), ...claims].join('');
+  const num = (t) => para(t, { num: true });
+  const NEW = '1. A claim with a bee (2)\n2. The claim according to claim 1.';
+
+  const claimsOf = (body, text = NEW) => {
+    const { doc, split } = load(body);
+    const xml = documentXmlOf(writeDocx(doc, [{ paras: split.claimsParas, text, claims: true }]));
+    return (xml.match(/<w:p[ >][\s\S]*?<\/w:p>/g) || [])
+      .map((p) => ({
+        list: /<w:numPr>/.test(p),
+        text: (p.match(/<w:t[^>]*>[^<]*<\/w:t>/g) || [])
+          .map((t) => t.replace(/<[^>]+>/g, ''))
+          .join(''),
+      }))
+      .filter((p) => p.text.trim() && p.text !== 'CLAIMS');
+  };
+
+  it('keeps every claim in the list when the source is a Word list', () => {
+    for (const source of [
+      section(num('A device (1).'), num('A device (1) of claim 1.')),
+      section(num('A device (1).')), // one claim, so the second is appended
+      section(num('A device (1).'), num('A d (1) of c1.'), num('A d (1) of c2.')),
+    ]) {
+      const cs = claimsOf(source);
+      expect(cs).toHaveLength(2);
+      expect(cs.every((c) => c.list)).toBe(true);
+      // Word numbers a list item, so no typed number may remain in the text.
+      expect(cs.map((c) => c.text)).toEqual([
+        'A claim with a bee (2)',
+        'The claim according to claim 1.',
+      ]);
+    }
+  });
+
+  it('puts a claim in the list even when it lands in a paragraph that was not one', () => {
+    // The reported case. The claims section ends with a plain paragraph, so the
+    // second claim was written into it and came out as typed text beside a
+    // properly numbered first claim.
+    const cs = claimsOf(section(num('A device (1).'), para('Dated: 2026.')));
+    expect(cs.every((c) => c.list)).toBe(true);
+    expect(cs.map((c) => c.text)).toEqual([
+      'A claim with a bee (2)',
+      'The claim according to claim 1.',
+    ]);
+  });
+
+  it('leaves a lead-in line out of the list — it is not a claim', () => {
+    // "What is claimed is:" opens with no claim number, so it must stay a plain
+    // paragraph; joining the list would give it a claim number of its own.
+    const cs = claimsOf(
+      section(para('What is claimed is:'), num('A device (1).')),
+      `What is claimed is:\n${NEW}`
+    );
+    expect(cs[0]).toEqual({ list: false, text: 'What is claimed is:' });
+    expect(cs.slice(1).every((c) => c.list)).toBe(true);
+  });
+
+  it('keeps typed numbering typed, with no list numbering to double it', () => {
+    const cs = claimsOf(section(para('1. A device (1).'), para('2. A device (1) of claim 1.')));
+    expect(cs.some((c) => c.list)).toBe(false);
+    expect(cs.map((c) => c.text)).toEqual([
+      '1. A claim with a bee (2)',
+      '2. The claim according to claim 1.',
+    ]);
+  });
+
+  it('does not treat a numbered description line as a claim', () => {
+    // The flag is per buffer: prose that opens with "1." is not a list item,
+    // and the description must come back exactly as the user wrote it.
+    const body = [
+      para('DETAILED DESCRIPTION', { style: 'Heading1' }),
+      para('1. The first embodiment uses a housing 12.'),
+      para('CLAIMS', { style: 'Heading1' }),
+      num('A device (1).'),
+    ].join('');
+    const { doc, split } = load(body);
+    const edited = '1. The first embodiment uses a housing 14.';
+    const out = writeDocx(doc, [
+      { paras: split.descParas, text: edited },
+      { paras: split.claimsParas, text: split.claims, claims: true },
+    ]);
+    const again = splitPatentDoc(readDocx(out));
+    expect(again.description).toBe(edited);
+    expect(documentXmlOf(out)).toContain('1. The first embodiment uses a housing 14.');
   });
 });
 

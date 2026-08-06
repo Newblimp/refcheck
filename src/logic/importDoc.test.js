@@ -69,6 +69,10 @@ describe('exportPatentDoc', () => {
     const again = splitPatentDoc(readDocx(bytes));
     expect(again.claims).toBe('1. A device (10).');
     expect(again.detected.claimsHeading).toBe('Claims');
+    // With no source document there is no list to match, so the claims are
+    // numbered in the text — Word list numbering would put a second number in
+    // front of the one the user typed.
+    expect(documentXmlOf(bytes)).not.toContain('<w:numPr>');
   });
   it('a fresh German export uses the German claims heading', () => {
     const { bytes } = exportPatentDoc(

@@ -51,7 +51,7 @@ export function exportPatentDoc(imported, buffers, opts = {}) {
   if (imported?.doc) {
     const bytes = writeDocx(imported.doc, [
       { paras: imported.split.descParas, text: buffers.description },
-      { paras: imported.split.claimsParas, text: buffers.claims },
+      { paras: imported.split.claimsParas, text: buffers.claims, claims: true },
     ]);
     return { bytes, mode: 'roundTrip' };
   }
