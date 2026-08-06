@@ -34,10 +34,17 @@ describe('matchHeading — claims', () => {
       'What is claimed is:',
       'We claim',
       'The invention claimed is',
+      'Patent Claims',
+      'PATENT CLAIMS',
+      'patent claims',
+      'Patent Claim',
     ]) {
       expect(kindOf(h)).toBe(SECTION_KINDS.CLAIMS);
       expect(langOf(h)).toBe('en');
     }
+  });
+  it('matches "Patent Claims" via the prefix fallback with trailing text', () => {
+    expect(kindOf('Patent Claims of the Invention')).toBe(SECTION_KINDS.CLAIMS);
   });
 });
 

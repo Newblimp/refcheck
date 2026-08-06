@@ -60,6 +60,8 @@ export const HEADINGS = {
     de: ['Patentansprüche', 'Ansprüche', 'Schutzansprüche', 'Patentanspruch'],
     en: [
       'Claims',
+      'Patent Claims',
+      'Patent Claim',
       'What is claimed is',
       'What is claimed',
       'What we claim is',
@@ -134,6 +136,8 @@ const PREFIXES = [
   ['what is claimed', SECTION_KINDS.CLAIMS, 'en'],
   ['what we claim', SECTION_KINDS.CLAIMS, 'en'],
   ['the invention claimed is', SECTION_KINDS.CLAIMS, 'en'],
+  ['patent claims', SECTION_KINDS.CLAIMS, 'en'],
+  ['patent claim', SECTION_KINDS.CLAIMS, 'en'],
   ['claims', SECTION_KINDS.CLAIMS, 'en'],
   ['bezugszeichenliste', SECTION_KINDS.SIGN_LIST, 'de'],
   ['liste der bezugszeichen', SECTION_KINDS.SIGN_LIST, 'de'],
