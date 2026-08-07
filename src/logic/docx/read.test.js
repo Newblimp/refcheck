@@ -33,6 +33,15 @@ describe('docxXmlToParagraphs', () => {
     const xml = '<w:p><w:r><w:t>a</w:t><w:tab/><w:t>b</w:t><w:br/><w:t>c</w:t></w:r></w:p>';
     expect(texts(xml)).toEqual(['a\tb\nc']);
   });
+  it('reads the two hyphens Word stores as elements', () => {
+    // Dropped, these glue a hyphenated term back together ("cross-section"
+    // arriving as "crosssection") and vanish from the file the moment that
+    // paragraph is edited. docx/write.js maps the characters back to elements.
+    const xml =
+      '<w:p><w:r><w:t>cross</w:t><w:noBreakHyphen/><w:t>section 10</w:t></w:r></w:p>' +
+      '<w:p><w:r><w:t>Ver</w:t><w:softHyphen/><w:t>fahren 12</w:t></w:r></w:p>';
+    expect(texts(xml)).toEqual(['cross\u2011section 10', 'Ver\u00ADfahren 12']);
+  });
   it('keeps an empty paragraph as its own (blank) line', () => {
     expect(texts(para('a') + '<w:p/>' + para('b'))).toEqual(['a', '', 'b']);
   });

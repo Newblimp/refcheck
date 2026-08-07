@@ -581,11 +581,31 @@ export function App() {
 
   async function doExport() {
     const { exportPatentDoc } = await loadDocIO();
-    const { bytes } = exportPatentDoc(
-      imported,
-      { description: descText, claims: claimsText },
-      { claimsHeading: lang === 'de' ? 'Patentansprüche' : 'Claims' }
-    );
+    let result;
+    try {
+      result = exportPatentDoc(
+        imported,
+        { description: descText, claims: claimsText },
+        { claimsHeading: lang === 'de' ? 'Patentansprüche' : 'Claims' }
+      );
+    } catch {
+      // The writer refuses to emit a document it knows is broken. Say so —
+      // silently downloading nothing is the one outcome a drafter cannot act on.
+      setReport({ kind: 'error', messageKey: 'expErrFailed' });
+      return;
+    }
+    const { bytes, verified, diffs = [] } = result;
+    // The file was written, but reading it back did not reproduce the buffers.
+    // It is still handed over — the drafter needs a way to get their work out —
+    // with a warning naming the first place the two disagree.
+    if (!verified) {
+      const d = diffs[0];
+      setReport({
+        kind: 'warn',
+        messageKey: 'expErrUnverified',
+        warnings: d ? [{ key: 'expDiffAt', arg: d }] : [],
+      });
+    }
     const base = imported?.fileName ? imported.fileName.replace(/\.docm?x?$/i, '') : 'refcheck';
     const blob = new Blob([bytes], {
       type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',

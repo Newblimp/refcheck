@@ -5,6 +5,7 @@
 
 import { readDocx, DocxError } from './docx/read.js';
 import { writeDocx, createDocx } from './docx/write.js';
+import { verifyExport } from './docx/verify.js';
 import { splitPatentDoc } from './docSplit.js';
 import { detectLang } from './detectLang.js';
 import { fileKind } from './fileKind.js';
@@ -42,10 +43,17 @@ export function importPatentDoc(buf) {
  * to write into, so a fresh minimal .docx is generated instead — the caller is
  * expected to tell the user which of the two it is getting.
  *
+ * A round-trip export is VERIFIED before it is handed back: the bytes are read
+ * again and compared with the buffers (see docx/verify.js). The file is still
+ * returned when they disagree — refusing to export would leave a drafter with
+ * no way to get their work out — but `verified` is false and `diffs` says where,
+ * so the UI can warn instead of letting a quietly wrong document through.
+ *
  * @param {ImportResult|null} imported
  * @param {{description: string, claims: string}} buffers
  * @param {{claimsHeading?: string}} [opts]
- * @returns {{bytes: Uint8Array, mode: 'roundTrip'|'fresh'}}
+ * @returns {{bytes: Uint8Array, mode: 'roundTrip'|'fresh', verified: boolean,
+ *   diffs: import('./docx/verify.js').SectionDiff[], verifyError?: string}}
  */
 export function exportPatentDoc(imported, buffers, opts = {}) {
   if (imported?.doc) {
@@ -53,13 +61,23 @@ export function exportPatentDoc(imported, buffers, opts = {}) {
       { paras: imported.split.descParas, text: buffers.description },
       { paras: imported.split.claimsParas, text: buffers.claims, claims: true },
     ]);
-    return { bytes, mode: 'roundTrip' };
+    const check = verifyExport(bytes, buffers);
+    return {
+      bytes,
+      mode: 'roundTrip',
+      verified: check.ok,
+      diffs: check.diffs,
+      verifyError: check.error,
+    };
   }
   const sections = [];
   if (buffers.description) sections.push({ text: buffers.description });
   if (buffers.claims)
     sections.push({ heading: opts.claimsHeading || 'Claims', text: buffers.claims });
-  return { bytes: createDocx(sections), mode: 'fresh' };
+  // Nothing to verify against: a fresh file is built from the buffers rather
+  // than spliced into an existing document, so there is no third party whose
+  // structure the write could disagree with.
+  return { bytes: createDocx(sections), mode: 'fresh', verified: true, diffs: [] };
 }
 
 export { DocxError };
