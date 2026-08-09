@@ -3,7 +3,7 @@ import { fileKind, importPatentDoc, exportPatentDoc } from './importDoc.js';
 import { readDocx } from './docx/read.js';
 import { splitPatentDoc } from './docSplit.js';
 import { documentXmlOf } from './docx/write.js';
-import { makeDocx, DE_BODY, EN_BODY } from './docx/fixture.js';
+import { para, makeDocx, DE_BODY, EN_BODY } from './docx/fixture.js';
 
 describe('fileKind', () => {
   it('accepts .docx and .docm, in any case', () => {
@@ -83,5 +83,104 @@ describe('exportPatentDoc', () => {
     const again = splitPatentDoc(readDocx(bytes));
     expect(again.lang).toBe('de');
     expect(again.claims).toBe('1. Vorrichtung (10).');
+  });
+});
+
+// The reference-sign list is the third buffer written back into the source. It
+// is also the one that can be left out, because the source does not always mark
+// it out clearly enough to rewrite — and a wrong guess there damages the file.
+describe('exportPatentDoc — the reference list', () => {
+  const H = (t) => para(t, { style: 'Heading1' });
+  const EDITED = '10 warning device\n12 casing\n14 bee';
+  const roundTrip = (body, refList = EDITED) => {
+    const imported = importPatentDoc(makeDocx(body));
+    const out = exportPatentDoc(imported, {
+      description: imported.split.description,
+      claims: imported.split.claims,
+      refList,
+    });
+    return { imported, out, again: splitPatentDoc(readDocx(out.bytes)) };
+  };
+  const plain = [
+    H('DETAILED DESCRIPTION'),
+    para('The device 10 comprises a housing 12.'),
+    H('CLAIMS'),
+    para('1. A device (10).'),
+    H('LIST OF REFERENCE SIGNS'),
+    para('10 device'),
+    para('12 housing'),
+  ].join('');
+
+  it('writes an edited list back, leaving the other buffers alone', () => {
+    const { imported, out, again } = roundTrip(plain);
+    expect(out.refList).toBe('written');
+    expect(again.signList).toBe(EDITED);
+    expect(again.description).toBe(imported.split.description);
+    expect(again.claims).toBe(imported.split.claims);
+  });
+
+  it('writes nothing at all when the list was not touched', () => {
+    const imported = importPatentDoc(makeDocx(plain));
+    const out = exportPatentDoc(imported, {
+      description: imported.split.description,
+      claims: imported.split.claims,
+      refList: imported.split.signList,
+    });
+    expect(out.refList).toBe('unchanged');
+    expect(documentXmlOf(out.bytes)).toBe(imported.doc.documentXml);
+  });
+
+  it('leaves the file alone and reports why when there is no list section', () => {
+    const body = [
+      H('DETAILED DESCRIPTION'),
+      para('The device 10 comprises a housing 12.'),
+      H('CLAIMS'),
+      para('1. A device (10).'),
+    ].join('');
+    const { imported, out, again } = roundTrip(body);
+    expect(out.refList).toBe('noSection');
+    expect(again.description).toBe(imported.split.description);
+    expect(again.claims).toBe(imported.split.claims);
+  });
+
+  it('refuses when the list cannot be told apart from the description', () => {
+    const body = [
+      para('The device 10 comprises a housing 12.'),
+      H('LIST OF REFERENCE SIGNS'),
+      para('10 device'),
+      H('CLAIMS'),
+      para('1. A device (10).'),
+    ].join('');
+    const { out, again } = roundTrip(body);
+    expect(out.refList).toBe('ambiguous');
+    // The original list survives untouched rather than being half-rewritten.
+    expect(again.signList).toBe('10 device');
+  });
+
+  it('refuses a table-based list, leaving the table intact', () => {
+    const body =
+      [
+        H('DETAILED DESCRIPTION'),
+        para('The device 10 comprises a housing 12.'),
+        H('CLAIMS'),
+        para('1. A device (10).'),
+        H('LIST OF REFERENCE SIGNS'),
+      ].join('') +
+      '<w:tbl><w:tr><w:tc><w:p><w:r><w:t>10</w:t></w:r></w:p></w:tc>' +
+      '<w:tc><w:p><w:r><w:t>device</w:t></w:r></w:p></w:tc></w:tr></w:tbl>';
+    const { out } = roundTrip(body);
+    expect(out.refList).toBe('table');
+    expect(documentXmlOf(out.bytes)).toContain('<w:tbl>');
+    expect(documentXmlOf(out.bytes)).toContain('<w:t>device</w:t>');
+  });
+
+  it('includes the list as its own section in a from-scratch export', () => {
+    const { bytes, refList } = exportPatentDoc(
+      null,
+      { description: 'The device 10.', claims: '1. A device (10).', refList: EDITED },
+      { claimsHeading: 'Claims', refListHeading: 'Reference signs' }
+    );
+    expect(refList).toBe('written');
+    expect(splitPatentDoc(readDocx(bytes)).signList).toBe(EDITED);
   });
 });

@@ -37,6 +37,7 @@ import { unzipSync, strFromU8 } from 'fflate';
  * @property {number|null} numId Auto-numbering list id
  * @property {number} ilvl       Auto-numbering level
  * @property {boolean} bold      Every run in the paragraph is bold
+ * @property {boolean} inTable   Sits inside a `<w:tbl>` (one paragraph per cell)
  * @property {ParaSrc} src
  */
 
@@ -99,6 +100,12 @@ export function docxXmlToParagraphs(xml) {
   let runCount = 0,
     boldRuns = 0,
     curRunBold = false;
+  // Table nesting depth. A reference-sign list is often laid out as a two-column
+  // table, and each CELL is its own <w:p> — so the list flattens to alternating
+  // "10" / "device" lines. Rewriting those from edited text would move sign and
+  // term between cells, so the writer has to be able to recognise and refuse
+  // them. Tables nest, hence a depth rather than a flag.
+  let tblDepth = 0;
 
   TAG_RE.lastIndex = 0;
   let m;
@@ -123,18 +130,31 @@ export function docxXmlToParagraphs(xml) {
     }
 
     switch (name) {
+      case 'w:tbl':
+        if (isClose) tblDepth = Math.max(0, tblDepth - 1);
+        else if (!isSelf) tblDepth++;
+        break;
       case 'w:p': {
         if (isSelf) {
           // <w:p/> — an empty paragraph still occupies a line
           paras.push(
-            makePara('', '', false, null, 0, false, {
-              xmlStart: m.index,
-              xmlEnd: m.index + full.length,
-              pPrXml: '',
-              rPrXml: '',
-              pAttrs: attrs,
-              synthesizedPrefix: '',
-            })
+            makePara(
+              '',
+              '',
+              false,
+              null,
+              0,
+              false,
+              {
+                xmlStart: m.index,
+                xmlEnd: m.index + full.length,
+                pPrXml: '',
+                rPrXml: '',
+                pAttrs: attrs,
+                synthesizedPrefix: '',
+              },
+              tblDepth > 0
+            )
           );
           break;
         }
@@ -151,14 +171,23 @@ export function docxXmlToParagraphs(xml) {
           runCount = 0;
           boldRuns = 0;
         } else {
-          p = makePara('', '', false, null, 0, false, {
-            xmlStart: m.index,
-            xmlEnd: -1,
-            pPrXml: '',
-            rPrXml: '',
-            pAttrs: attrs,
-            synthesizedPrefix: '',
-          });
+          p = makePara(
+            '',
+            '',
+            false,
+            null,
+            0,
+            false,
+            {
+              xmlStart: m.index,
+              xmlEnd: -1,
+              pPrXml: '',
+              rPrXml: '',
+              pAttrs: attrs,
+              synthesizedPrefix: '',
+            },
+            tblDepth > 0
+          );
           chunks = [];
           runCount = 0;
           boldRuns = 0;
@@ -244,8 +273,8 @@ export function docxXmlToParagraphs(xml) {
   return paras;
 }
 
-function makePara(text, style, numbered, numId, ilvl, bold, src) {
-  return { text, style, numbered, numId, ilvl, bold, src };
+function makePara(text, style, numbered, numId, ilvl, bold, src, inTable = false) {
+  return { text, style, numbered, numId, ilvl, bold, inTable, src };
 }
 
 /** True for the Office Open XML magic bytes (a ZIP local file header). */

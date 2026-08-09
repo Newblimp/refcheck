@@ -18,7 +18,10 @@ export function ImportBanner({ report, t, onUndo, onDismiss }) {
   return (
     <div className={`imp-banner imp-${kind}`} role="status">
       <span className="imp-main">
-        {kind === 'error' ? (
+        {/* A message key means this banner is saying one specific thing — an
+            import failure, or an export that could not write the reference list
+            — rather than summarising a successful import. */}
+        {messageKey ? (
           <strong>{str(messageKey)}</strong>
         ) : (
           <>

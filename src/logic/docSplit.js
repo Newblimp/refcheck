@@ -82,6 +82,46 @@ function toText(paras) {
   return trimBlankEdges(paras.map((p) => p.text)).join('\n');
 }
 
+/** Do two paragraph runs cover any of the same bytes of document.xml? */
+const intersects = (a, b) =>
+  a.some((x) => b.some((y) => x.src.xmlStart < y.src.xmlEnd && y.src.xmlStart < x.src.xmlEnd));
+
+/**
+ * Can an edited reference-sign list be written back into the source document?
+ *
+ * Export rewrites the paragraphs a buffer came from, which is only meaningful
+ * when those paragraphs are unambiguously the list and nothing else. Three ways
+ * that fails, each of which would damage the file rather than update it:
+ *
+ *  - `noSection`: no sign-list heading, so there is no region to write into.
+ *  - `ambiguous`: the list's paragraphs are also part of the description or
+ *    claims buffer. With no detailed-description heading the splitter falls
+ *    back to "everything before the claims", which swallows a list placed
+ *    there — two buffers would then plan edits over the same bytes.
+ *  - `table`: the list is a table, so every cell is its own paragraph and the
+ *    buffer reads "10 / device / 12 / housing" down the lines. Diffing edited
+ *    text against that moves values between cells.
+ *
+ * The caller exports the other buffers regardless and reports the reason; the
+ * list is never guessed at.
+ *
+ * @param {SplitResult} split
+ * @returns {{ok: true} | {ok: false, reason: 'noSection'|'ambiguous'|'table'}}
+ */
+export function refListWritable(split) {
+  const paras = split?.signListParas || [];
+  if (!split?.detected?.signList || !paras.length) return { ok: false, reason: 'noSection' };
+  if (paras.some((p) => p.inTable)) return { ok: false, reason: 'table' };
+  if (
+    split.detected.fellBack ||
+    intersects(paras, split.descParas || []) ||
+    intersects(paras, split.claimsParas || [])
+  ) {
+    return { ok: false, reason: 'ambiguous' };
+  }
+  return { ok: true };
+}
+
 /**
  * Split a parsed document into the Description and Claims buffers.
  * @param {{paragraphs: import('./docx/read.js').Para[]}} doc

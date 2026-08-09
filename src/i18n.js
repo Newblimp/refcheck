@@ -88,6 +88,12 @@ export const T = {
       'Writes your edits back into the imported file; only changed paragraphs are rewritten',
     expTitleFresh: 'No imported file in this session — generates a new .docx from the two buffers',
     expDone: 'Exported',
+    expRefNoSection:
+      'Exported — but your reference list was not written back: the imported file has no reference-sign section to update.',
+    expRefAmbiguous:
+      'Exported — but your reference list was not written back: it could not be told apart from the description in the imported file.',
+    expRefTable:
+      'Exported — but your reference list was not written back: it is a table in the imported file, and editing it as text would move entries between cells.',
     storageFull:
       'This text is too large to save in the browser — it will not survive a refresh. Export to .docx to keep it.',
     dismiss: 'Dismiss',
@@ -206,6 +212,12 @@ export const T = {
     expTitleFresh:
       'Keine importierte Datei in dieser Sitzung — erzeugt eine neue .docx aus beiden Feldern',
     expDone: 'Exportiert',
+    expRefNoSection:
+      'Exportiert — die Bezugszeichenliste wurde jedoch nicht zurückgeschrieben: die importierte Datei enthält keinen Bezugszeichen-Abschnitt.',
+    expRefAmbiguous:
+      'Exportiert — die Bezugszeichenliste wurde jedoch nicht zurückgeschrieben: sie ließ sich in der importierten Datei nicht von der Beschreibung trennen.',
+    expRefTable:
+      'Exportiert — die Bezugszeichenliste wurde jedoch nicht zurückgeschrieben: sie ist in der importierten Datei eine Tabelle, und eine Bearbeitung als Text würde Einträge zwischen Zellen verschieben.',
     storageFull:
       'Dieser Text ist zu groß zum Speichern im Browser — er überlebt keinen Neuladen. Zum Sichern als .docx exportieren.',
     dismiss: 'Schließen',

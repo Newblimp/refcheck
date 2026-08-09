@@ -452,3 +452,40 @@ describe('alignLines size bail-out', () => {
     expect(performance.now() - t0).toBeLessThan(2000);
   });
 });
+
+// Each buffer plans its splices from its own paragraphs, so nothing else checks
+// across buffers. The splitter CAN hand back overlapping regions, and two sets
+// of edits over one range do not merge — they interleave into a file Word
+// cannot open. This is the backstop that turns that into a loud failure.
+describe('writeDocx refuses overlapping edits', () => {
+  const body = [
+    para('DETAILED DESCRIPTION', { style: 'Heading1' }),
+    para('The device 10.'),
+    para('A housing 12.'),
+  ].join('');
+
+  it('throws rather than interleaving two edits over the same paragraphs', () => {
+    const { doc, split } = load(body);
+    expect(() =>
+      writeDocx(doc, [
+        { paras: split.descParas, text: 'The device 14.\nA housing 12.' },
+        { paras: split.descParas, text: 'The device 99.\nA housing 12.' },
+      ])
+    ).toThrow(/overlappingEdits/);
+  });
+
+  it('still writes when an insertion sits exactly where the next paragraph starts', () => {
+    // An append is zero-width, so it touches its neighbours without overlapping
+    // them — the guard must not mistake that for a collision.
+    const { doc, split } = load(body);
+    const xml = documentXmlOf(
+      writeDocx(doc, [{ paras: split.descParas, text: 'The device 10.\nNEW 16.\nA housing 99.' }])
+    );
+    expect(docxXmlToParagraphs(xml).map((p) => p.text)).toEqual([
+      'DETAILED DESCRIPTION',
+      'The device 10.',
+      'NEW 16.',
+      'A housing 99.',
+    ]);
+  });
+});

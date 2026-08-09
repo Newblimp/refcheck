@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { splitPatentDoc } from './docSplit.js';
+import { splitPatentDoc, refListWritable } from './docSplit.js';
 import { docxXmlToParagraphs } from './docx/read.js';
 import { para, DE_BODY, EN_BODY } from './docx/fixture.js';
 
@@ -171,5 +171,74 @@ describe('reference-sign list', () => {
     expect(r.signList).toBe('10 device\n12 housing');
     expect(r.claims).toBe('1. A device (10) comprising a housing (12).');
     expect(r.signList).not.toContain('PATENT CLAIMS');
+  });
+});
+
+// Export rewrites the paragraphs a buffer came from. For the reference-sign
+// list that is only safe when the source marks it out unambiguously — the three
+// ways it does not would each damage the file rather than update it.
+describe('refListWritable', () => {
+  const H = (t) => para(t, { style: 'Heading1' });
+  const check = (body) => refListWritable(split(body));
+
+  it('accepts a list that is its own section of plain paragraphs', () => {
+    const body = [
+      H('DETAILED DESCRIPTION'),
+      para('The device 10 comprises a housing 12.'),
+      H('CLAIMS'),
+      para('1. A device (10).'),
+      H('LIST OF REFERENCE SIGNS'),
+      para('10 device'),
+      para('12 housing'),
+    ].join('');
+    expect(check(body)).toEqual({ ok: true });
+  });
+
+  it('refuses when the document has no reference-sign section', () => {
+    const body = [
+      H('DETAILED DESCRIPTION'),
+      para('The device 10 comprises a housing 12.'),
+      H('CLAIMS'),
+      para('1. A device (10).'),
+    ].join('');
+    expect(check(body)).toEqual({ ok: false, reason: 'noSection' });
+  });
+
+  it('refuses when the list is also inside the description buffer', () => {
+    // No detailed-description heading, so the splitter falls back to
+    // "everything before the claims" — which swallows the list. Both buffers
+    // would then plan edits over the same bytes of document.xml.
+    const body = [
+      para('The device 10 comprises a housing 12.'),
+      H('LIST OF REFERENCE SIGNS'),
+      para('10 device'),
+      H('CLAIMS'),
+      para('1. A device (10).'),
+    ].join('');
+    const r = split(body);
+    expect(r.detected.fellBack).toBe(true);
+    // The overlap is real, not merely suspected.
+    const hit = r.descParas.some((d) =>
+      r.signListParas.some((g) => d.src.xmlStart < g.src.xmlEnd && g.src.xmlStart < d.src.xmlEnd)
+    );
+    expect(hit).toBe(true);
+    expect(check(body)).toEqual({ ok: false, reason: 'ambiguous' });
+  });
+
+  it('refuses a list laid out as a table', () => {
+    // Every cell is its own <w:p>, so the buffer reads "10 / device" down the
+    // lines; diffing edited text against that moves values between cells.
+    const body =
+      [
+        H('DETAILED DESCRIPTION'),
+        para('The device 10 comprises a housing 12.'),
+        H('CLAIMS'),
+        para('1. A device (10).'),
+        H('LIST OF REFERENCE SIGNS'),
+      ].join('') +
+      '<w:tbl><w:tr><w:tc><w:p><w:r><w:t>10</w:t></w:r></w:p></w:tc>' +
+      '<w:tc><w:p><w:r><w:t>device</w:t></w:r></w:p></w:tc></w:tr></w:tbl>';
+    expect(split(body).signListParas.every((p) => p.inTable)).toBe(true);
+    expect(check(body)).toEqual({ ok: false, reason: 'table' });
   });
 });

@@ -581,11 +581,24 @@ export function App() {
 
   async function doExport() {
     const { exportPatentDoc } = await loadDocIO();
-    const { bytes } = exportPatentDoc(
+    const { bytes, refList } = exportPatentDoc(
       imported,
-      { description: descText, claims: claimsText },
-      { claimsHeading: lang === 'de' ? 'Patentansprüche' : 'Claims' }
+      { description: descText, claims: claimsText, refList: refListText },
+      {
+        claimsHeading: lang === 'de' ? 'Patentansprüche' : 'Claims',
+        refListHeading: lang === 'de' ? 'Bezugszeichenliste' : 'Reference signs',
+      }
     );
+    // The reference list is the one buffer that can be silently left out — the
+    // source may not mark it out unambiguously enough to rewrite (see
+    // refListWritable). Saying nothing would let the user believe an edit was
+    // saved when it was not.
+    const skipped = {
+      noSection: 'expRefNoSection',
+      ambiguous: 'expRefAmbiguous',
+      table: 'expRefTable',
+    };
+    if (skipped[refList]) setReport({ kind: 'warn', messageKey: skipped[refList] });
     const base = imported?.fileName ? imported.fileName.replace(/\.docm?x?$/i, '') : 'refcheck';
     const blob = new Blob([bytes], {
       type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
@@ -764,7 +777,7 @@ export function App() {
       <ImportBanner
         report={report}
         t={t}
-        onUndo={undoRef.current && report?.kind !== 'error' ? undoImport : null}
+        onUndo={undoRef.current && !report?.messageKey ? undoImport : null}
         onDismiss={() => setReport(null)}
       />
 

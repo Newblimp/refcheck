@@ -12,6 +12,7 @@
 import { unzipSync, zipSync, strToU8, strFromU8 } from 'fflate';
 import { escapeMarkup } from '../escape.js';
 import { blankEdges } from '../blankEdges.js';
+import { DocxError } from './read.js';
 
 // Shared with the HTML backdrop builder — same three characters, same rules.
 const esc = escapeMarkup;
@@ -363,6 +364,31 @@ export function planEdits(paras, editedText, opts = {}) {
 }
 
 /**
+ * Refuse to apply two edits to the same bytes.
+ *
+ * Each buffer plans its splices from its own paragraphs, so nothing checks
+ * across buffers — and the splitter CAN hand back overlapping regions: with no
+ * detailed-description heading it falls back to "everything before the claims"
+ * as the description, which swallows a reference-sign list placed before them.
+ * Two sets of splices over one range do not merge, they interleave, and the
+ * result is a .docx Word cannot open. A loud failure is the only acceptable
+ * outcome; the caller decides which buffer to drop (see refListWritable).
+ *
+ * @param {{xmlStart:number, xmlEnd:number}[]} sorted  Splices, descending by start
+ */
+function assertDisjoint(sorted) {
+  // Walking from the end of the document backwards, nothing may reach past the
+  // leftmost edit seen so far. An append is zero-width ([x, x)), so it touches
+  // its neighbours without overlapping them — which `>` gets right and `>=`
+  // would not: inserting a paragraph directly before an edited one is ordinary.
+  let minStart = Infinity;
+  for (const s of sorted) {
+    if (s.xmlEnd > minStart) throw new DocxError('overlappingEdits');
+    minStart = Math.min(minStart, s.xmlStart);
+  }
+}
+
+/**
  * Produce an edited .docx.
  * @param {import('./read.js').PatentDoc} doc  The imported document
  * @param {{paras: import('./read.js').Para[], text: string, claims?: boolean}[]} buffers
@@ -376,6 +402,7 @@ export function writeDocx(doc, buffers) {
   // Apply back-to-front so earlier offsets stay valid. Appends sort after
   // replacements at the same offset.
   splices.sort((x, y) => y.xmlStart - x.xmlStart || (x.append ? -1 : 1));
+  assertDisjoint(splices);
 
   let xml = doc.documentXml;
   for (const s of splices) xml = xml.slice(0, s.xmlStart) + s.xml + xml.slice(s.xmlEnd);
