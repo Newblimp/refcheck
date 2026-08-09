@@ -1,7 +1,9 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import { App } from './App.jsx';
-import { makeDocx, DE_BODY } from '../logic/docx/fixture.js';
+import { makeDocx, para, DE_BODY } from '../logic/docx/fixture.js';
+import { readDocx } from '../logic/docx/read.js';
+import { splitPatentDoc } from '../logic/docSplit.js';
 
 // jsdom's File has no arrayBuffer() in this version, so provide the bytes the
 // import path actually reads.
@@ -141,6 +143,36 @@ describe('App (interactive)', () => {
 
     fireEvent.click(await screen.findByText(/Rückgängig|Undo/));
     await waitFor(() => expect(editor().value).toBe('The housing 12 is large.'));
+  });
+
+  it('exports the edited document without complaint when it verifies', async () => {
+    render(<App />);
+    fireEvent.drop(window, { dataTransfer: { types: ['Files'], files: [docxFile(DE_BODY)] } });
+    await waitFor(() => expect(editor().value).toContain('Gehäuse 12'));
+    typeInto(editor().value.replace('Gehäuse 12 besteht', 'Gehäuse 14 besteht'));
+
+    fireEvent.click(screen.getByText('.docx exportieren'));
+    await waitFor(() => expect(URL.lastBlob).toBeTruthy());
+    const out = new Uint8Array(await URL.lastBlob.arrayBuffer());
+    expect(splitPatentDoc(readDocx(out)).description).toContain('Gehäuse 14 besteht');
+    // A verified export says nothing; the banner still shows the import result.
+    expect(screen.queryByText(/erneuten Einlesen|reading it back/)).toBeNull();
+  });
+
+  it('warns when the exported file does not reproduce the buffers', async () => {
+    // A document with no claims section has nowhere to put claims text, so the
+    // claims buffer is silently dropped from the file. The user must be told.
+    const descOnly = para('Detaillierte Beschreibung', { style: 'Heading1' }) + para('Gehäuse 12.');
+    render(<App />);
+    fireEvent.drop(window, { dataTransfer: { types: ['Files'], files: [docxFile(descOnly)] } });
+    await waitFor(() => expect(editor().value).toContain('Gehäuse 12.'));
+
+    fireEvent.click(screen.getByText('Ansprüche'));
+    typeInto('1. Vorrichtung (10).');
+    fireEvent.click(screen.getByText('.docx exportieren'));
+
+    expect(await screen.findByText(/erneuten Einlesen/)).toBeInTheDocument();
+    expect(await screen.findByText(/Ansprüche, Zeile 1/)).toBeInTheDocument();
   });
 
   it('reports a clear error for a legacy .doc instead of importing garbage', async () => {

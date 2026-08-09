@@ -334,6 +334,24 @@ export const disKey = {
   dep: (key) => 'd:' + key, // id: depError.key (claim>ref#ordinal)
 };
 
+// The same rule as isClaimNumber, applied to a whole line rather than a token:
+// a leading Arabic number followed by '.' or ')'. `CLAIM_NUM_PREFIX_RE` also
+// eats the space after it, so replacing a match strips the number cleanly.
+//
+// Three places need this and had drifted into two literals: docSplit decides
+// whether a Word-numbered claim already carries a number in its text, and the
+// .docx writer both strips a synthesized number before writing back and decides
+// whether an exported line is a claim at all. They must agree exactly — a line
+// docSplit considers already-numbered but the writer does not comes back from
+// Word with two numbers in front of it.
+export const CLAIM_NUM_PREFIX_RE = /^\s*\d{1,4}\s*[.)]\s*/;
+
+/** Does this line open with a claim number? */
+export const startsWithClaimNumber = (line) => CLAIM_NUM_PREFIX_RE.test(String(line));
+
+/** The line without its leading claim number (unchanged if it has none). */
+export const stripClaimNumber = (line) => String(line).replace(CLAIM_NUM_PREFIX_RE, '');
+
 // A numeric token that starts a line and is followed by '.' or ')' → claim number.
 // Claim numbers are Arabic; a line-leading Roman step (e.g. "I.") is not one.
 export function isClaimNumber(text, tok) {

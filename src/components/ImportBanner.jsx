@@ -18,9 +18,10 @@ export function ImportBanner({ report, t, onUndo, onDismiss }) {
   return (
     <div className={`imp-banner imp-${kind}`} role="status">
       <span className="imp-main">
-        {/* A message key means this banner is saying one specific thing — an
-            import failure, or an export that could not write the reference list
-            — rather than summarising a successful import. */}
+        {/* A message key means "this is a stated result" (an import that failed,
+            an export that could not be verified). Only a report WITHOUT one is
+            the successful-import summary, which is the only thing that has
+            character counts to show. */}
         {messageKey ? (
           <strong>{str(messageKey)}</strong>
         ) : (

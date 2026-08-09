@@ -266,6 +266,18 @@ export function docxXmlToParagraphs(xml) {
       case 'w:cr':
         if (chunks) chunks.push('\n');
         break;
+      // Word writes these two as elements rather than characters. Dropping them
+      // used to glue the halves of a hyphenated term together in the buffer
+      // ("cross‑section" arrived as "crosssection"), which both breaks term
+      // matching and — the moment that paragraph is edited — silently deletes
+      // the hyphen from the exported file. docx/write.js maps the characters
+      // back to the elements, so the pair round-trips.
+      case 'w:noBreakHyphen':
+        if (chunks && runDepth > 0) chunks.push('\u2011');
+        break;
+      case 'w:softHyphen':
+        if (chunks && runDepth > 0) chunks.push('\u00AD');
+        break;
       default:
         break;
     }

@@ -242,3 +242,67 @@ describe('refListWritable', () => {
     expect(check(body)).toEqual({ ok: false, reason: 'table' });
   });
 });
+
+// Export splices into the paragraphs a buffer names, so two buffers naming the
+// same paragraph means two texts written over one range — and one of them lost.
+// The stop-kind lists alone do not guarantee this: they assume the usual section
+// order, and a document does not have to be in it.
+describe('sections never overlap', () => {
+  const indicesOf = (paras) => paras.map((p) => p.src.xmlStart);
+  const disjoint = (r) => {
+    const all = [
+      ...indicesOf(r.descParas),
+      ...indicesOf(r.claimsParas),
+      ...indicesOf(r.signListParas),
+    ];
+    return new Set(all).size === all.length;
+  };
+
+  it('when the claims come before the description (an amendment sheet)', () => {
+    const body =
+      para('PATENT CLAIMS', { style: 'Heading1' }) +
+      para('1. A device (10).') +
+      para('DETAILED DESCRIPTION', { style: 'Heading1' }) +
+      para('The device 10 comprises a housing 12.');
+    const r = split(body);
+    expect(r.claims).toBe('1. A device (10).');
+    expect(r.description).toBe('The device 10 comprises a housing 12.');
+    expect(disjoint(r)).toBe(true);
+  });
+
+  it('when the sign list comes before the description', () => {
+    const body =
+      para('LIST OF REFERENCE SIGNS', { style: 'Heading1' }) +
+      para('10 device') +
+      para('DETAILED DESCRIPTION', { style: 'Heading1' }) +
+      para('The device 10 comprises a housing 12.') +
+      para('CLAIMS', { style: 'Heading1' }) +
+      para('1. A device (10).');
+    const r = split(body);
+    expect(r.signList).toBe('10 device');
+    expect(r.description).toBe('The device 10 comprises a housing 12.');
+    expect(r.claims).toBe('1. A device (10).');
+    expect(disjoint(r)).toBe(true);
+  });
+
+  it('in the ordinary layouts too', () => {
+    expect(disjoint(split(EN_BODY))).toBe(true);
+    expect(disjoint(split(DE_BODY))).toBe(true);
+  });
+
+  it('does not truncate a description at its own sub-heading', () => {
+    // "Ausführungsbeispiel 2" matches the detailed-description prefix. Clipping
+    // at every heading of a section KIND — rather than at the sections actually
+    // located — would cut the description in half here.
+    const body =
+      para('Detaillierte Beschreibung', { style: 'Heading1' }) +
+      para('Die Vorrichtung 10 umfasst ein Gehäuse 12.') +
+      para('Ausführungsbeispiel 2', { style: 'Heading2' }) +
+      para('Das Gehäuse 12 ist aus Aluminium.') +
+      para('Patentansprüche', { style: 'Heading1' }) +
+      para('1. Vorrichtung (10).');
+    const r = split(body);
+    expect(r.description).toContain('Das Gehäuse 12 ist aus Aluminium.');
+    expect(r.claims).toBe('1. Vorrichtung (10).');
+  });
+});

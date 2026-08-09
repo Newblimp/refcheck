@@ -123,6 +123,12 @@ export const T = {
       'Exported — but your reference list was not written back: it could not be told apart from the description in the imported file.',
     expRefTable:
       'Exported — but your reference list was not written back: it is a table in the imported file, and editing it as text would move entries between cells.',
+    expErrFailed:
+      'The export could not be written safely and was cancelled — nothing has been downloaded.',
+    expErrUnverified:
+      'The exported file was downloaded, but reading it back did not reproduce your text exactly. Please check it before filing.',
+    expDiffAt: (d) =>
+      `${d.section === 'claims' ? 'Claims' : 'Description'} line ${d.line}: expected “${d.expected}”, file has “${d.actual}”`,
     storageFull:
       'This text is too large to save in the browser — it will not survive a refresh. Export to .docx to keep it.',
     dismiss: 'Dismiss',
@@ -276,6 +282,12 @@ export const T = {
       'Exportiert — die Bezugszeichenliste wurde jedoch nicht zurückgeschrieben: sie ließ sich in der importierten Datei nicht von der Beschreibung trennen.',
     expRefTable:
       'Exportiert — die Bezugszeichenliste wurde jedoch nicht zurückgeschrieben: sie ist in der importierten Datei eine Tabelle, und eine Bearbeitung als Text würde Einträge zwischen Zellen verschieben.',
+    expErrFailed:
+      'Der Export konnte nicht sicher geschrieben werden und wurde abgebrochen — es wurde nichts heruntergeladen.',
+    expErrUnverified:
+      'Die Datei wurde heruntergeladen, beim erneuten Einlesen ergab sich jedoch nicht exakt Ihr Text. Bitte vor der Einreichung prüfen.',
+    expDiffAt: (d) =>
+      `${d.section === 'claims' ? 'Ansprüche' : 'Beschreibung'}, Zeile ${d.line}: erwartet „${d.expected}“, Datei enthält „${d.actual}“`,
     storageFull:
       'Dieser Text ist zu groß zum Speichern im Browser — er überlebt keinen Neuladen. Zum Sichern als .docx exportieren.',
     dismiss: 'Schließen',

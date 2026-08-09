@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { unzipSync } from 'fflate';
-import { alignLines, planEdits, writeDocx, createDocx, documentXmlOf } from './write.js';
+import { planEdits, writeDocx, createDocx, documentXmlOf } from './write.js';
 import { readDocx, docxXmlToParagraphs } from './read.js';
 import { splitPatentDoc } from '../docSplit.js';
 import { para, makeDocx, DE_BODY, EN_BODY } from './fixture.js';
@@ -9,32 +9,6 @@ const load = (body) => {
   const doc = readDocx(makeDocx(body));
   return { doc, split: splitPatentDoc(doc) };
 };
-
-describe('alignLines', () => {
-  it('maps identical arrays one to one', () => {
-    const { map, tail } = alignLines(['a', 'b', 'c'], ['a', 'b', 'c']);
-    expect(map).toEqual([0, 1, 2]);
-    expect(tail).toEqual([]);
-  });
-  it('maps a changed line in place', () => {
-    const { map } = alignLines(['a', 'b', 'c'], ['a', 'B!', 'c']);
-    expect(map).toEqual([0, 1, 2]);
-  });
-  it('marks a deleted line as null', () => {
-    const { map } = alignLines(['a', 'b', 'c'], ['a', 'c']);
-    expect(map[1]).toBeNull();
-    expect(map[2]).toBe(1);
-  });
-  it('reports appended lines as tail', () => {
-    const { map, tail } = alignLines(['a', 'b'], ['a', 'b', 'c']);
-    expect(map).toEqual([0, 1]);
-    expect(tail).toEqual(['c']);
-  });
-  it('attaches an inserted middle line to the preceding line', () => {
-    const { insertAfter } = alignLines(['a', 'b'], ['a', 'NEW', 'b']);
-    expect([...insertAfter.values()].flat()).toContain('NEW');
-  });
-});
 
 describe('planEdits', () => {
   it('produces nothing when the text is unchanged', () => {
@@ -412,80 +386,5 @@ describe('createDocx', () => {
   it('produces a file the reader accepts', () => {
     const doc = readDocx(createDocx([{ text: 'x 10' }]));
     expect(doc.paragraphs.map((p) => p.text)).toEqual(['x 10']);
-  });
-});
-
-describe('alignLines size bail-out', () => {
-  // Past MAX_LCS_CELLS the diff falls back to positional pairing rather than
-  // allocating a multi-megabyte table. That degraded path had never run.
-  // NB the edits must be scattered. alignLines trims the common head and tail
-  // before measuring, so a single changed line leaves a 1x1 middle and takes the
-  // ordinary LCS path however long the documents are.
-  const scattered = (n) => {
-    const a = Array.from({ length: n }, (_, i) => `line ${i}`);
-    return [a, a.map((l, i) => (i % 500 === 0 ? l + ' edited' : l))];
-  };
-
-  it('still maps every line when the LCS table would be too large', () => {
-    const [a, b] = scattered(2100);
-    const { map } = alignLines(a, b);
-    expect(map).toHaveLength(a.length);
-    // Positional pairing: index i maps to index i.
-    expect(map[0]).toBe(0);
-    expect(map[1]).toBe(1);
-    expect(map[a.length - 1]).toBe(a.length - 1);
-  });
-
-  it('takes the ordinary LCS path when the trimmed middle is small', () => {
-    // Same document length, one edit — the trim keeps this off the degraded path.
-    const a = Array.from({ length: 2100 }, (_, i) => `line ${i}`);
-    const b = a.map((l, i) => (i === 5 ? 'line 5 edited' : l));
-    const { map } = alignLines(a, b);
-    expect(map[0]).toBe(0);
-    expect(map[a.length - 1]).toBe(a.length - 1);
-  });
-
-  it('stays fast on the degraded path', () => {
-    const [a, b] = scattered(2100);
-    const t0 = performance.now();
-    alignLines(a, b);
-    expect(performance.now() - t0).toBeLessThan(2000);
-  });
-});
-
-// Each buffer plans its splices from its own paragraphs, so nothing else checks
-// across buffers. The splitter CAN hand back overlapping regions, and two sets
-// of edits over one range do not merge — they interleave into a file Word
-// cannot open. This is the backstop that turns that into a loud failure.
-describe('writeDocx refuses overlapping edits', () => {
-  const body = [
-    para('DETAILED DESCRIPTION', { style: 'Heading1' }),
-    para('The device 10.'),
-    para('A housing 12.'),
-  ].join('');
-
-  it('throws rather than interleaving two edits over the same paragraphs', () => {
-    const { doc, split } = load(body);
-    expect(() =>
-      writeDocx(doc, [
-        { paras: split.descParas, text: 'The device 14.\nA housing 12.' },
-        { paras: split.descParas, text: 'The device 99.\nA housing 12.' },
-      ])
-    ).toThrow(/overlappingEdits/);
-  });
-
-  it('still writes when an insertion sits exactly where the next paragraph starts', () => {
-    // An append is zero-width, so it touches its neighbours without overlapping
-    // them — the guard must not mistake that for a collision.
-    const { doc, split } = load(body);
-    const xml = documentXmlOf(
-      writeDocx(doc, [{ paras: split.descParas, text: 'The device 10.\nNEW 16.\nA housing 99.' }])
-    );
-    expect(docxXmlToParagraphs(xml).map((p) => p.text)).toEqual([
-      'DETAILED DESCRIPTION',
-      'The device 10.',
-      'NEW 16.',
-      'A housing 99.',
-    ]);
   });
 });

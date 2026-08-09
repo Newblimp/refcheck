@@ -12,6 +12,7 @@
 
 import { SECTION_KINDS, matchHeading } from './headings.js';
 import { trimBlankEdges } from './blankEdges.js';
+import { CLAIM_NUM_PREFIX_RE } from './constants.js';
 
 /**
  * @typedef {Object} SplitResult
@@ -63,7 +64,7 @@ function applyClaimNumbering(paras) {
       unusual = true;
       return p;
     }
-    if (/^\s*\d{1,4}\s*[.)]/.test(p.text)) return p; // already numbered in text
+    if (CLAIM_NUM_PREFIX_RE.test(p.text)) return p; // already numbered in text
     if (!p.text.trim()) return p;
     const key = p.numId == null ? '_' : String(p.numId);
     const n = (counters.get(key) || 0) + 1;
@@ -133,41 +134,57 @@ export function splitPatentDoc(doc) {
 
   const descH = firstOf(headings, SECTION_KINDS.DETAILED_DESC);
   const claimsH = firstOf(headings, SECTION_KINDS.CLAIMS);
+  const signListH = firstOf(headings, SECTION_KINDS.SIGN_LIST);
 
-  // Description: from just after its heading up to the claims or the sign list.
-  let descParas = [];
-  if (descH) {
-    const stop = nextOf(
-      headings,
-      [SECTION_KINDS.CLAIMS, SECTION_KINDS.SIGN_LIST, SECTION_KINDS.ABSTRACT],
-      descH.index
+  // ── section ranges ──────────────────────────────────────────────────────────
+  // Each section runs from just after its own heading to the first heading of a
+  // kind that normally follows it. That is right for a document laid out in the
+  // usual order, and NOT enough on its own:
+  //
+  // A draft whose claims heading precedes the detailed-description heading (an
+  // amendment sheet, a response to an office action) gave the claims a stop list
+  // that does not mention the description, so the claims section ran to the end
+  // of the document and swallowed the description whole. Both buffers then owned
+  // the same paragraphs, and exporting wrote two different texts over one range
+  // — the description section simply vanished from the exported file. The
+  // buffers MUST be disjoint; export splices into the paragraphs they name.
+  //
+  // So every section is additionally clipped at every OTHER located section's
+  // heading, which makes the ranges disjoint whatever order the document is in.
+  // Deliberately only the sections actually located, not every heading of a
+  // section kind: clipping at those would truncate a German description at its
+  // own "Ausführungsbeispiel 2" subheading.
+  const located = [descH, claimsH, signListH].filter(Boolean).map((h) => h.index);
+  const rangeAfter = (heading, stopKinds) => {
+    if (!heading) return [];
+    const stop = nextOf(headings, stopKinds, heading.index);
+    const end = Math.min(
+      stop ? stop.index : paragraphs.length,
+      ...located.filter((i) => i > heading.index)
     );
-    descParas = paragraphs.slice(descH.index + 1, stop ? stop.index : paragraphs.length);
-  }
+    return paragraphs.slice(heading.index + 1, end);
+  };
 
-  // Claims: from just after its heading up to the sign list or the abstract.
-  let claimsParas = [];
-  if (claimsH) {
-    const stop = nextOf(headings, [SECTION_KINDS.SIGN_LIST, SECTION_KINDS.ABSTRACT], claimsH.index);
-    claimsParas = paragraphs.slice(claimsH.index + 1, stop ? stop.index : paragraphs.length);
-  }
+  // Description: up to the claims, the sign list or the abstract.
+  let descParas = rangeAfter(descH, [
+    SECTION_KINDS.CLAIMS,
+    SECTION_KINDS.SIGN_LIST,
+    SECTION_KINDS.ABSTRACT,
+  ]);
+
+  // Claims: up to the sign list or the abstract.
+  let claimsParas = rangeAfter(claimsH, [SECTION_KINDS.SIGN_LIST, SECTION_KINDS.ABSTRACT]);
 
   const numbering = applyClaimNumbering(claimsParas);
   claimsParas = numbering.paras;
 
   // The reference-sign list: excluded from the description and claims buffers,
   // but returned so it can be reconciled against them rather than discarded.
-  // Runs to the claims or the abstract — whichever comes first — or to the end
-  // of the document. The list is commonly placed BEFORE the claims (Description
-  // → Bezugszeichenliste/reference signs → Claims), not just after them, so
-  // both stop kinds are needed or a list preceding the claims would run straight
+  // The list is commonly placed BEFORE the claims (Description →
+  // Bezugszeichenliste/reference signs → Claims), not just after them, so both
+  // stop kinds are needed or a list preceding the claims would run straight
   // through the claims heading and swallow the claims section too.
-  let signListParas = [];
-  const signListH = firstOf(headings, SECTION_KINDS.SIGN_LIST);
-  if (signListH) {
-    const stop = nextOf(headings, [SECTION_KINDS.CLAIMS, SECTION_KINDS.ABSTRACT], signListH.index);
-    signListParas = paragraphs.slice(signListH.index + 1, stop ? stop.index : paragraphs.length);
-  }
+  const signListParas = rangeAfter(signListH, [SECTION_KINDS.CLAIMS, SECTION_KINDS.ABSTRACT]);
 
   // Language: whichever dictionary matched. The claims heading is the most
   // standardised, so it wins when the two disagree.

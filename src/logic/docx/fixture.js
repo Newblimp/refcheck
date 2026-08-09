@@ -30,6 +30,44 @@ export function documentXml(body) {
   );
 }
 
+/**
+ * Assert that a string is well-formed XML, the way Word will judge it.
+ *
+ * `docxXmlToParagraphs` is a tag scanner and will happily read a document whose
+ * tags do not nest — which is exactly what a bad splice produces, and exactly
+ * what Word rejects with "unreadable content". So the round-trip tests cannot
+ * check this by re-importing; they have to look at the markup.
+ *
+ * Deliberately a small hand-rolled check rather than DOMParser: the logic tests
+ * run in the `node` environment, which has no DOM.
+ *
+ * @returns {string} '' when well-formed, otherwise a description of the fault
+ */
+export function xmlFault(xml) {
+  const body = String(xml).replace(/^\s*<\?xml[^>]*\?>/, '');
+  const stack = [];
+  const tag = /<(\/?)([A-Za-z0-9:_.-]+)((?:"[^"]*"|'[^']*'|[^>"'])*?)(\/?)>/g;
+  let m,
+    last = 0;
+  while ((m = tag.exec(body)) !== null) {
+    // Text between tags may not contain a stray '<' or '>'; a mis-cut splice
+    // leaves fragments like "/w:t><w:br/>" lying in the character data.
+    const between = body.slice(last, m.index);
+    if (/[<>]/.test(between))
+      return `stray markup in text: ${JSON.stringify(between.slice(0, 40))}`;
+    last = m.index + m[0].length;
+    if (m[2].startsWith('?') || m[2].startsWith('!')) continue;
+    if (m[4] === '/') continue;
+    if (m[1] === '/') {
+      const open = stack.pop();
+      if (open !== m[2]) return `</${m[2]}> closes <${open || 'nothing'}>`;
+    } else stack.push(m[2]);
+  }
+  if (/[<>]/.test(body.slice(last))) return 'stray markup after the last tag';
+  if (stack.length) return `unclosed <${stack[stack.length - 1]}>`;
+  return '';
+}
+
 /** A complete .docx (plus a header part, to prove headers are excluded). */
 export function makeDocx(body, extra = {}) {
   return zipSync({

@@ -618,15 +618,24 @@ export function App() {
 
   async function doExport() {
     const { exportPatentDoc } = await loadDocIO();
-    const { bytes, refList } = exportPatentDoc(
-      imported,
-      { description: descText, claims: claimsText, refList: refListText },
-      {
-        claimsHeading: lang === 'de' ? 'Patentansprüche' : 'Claims',
-        refListHeading: lang === 'de' ? 'Bezugszeichenliste' : 'Reference signs',
-      }
-    );
-    // The reference list is the one buffer that can be silently left out — the
+    let result;
+    try {
+      result = exportPatentDoc(
+        imported,
+        { description: descText, claims: claimsText, refList: refListText },
+        {
+          claimsHeading: lang === 'de' ? 'Patentansprüche' : 'Claims',
+          refListHeading: lang === 'de' ? 'Bezugszeichenliste' : 'Reference signs',
+        }
+      );
+    } catch {
+      // The writer refuses to emit a document it knows is broken. Say so —
+      // silently downloading nothing is the one outcome a drafter cannot act on.
+      setReport({ kind: 'error', messageKey: 'expErrFailed' });
+      return;
+    }
+    const { bytes, verified, diffs = [], refList } = result;
+    // The reference list is the one buffer that can be left out on purpose — the
     // source may not mark it out unambiguously enough to rewrite (see
     // refListWritable). Saying nothing would let the user believe an edit was
     // saved when it was not.
@@ -635,7 +644,21 @@ export function App() {
       ambiguous: 'expRefAmbiguous',
       table: 'expRefTable',
     };
-    if (skipped[refList]) setReport({ kind: 'warn', messageKey: skipped[refList] });
+    // The file was written, but reading it back did not reproduce the buffers.
+    // It is still handed over — the drafter needs a way to get their work out —
+    // with a warning naming the first place the two disagree. That outranks a
+    // skipped reference list: one says the file may be wrong, the other says a
+    // part of it was deliberately not touched.
+    if (!verified) {
+      const d = diffs[0];
+      setReport({
+        kind: 'warn',
+        messageKey: 'expErrUnverified',
+        warnings: d ? [{ key: 'expDiffAt', arg: d }] : [],
+      });
+    } else if (skipped[refList]) {
+      setReport({ kind: 'warn', messageKey: skipped[refList] });
+    }
     const base = imported?.fileName ? imported.fileName.replace(/\.docm?x?$/i, '') : 'refcheck';
     const blob = new Blob([bytes], {
       type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
