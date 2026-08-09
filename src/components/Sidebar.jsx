@@ -1,38 +1,11 @@
-import { memo, useState } from 'react';
+import { memo } from 'react';
 import { SignCard } from './SignCard.jsx';
 import { ArtCard } from './ArtCard.jsx';
 import { BareCard } from './BareCard.jsx';
 import { NumCard } from './NumCard.jsx';
 import { DepCard } from './DepCard.jsx';
-import { RefList } from './RefList.jsx';
-import { RefListCheck } from './RefListCheck.jsx';
 import { ClaimStats } from './ClaimStats.jsx';
-
-// A collapsible card-list section, styled like RefList's own header. Hides
-// itself when count is 0 rather than being conditionally mounted by the
-// caller, so its open/closed state survives the count dropping to 0 and
-// back up (e.g. while the user is mid-edit).
-function Section({ icon, label, color, count, children, alwaysShow = false, defaultOpen = true }) {
-  const [open, setOpen] = useState(defaultOpen);
-  // Most sections hide themselves at zero; the two that host an input the user
-  // types into (the reference-list check, the claim-set panel) must stay
-  // reachable even with nothing to report.
-  if (!count && !alwaysShow) return null;
-  return (
-    <div className="sidebar-section">
-      <button
-        type="button"
-        className="sec-lbl sec-lbl-toggle"
-        style={{ color }}
-        onClick={() => setOpen((o) => !o)}
-        aria-expanded={open}
-      >
-        {open ? '▾' : '▸'} {icon} {label} ({count})
-      </button>
-      {open && children}
-    </div>
-  );
-}
+import { Section } from './Section.jsx';
 
 // ── SIDEBAR (overview pane) ─────────────────────────────────────────────────
 // Purely presentational: App owns all state and the search/dismissal filtering;
@@ -67,10 +40,9 @@ function SidebarImpl({
   onDismiss,
   onRestoreAll,
   orphaned,
-  refListText,
-  onRefListChange,
-  reconciled,
   claimSetStats,
+  collapsed,
+  onToggleCollapse,
 }) {
   const totalSigns = Object.keys(signData).length;
   const totalErrs =
@@ -96,6 +68,15 @@ function SidebarImpl({
     <aside className="ov-pane" aria-label={t.ovLbl}>
       <div className="pane-hdr">
         <span className="pane-title">{t.ovLbl}</span>
+        <button
+          className="pane-collapse"
+          onClick={onToggleCollapse}
+          title={collapsed ? t.paneShowSigns : t.paneHideSigns}
+          aria-label={collapsed ? t.paneShowSigns : t.paneHideSigns}
+          aria-expanded={!collapsed}
+        >
+          {collapsed ? '‹' : '›'}
+        </button>
       </div>
       {totalSigns > 0 && (
         <div className="stats-row">
@@ -315,28 +296,6 @@ function SidebarImpl({
                 <ClaimStats stats={claimSetStats} t={t} />
               </Section>
             )}
-            <Section
-              icon="☰"
-              label={t.reconcileLbl}
-              color="var(--text-muted)"
-              count={
-                reconciled
-                  ? reconciled.termMismatch.length +
-                    reconciled.duplicates.length +
-                    reconciled.listedNotUsed.length +
-                    reconciled.usedNotListed.length
-                  : 0
-              }
-              alwaysShow
-            >
-              <RefListCheck
-                value={refListText}
-                onChange={onRefListChange}
-                result={reconciled}
-                t={t}
-              />
-            </Section>
-            <RefList signData={signData} termData={termData} t={t} />
           </>
         )}
       </div>

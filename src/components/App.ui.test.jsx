@@ -22,6 +22,9 @@ const docxFile = (body, name = 'application.docx') => {
 const editor = () => document.querySelector('.editor-ta');
 const typeInto = (text) => fireEvent.change(editor(), { target: { value: text } });
 const sidebar = (container) => within(container.querySelector('.ov-scroll'));
+// The reference list moved out of the sidebar into its own pane, so its
+// assertions need their own scope.
+const refPane = (container) => within(container.querySelector('.ref-scroll'));
 
 beforeEach(() => {
   try {
@@ -424,10 +427,13 @@ describe('App (keyboard and accessibility)', () => {
     expect(screen.getByRole('button', { name: 'DE' })).toHaveAttribute('aria-pressed', 'false');
   });
 
-  it('exposes main and complementary landmarks', () => {
+  it('exposes main and both complementary landmarks', () => {
     render(<App />);
     expect(screen.getByRole('main')).toBeInTheDocument();
-    expect(screen.getByRole('complementary')).toBeInTheDocument();
+    // One aside per side pane, each named — an unnamed pair would be
+    // indistinguishable to a screen reader jumping between landmarks.
+    expect(screen.getByRole('complementary', { name: /reference signs/i })).toBeInTheDocument();
+    expect(screen.getByRole('complementary', { name: /reference list/i })).toBeInTheDocument();
   });
 
   it('gives the editor an accessible name', () => {
@@ -446,7 +452,7 @@ describe('App (reference-list check and claim statistics)', () => {
     fireEvent.change(refListInput(container), {
       target: { value: '12 housing\n14 cover' },
     });
-    expect(await sidebar(container).findByText(/2 entries match the text/)).toBeInTheDocument();
+    expect(await refPane(container).findByText(/2 entries match the text/)).toBeInTheDocument();
   });
 
   it('flags a term that differs between the list and the text', async () => {
@@ -457,7 +463,7 @@ describe('App (reference-list check and claim statistics)', () => {
       target: { value: '12 casing\n14 cover' },
     });
     expect(
-      await sidebar(container).findByText(/list: "casing".*text: "housing"/)
+      await refPane(container).findByText(/list: "casing".*text: "housing"/)
     ).toBeInTheDocument();
   });
 
@@ -468,8 +474,8 @@ describe('App (reference-list check and claim statistics)', () => {
     fireEvent.change(refListInput(container), {
       target: { value: '12 housing\n99 flywheel' },
     });
-    expect(await sidebar(container).findByText(/never used in the text/)).toBeInTheDocument();
-    expect(sidebar(container).getByText(/not listed/)).toBeInTheDocument();
+    expect(await refPane(container).findByText(/never used in the text/)).toBeInTheDocument();
+    expect(refPane(container).getByText(/not listed/)).toBeInTheDocument();
   });
 
   it('persists the reference list across a remount', async () => {
@@ -520,5 +526,86 @@ describe('App (reference-list check and claim statistics)', () => {
     typeInto('A housing 12 is provided.');
     await sidebar(container).findByText('12');
     expect(container.querySelector('.cs-body')).not.toBeInTheDocument();
+  });
+});
+
+// The shortcuts are chosen for a German keyboard: "[", "]" need AltGr there and
+// "/" needs Shift, so the arrows, F and ? are what a drafter can actually
+// reach. Every one takes a modifier, because the editor holds focus almost
+// always and unmodified keys are suppressed while typing.
+describe('App (keyboard shortcuts and help)', () => {
+  const mainCls = (container) => container.querySelector('.main').className;
+
+  it('steps through errors with Ctrl+Down / Ctrl+Up from inside the editor', async () => {
+    render(<App />);
+    typeInto('The housing 12 is fixed. The casing 12 is fixed. A cover 14 sits there.');
+    const label = await screen.findByText(/1 \/ \d/);
+    fireEvent.keyDown(editor(), { key: 'ArrowDown', ctrlKey: true });
+    await waitFor(() => expect(label.textContent).toMatch(/2 \//));
+    fireEvent.keyDown(editor(), { key: 'ArrowUp', ctrlKey: true });
+    await waitFor(() => expect(label.textContent).toMatch(/1 \//));
+  });
+
+  it('focuses the sign filter with Ctrl+F, which the browser find would take', async () => {
+    const { container } = render(<App />);
+    typeInto('The housing 12 is fixed.');
+    await sidebar(container).findByText('12');
+    fireEvent.keyDown(editor(), { key: 'f', ctrlKey: true });
+    await waitFor(() => expect(document.activeElement).toBe(container.querySelector('.search-in')));
+  });
+
+  it('toggles each side pane, and remembers the choice', async () => {
+    const { container, unmount } = render(<App />);
+    expect(mainCls(container)).not.toMatch(/left-off/);
+    fireEvent.keyDown(editor(), { key: 'b', ctrlKey: true });
+    await waitFor(() => expect(mainCls(container)).toMatch(/left-off/));
+    fireEvent.keyDown(editor(), { key: 'B', ctrlKey: true, shiftKey: true });
+    await waitFor(() => expect(mainCls(container)).toMatch(/right-off/));
+    await waitFor(() => expect(localStorage.getItem('rsc_panes')).toContain('"left":false'));
+    unmount();
+    const again = render(<App />);
+    expect(mainCls(again.container)).toMatch(/left-off/);
+    expect(mainCls(again.container)).toMatch(/right-off/);
+  });
+
+  it('switches mode with Ctrl+M', async () => {
+    render(<App />);
+    fireEvent.keyDown(editor(), { key: 'm', ctrlKey: true });
+    await waitFor(() => expect(screen.getByText('Claims').className).toMatch(/active/));
+  });
+
+  it('opens help from the ? button and from Ctrl+?, and Escape returns focus', async () => {
+    render(<App />);
+    const btn = screen.getByRole('button', { name: /help and keyboard/i });
+    // jsdom does not focus on click the way a browser does, and the dialog
+    // restores focus to whatever had it — so put it there first.
+    btn.focus();
+    fireEvent.click(btn);
+    const dialog = await screen.findByRole('dialog');
+    expect(dialog).toHaveAttribute('aria-modal', 'true');
+    // Named by its own heading, and focus starts inside rather than behind it.
+    expect(dialog).toHaveAccessibleName();
+    expect(dialog.contains(document.activeElement)).toBe(true);
+    // Every shortcut the app binds is listed — the point of the screen.
+    expect(within(dialog).getByText(/next error/i)).toBeInTheDocument();
+    expect(within(dialog).getByText(/export a \.docx/i)).toBeInTheDocument();
+
+    fireEvent.keyDown(document, { key: 'Escape' });
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(document.activeElement).toBe(btn);
+
+    // "?" arrives as Shift+ß on a German layout and Shift+/ on a US one; both
+    // report key === '?'.
+    fireEvent.keyDown(editor(), { key: '?', ctrlKey: true, shiftKey: true });
+    expect(await screen.findByRole('dialog')).toBeInTheDocument();
+  });
+
+  it('shows the German modifier name when the UI is German', async () => {
+    render(<App />);
+    fireEvent.click(screen.getByText('DE'));
+    fireEvent.click(screen.getByRole('button', { name: /hilfe und tastenkürzel/i }));
+    const dialog = await screen.findByRole('dialog');
+    expect(within(dialog).getAllByText('Strg').length).toBeGreaterThan(0);
+    expect(within(dialog).getByText(/nächster fehler/i)).toBeInTheDocument();
   });
 });

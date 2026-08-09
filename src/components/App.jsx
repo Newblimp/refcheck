@@ -24,6 +24,8 @@ import { fileKind } from '../logic/fileKind.js';
 const loadDocIO = () => import('../logic/importDoc.js');
 import { CtxMenu } from './CtxMenu.jsx';
 import { Sidebar } from './Sidebar.jsx';
+import { RefPane } from './RefPane.jsx';
+import { HelpDialog } from './HelpDialog.jsx';
 import { DropOverlay } from './DropOverlay.jsx';
 import { ImportBanner } from './ImportBanner.jsx';
 import { Bee } from './Bee.jsx';
@@ -71,6 +73,13 @@ export function App() {
   // The drafter's own reference-sign list, checked against the active buffer.
   // Small enough not to need the debounce the text buffers use.
   const [refListText, setRefListText] = usePersistentState('rsc_reflist', '');
+  // Which side panes are open. Persisted because it is a working preference,
+  // not transient state — a drafter who folds the reference pane away wants it
+  // to stay away.
+  const [panes, setPanes] = usePersistentState('rsc_panes', { left: true, right: true }, jsonCodec);
+  // Narrow screens show exactly one pane; ignored by the desktop layout.
+  const [mobilePane, setMobilePane] = useState('editor');
+  const [helpOpen, setHelpOpen] = useState(false);
   const [mwo, setMwo] = usePersistentState('rsc_mwo', {}, jsonCodec);
   const [dis, setDis] = usePersistentState('rsc_dis', new Set(), setCodec);
   const [theme, setTheme] = useTheme();
@@ -400,11 +409,39 @@ export function App() {
     focusOcc.current = { id: null, idx: 0 }; // arrows drive their own cursor; restart card-cycling
   }
 
-  // Keyboard shortcuts. Ctrl/Cmd+[ and +] step through the errors without
-  // leaving the editor — the arrows in the status bar were previously the only
-  // way. "/" focuses the sign filter, but only when the user is not typing.
+  // Keyboard shortcuts. Every binding takes Ctrl/Cmd, because the editor holds
+  // focus almost always and useHotkeys suppresses unmodified keys while typing
+  // — a shortcut that dies mid-sentence is worse than none.
+  //
+  // The choice of keys is a German-layout decision. "[" and "]" need AltGr
+  // there and "/" needs Shift, so the old bindings were awkward to reach on the
+  // very keyboards this tool is written for. Arrows, F and ? are unshifted or
+  // standard on both layouts. Up/Down rather than Left/Right: Ctrl+Left/Right
+  // is word-by-word cursor movement inside a textarea, which a drafter uses
+  // constantly and which we must not take away.
+  //
+  // "?" arrives as Shift+ß on a German layout and Shift+/ on a US one; both
+  // report e.key === '?', so one binding covers both — with the shift-less
+  // spelling accepted too, since some layouts get there without it.
   const searchRef = useRef(null);
+  const toggleMode = useCallback(
+    () => setMode((m) => (m === 'description' ? 'claims' : 'description')),
+    [setMode]
+  );
+  const openHelp = useCallback(() => setHelpOpen(true), []);
   useHotkeys({
+    'mod+ArrowDown': () => navigate(1),
+    'mod+ArrowUp': () => navigate(-1),
+    'mod+f': () => searchRef.current?.focus(),
+    'mod+m': toggleMode,
+    'mod+b': () => setPanes((p) => ({ ...p, left: !p.left })),
+    'mod+shift+b': () => setPanes((p) => ({ ...p, right: !p.right })),
+    'mod+o': () => fileRef.current?.click(),
+    'mod+s': doExport,
+    'mod+shift+?': openHelp,
+    'mod+?': openHelp,
+    // Kept from before: harmless on a US layout, and muscle memory is cheap to
+    // honour. The help screen documents the arrows.
     'mod+[': () => navigate(-1),
     'mod+]': () => navigate(1),
     '/': () => searchRef.current?.focus(),
@@ -772,7 +809,17 @@ export function App() {
             DE
           </button>
         </div>
+        <button
+          className="help-btn"
+          onClick={() => setHelpOpen(true)}
+          title={t.helpBtn}
+          aria-label={t.helpBtn}
+        >
+          ?
+        </button>
       </div>
+
+      {helpOpen && <HelpDialog t={t} lang={lang} onClose={() => setHelpOpen(false)} />}
 
       <ImportBanner
         report={report}
@@ -796,7 +843,54 @@ export function App() {
         </div>
       )}
 
-      <main className="main">
+      {/* Mobile shows one pane at a time — three columns do not fit a phone,
+          and stacking them buries the reference list under a long scroll. */}
+      <div className="pane-tabs" role="tablist" aria-label={t.paneTabsLbl}>
+        {[
+          ['ref', t.refPaneLbl],
+          ['editor', t.editorLbl],
+          ['signs', t.ovLbl],
+        ].map(([id, label]) => (
+          <button
+            key={id}
+            role="tab"
+            aria-selected={mobilePane === id}
+            className={mobilePane === id ? 'active' : ''}
+            onClick={() => setMobilePane(id)}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      <main
+        className={`main pane-${mobilePane}${panes.left ? '' : ' left-off'}${panes.right ? '' : ' right-off'}`}
+      >
+        <aside className="ref-pane" aria-label={t.refPaneLbl}>
+          <div className="pane-hdr">
+            <span className="pane-title">{t.refPaneLbl}</span>
+            <button
+              className="pane-collapse"
+              onClick={() => setPanes((p) => ({ ...p, left: !p.left }))}
+              title={panes.left ? t.paneHideRef : t.paneShowRef}
+              aria-label={panes.left ? t.paneHideRef : t.paneShowRef}
+              aria-expanded={panes.left}
+            >
+              {panes.left ? '‹' : '›'}
+            </button>
+          </div>
+          {/* Always mounted; collapsing is CSS, so the mobile tab bar and the
+              desktop chevron cannot disagree about what exists. */}
+          <RefPane
+            t={t}
+            signData={signData}
+            termData={termData}
+            refListText={refListText}
+            onRefListChange={setRefListText}
+            reconciled={reconciled}
+          />
+        </aside>
+
         <div className="editor-pane">
           <div className="pane-hdr">
             <span className="pane-title">{t.editorLbl}</span>
@@ -930,9 +1024,8 @@ export function App() {
           onDismiss={toggleDis}
           onRestoreAll={restoreAll}
           orphaned={orphaned}
-          refListText={refListText}
-          onRefListChange={setRefListText}
-          reconciled={reconciled}
+          collapsed={!panes.right}
+          onToggleCollapse={() => setPanes((p) => ({ ...p, right: !p.right }))}
           claimSetStats={claimSetStats}
         />
       </main>

@@ -115,6 +115,9 @@ src/
   components/           React components
     App.jsx             Application state, editor pane, status bar
     Sidebar.jsx         Overview pane (stats, search, card sections) — presentational
+    RefPane.jsx         Left pane: the derived numeral list + the drafter's own list
+    Section.jsx         The collapsible ▾/▸ section header, shared by both panes
+    HelpDialog.jsx      Usage guide + keybindings (the app's only focus trap)
     SignCard.jsx        A reference sign with its associated terms
     ArtCard.jsx         Article-usage / antecedent-basis errors
     BareCard.jsx        Missing-sign (bare term) errors
@@ -262,6 +265,22 @@ the drawings` (detailed description) coexist; the ordered prefix fallback for th
   buffers asks first (same stance as **Reset all**), and a dismissible banner reports
   what was detected plus a one-step **Undo**. Banner messages are stored as i18n _keys_
   and resolved at render time, since the import may have just changed the language
+- **The reference list is written back too, but only when the source is unambiguous.**
+  `refListWritable` (`docSplit.js`) refuses three shapes, each of which would damage the
+  file rather than update it: `noSection` (nothing to write into), `ambiguous` (the
+  list's paragraphs are also in the description buffer — with no detailed-description
+  heading the splitter falls back to "everything before the claims", which swallows a
+  list placed there), and `table` (a two-column table puts every cell in its own `<w:p>`,
+  so the section reads "10 / device / 12 / housing" down the lines and diffing edited
+  text against it moves values between cells). The other buffers export regardless and
+  the banner names the reason — an edit that was not saved must not look like one that was
+- Underneath sits a backstop the whole writer benefits from: **`writeDocx` refuses to
+  apply overlapping splices**, throwing `DocxError('overlappingEdits')` rather than
+  emitting a file Word cannot open. Each buffer plans its splices from its own
+  paragraphs, so nothing else checks across buffers. The check is width-aware, since an
+  append is zero-width and legitimately touches the paragraph after it
+- `read.js` tracks `<w:tbl>` depth and flags paragraphs with `inTable`, which is what
+  makes the table case detectable at all
 - `imported` (the source bytes + paragraph provenance) is deliberately **not**
   persisted to `localStorage` — a 200 KB document would blow the quota alongside the
   text buffers — so a refresh keeps the text but drops round-trip export
@@ -347,8 +366,23 @@ the drawings` (detailed description) coexist; the ordered prefix fallback for th
 
 ### Keyboard
 
-- `Ctrl`/`Cmd`+`[` and `Ctrl`/`Cmd`+`]` step through the errors without leaving the editor
-- `/` focuses the sign filter; `Escape` closes the context menu
+- Bindings are chosen for a **German layout**: `[`/`]` need AltGr there and `/` needs
+  Shift, so the old `Ctrl`+`[`/`]` and bare `/` were awkward on the very keyboards this
+  tool is for. `Ctrl`/`Cmd`+`↓`/`↑` step through the errors, `Ctrl`+`F` focuses the sign
+  filter, `Ctrl`+`?` opens help. **Up/Down, not Left/Right** — `Ctrl`+`←`/`→` is
+  word-by-word cursor movement inside a textarea, which a drafter uses constantly
+- `Ctrl`+`M` switches mode, `Ctrl`+`B` / `Ctrl`+`Shift`+`B` fold the side panes,
+  `Ctrl`+`O` imports, `Ctrl`+`S` exports, `Escape` closes the help screen or the context
+  menu. The old `Ctrl`+`[`/`]` and `/` still work, undocumented, for muscle memory
+- `?` arrives as `Shift`+`ß` on a German layout and `Shift`+`/` on a US one; both report
+  `e.key === '?'`, so one binding covers both
+- **Every new binding takes a modifier** because `useHotkeys` suppresses unmodified keys
+  while the user is typing and the editor holds focus nearly always — a shortcut that
+  dies mid-sentence is worse than none
+- A **help screen** (circled `?` in the top bar, or `Ctrl`+`?`) carries a six-line usage
+  guide and the full key list. It is the app's **only focus trap**: the editor is still
+  behind it, so focus escaping would send typing somewhere invisible. `HelpDialog.jsx`
+  restores focus to the button that opened it, the way `CtxMenu` does
 - Bindings **without** a modifier are suppressed while the user is typing (`useHotkeys.js`)
   — the editor is a `<textarea>` that holds focus almost all the time, so an unqualified
   `/` binding would make the app impossible to type in
@@ -370,6 +404,26 @@ the drawings` (detailed description) coexist; the ordered prefix fallback for th
 ### Theme
 
 - **Light / Dark / System**: Theme preference stored in `localStorage` (`rsc_theme`)
+
+### Layout
+
+- Three columns on desktop: **reference list** (left), **editor** (middle), **reference
+  signs** (right). Only the editor is fluid — the side panes hold lists at a readable
+  width, and giving them a share of the width squeezes the editor at every size
+- **Both side panes collapse** to a 34px rail that keeps its chevron, so the way back is
+  always visible. The choice persists (`rsc_panes`)
+- Collapsing is **CSS, not unmounting**. One mechanism has to own it, or the mobile tab
+  bar and the desktop chevron disagree about what exists; `display: none` also takes the
+  search box out of the tab order, which unmounting would have done for free
+- **Narrow screens show one pane at a time**, chosen by a tab bar (≤860px). Stacking all
+  three would bury the reference list under a screen of error cards and keep the editor
+  at the cramped height the old two-pane layout gave it. A middle breakpoint
+  (861–1100px) narrows the side panes before anything is taken away
+- The left pane renders **even with an empty document** — a drafter working from an
+  existing list wants to paste it in before typing a word. While it lived in the
+  sidebar's `totalSigns > 0` branch there was nowhere to put it
+- Two side panes means **two `complementary` landmarks**, so both are named; an unnamed
+  pair is indistinguishable to a screen reader jumping between them
 
 ### Error Management
 
@@ -658,7 +712,7 @@ Actions"** in Settings → Pages. The Vite `base` is `/refcheck/` (project-site 
 
 ### Testing
 
-Run with `npm test` (currently **518 tests**). Logic tests run under the fast `node`
+Run with `npm test` (currently **536 tests**). Logic tests run under the fast `node`
 environment; only `*.ui.test.jsx` files run under `jsdom` (scoped via
 `environmentMatchGlobs` in `vite.config.js`, with `src/test/setup.js` providing the
 jest-dom matchers and `matchMedia`/`clipboard` stubs). The `include` glob covers
