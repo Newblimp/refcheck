@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { extractData } from './extract.js';
+import { listTermIndex } from './listTerms.js';
 
 // Regression guards against accidentally quadratic behaviour. Each corpus below
 // targets a specific hot path; the budgets are generous enough to absorb a slow
@@ -54,9 +55,35 @@ function bigClaimSet(n = 150) {
   return c.join('\n');
 }
 
-function timeExtract(text, isClaims) {
+/** A distinct letters-only word per index, for building large vocabularies. */
+function alpha(i) {
+  let s = '',
+    n = i + 1;
+  while (n > 0) {
+    s = 'abcdefghijklmnopqrstuvwxyz'[(n - 1) % 26] + s;
+    n = Math.floor((n - 1) / 26);
+  }
+  return s;
+}
+
+/**
+ * A big reference list whose entries ALL end in the same three base nouns —
+ * the shape that would punish an index keyed on the base noun alone, since
+ * every occurrence would then have to be compared against a third of the list.
+ */
+function bigRefList(n = 300) {
+  const bases = ['element', 'portion', 'surface'];
+  const rows = [];
+  for (let i = 0; i < n; i++) rows.push(`${10 + i} ${alpha(i)} ${bases[i % 3]}`);
+  // Plus the phrases the corpus below actually writes, so the match path runs
+  // rather than every lookup missing.
+  rows.push('900 fastening element', '901 housing portion', '902 bearing surface');
+  return rows.join('\n');
+}
+
+function timeExtract(text, isClaims, listIdx = null) {
   const t0 = performance.now();
-  const res = extractData(text, 'en', {}, true, isClaims);
+  const res = extractData(text, 'en', {}, true, isClaims, listIdx);
   return { ms: performance.now() - t0, res };
 }
 
@@ -92,6 +119,21 @@ describe('performance smoke', () => {
     // Allow generous slack for timer noise on tiny durations, but 16x (true
     // quadratic growth) is far outside it.
     expect(b).toBeLessThan(Math.max(a * 10, 60));
+  });
+
+  it('applies a 300-entry reference list to a >100KB description for a few percent', () => {
+    // The list is consulted once per sign occurrence. Indexing on the last two
+    // words keeps that a Map hit however long the list is; keying on the base
+    // noun alone would turn this corpus into 100 comparisons per occurrence.
+    const text = plainDescription();
+    const idx = listTermIndex(bigRefList(), 'en');
+    expect(idx.size).toBeGreaterThan(300);
+    timeExtract(text, false, idx); // warm
+    const withList = timeExtract(text, false, idx);
+    const without = timeExtract(text, false).ms;
+    // The extended terms really did land, so this is not measuring a no-op.
+    expect(Object.keys(withList.res.termData)).toContain('fasten elem');
+    expect(withList.ms).toBeLessThan(Math.max(without * 2, 60));
   });
 
   it('handles a 150-claim set with full preceding-claim dependencies', () => {

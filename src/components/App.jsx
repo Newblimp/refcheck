@@ -5,6 +5,7 @@ import { getAllErrors, errorGroup } from '../logic/errorSpans.js';
 import { buildHtml, findAtPos } from '../logic/buildHtml.js';
 import { computeCrossRef } from '../logic/crossref.js';
 import { reconcileRefList } from '../logic/reconcile.js';
+import { listTermIndex, appliedListTerms } from '../logic/listTerms.js';
 import { claimStats } from '../logic/claimStats.js';
 import { compareSigns, disKey } from '../logic/constants.js';
 import { backdropScroll } from '../logic/scrollSync.js';
@@ -115,13 +116,28 @@ export function App() {
   const debDesc = useDebounced(descText, descText.length > 5000 ? 200 : 0);
   const debClaims = useDebounced(claimsText, claimsText.length > 5000 ? 200 : 0);
   const debText = mode === 'description' ? debDesc : debClaims;
+
+  // Multi-word terms read out of the drafter's own reference list, applied to
+  // BOTH buffers — the list describes the invention, not one section of it.
+  // Debounced on the same rule as the buffers: editing the list box re-runs
+  // extraction, so on a large document it must not do so per keystroke.
+  const bigDoc = descText.length + claimsText.length > 5000;
+  const debRefList = useDebounced(refListText, bigDoc ? 200 : 0);
+  const rawListIdx = useMemo(() => listTermIndex(debRefList, lang), [debRefList, lang]);
+  // Hold the identity stable while the parsed content is unchanged: most edits
+  // in that box (a typo in a term, a re-ordered line, a sign whose entry has no
+  // second word) change nothing the extraction can see, and a fresh object
+  // would still invalidate both extraction memos.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const listIdx = useMemo(() => rawListIdx, [rawListIdx.sig]);
+
   const descResult = useMemo(
-    () => (debDesc ? extractData(debDesc, lang, mwo, true, false) : null),
-    [debDesc, lang, mwo]
+    () => (debDesc ? extractData(debDesc, lang, mwo, true, false, listIdx) : null),
+    [debDesc, lang, mwo, listIdx]
   );
   const claimsResult = useMemo(
-    () => (debClaims ? extractData(debClaims, lang, mwo, true, true) : null),
-    [debClaims, lang, mwo]
+    () => (debClaims ? extractData(debClaims, lang, mwo, true, true, listIdx) : null),
+    [debClaims, lang, mwo, listIdx]
   );
   const res = (mode === 'description' ? descResult : claimsResult) ?? EMPTY_RESULT;
   const { signData, termData, artErrors, bareTerms, numErrors, depErrors } = res;
@@ -139,6 +155,14 @@ export function App() {
   const reconciled = useMemo(
     () => reconcileRefList(refListText, refListTarget, lang),
     [refListText, refListTarget, lang]
+  );
+  // Which of the list's multi-word terms the text actually uses as such — the
+  // panel reports what the automatic extension did, so a drafter is never left
+  // guessing why a term suddenly reads wider (or, after a manual reduce, why it
+  // does not).
+  const listMultiWord = useMemo(
+    () => appliedListTerms(listIdx, refListTarget?.termData),
+    [listIdx, refListTarget]
   );
   const claimSetStats = useMemo(() => claimStats(claimsResult?.claimGraph), [claimsResult]);
 
@@ -540,11 +564,16 @@ export function App() {
     // Extending or reducing a term is a property of the term, not of the sign
     // next to it — so a bare occurrence offers it just as a sign-attached one
     // does, keyed on the same base stem.
+    // The current width is read off the term as recorded, not off mwo: the
+    // reference list and the ordinal detector widen terms too, and a menu that
+    // offered "Extend term (1 word)" on a term already showing two words would
+    // both mislabel it and, on the next click, widen it by nothing.
     const termItems = (rawTerm) => {
-      const bs = stem(rawTerm.split(' ').pop(), lang);
-      const cur = 1 + (mwo[bs] || 0);
-      items.push({ label: t.extendTerm(cur), a: 'extend', d: { bs } });
-      if (cur > 1) items.push({ label: t.reduceTerm, a: 'reduce', d: { bs } });
+      const words = rawTerm.split(' ');
+      const bs = stem(words[words.length - 1], lang);
+      const cur = words.length;
+      items.push({ label: t.extendTerm(cur), a: 'extend', d: { bs, cur } });
+      if (cur > 1) items.push({ label: t.reduceTerm, a: 'reduce', d: { bs, cur } });
     };
     if (found.type === 'sign') {
       const { sign, pos: p } = found;
@@ -612,13 +641,13 @@ export function App() {
   }
 
   function handleCtxAction(a, d) {
-    if (a === 'extend') setMwo((m) => ({ ...m, [d.bs]: (m[d.bs] || 0) + 1 }));
-    else if (a === 'reduce')
-      setMwo((m) => {
-        const n = { ...m };
-        n[d.bs] > 1 ? n[d.bs]-- : delete n[d.bs];
-        return n;
-      });
+    // Both write an ABSOLUTE width (extra words beyond the base noun) measured
+    // from what is on screen, so the override lands where the drafter expects
+    // whatever widened the term in the first place. Reduce stores an explicit 0
+    // rather than deleting the key — deleting it would just hand the term back
+    // to the reference list, and the reduction would appear not to work.
+    if (a === 'extend') setMwo((m) => ({ ...m, [d.bs]: d.cur }));
+    else if (a === 'reduce') setMwo((m) => ({ ...m, [d.bs]: Math.max(0, d.cur - 2) }));
     else if (a === 'insert-sign') insertSign(d.bt, d.sign);
     else if (a === 'toggle-dis') toggleDis(d.key);
     else if (a === 'dis-all') disAll();
@@ -1015,6 +1044,7 @@ export function App() {
             refListText={refListText}
             onRefListChange={setRefListText}
             reconciled={reconciled}
+            multiWord={listMultiWord}
           />
         </aside>
 
@@ -1123,7 +1153,6 @@ export function App() {
 
         <Sidebar
           t={t}
-          lang={lang}
           mode={mode}
           signData={signData}
           termData={termData}
@@ -1140,7 +1169,6 @@ export function App() {
           focus={focus}
           dis={dis}
           disCt={disCt}
-          mwo={mwo}
           hoverSign={hoverSign}
           onHover={setHoverSign}
           onFocusSign={onFocusSign}

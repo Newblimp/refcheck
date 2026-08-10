@@ -12,7 +12,6 @@ import { Section } from './Section.jsx';
 // this renders the stats, the search box and the card sections.
 function SidebarImpl({
   t,
-  lang,
   mode,
   signData,
   termData,
@@ -29,7 +28,6 @@ function SidebarImpl({
   focus,
   dis,
   disCt,
-  mwo,
   hoverSign,
   onHover,
   onFocusSign,
@@ -51,13 +49,14 @@ function SidebarImpl({
     visBareActive.length +
     visNumActive.length +
     visDepActive.length;
+  // The multi-word width now comes off the term itself (see SignCard), so the
+  // cards no longer need `mwo` or `lang` — one prop identity fewer that changed
+  // on every override edit.
   const signCardProps = {
     termData,
     mode,
     t,
-    lang,
     dis,
-    mwo,
     onFocus: onFocusSign,
     onDismiss,
     hoverSign,

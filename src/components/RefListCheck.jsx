@@ -4,7 +4,15 @@ import { memo } from 'react';
 // Paste the draft's own "List of Reference Signs" / "Bezugszeichenliste" and
 // see where it has drifted from the text. A .docx import fills this in
 // automatically — splitPatentDoc already locates that section.
-function RefListCheckImpl({ value, onChange, result, t }) {
+//
+// The list is not only compared against the text: the multi-word terms it
+// spells out ("30 control unit") are matched in the text and applied there
+// automatically (see logic/listTerms.js). That is silent work on the drafter's
+// text, so the panel says what it did — and the note is information, not a
+// finding, so it borrows the claim-set panel's ⓘ rather than a warning.
+const MW_SHOWN = 6;
+
+function RefListCheckImpl({ value, onChange, result, multiWord, t }) {
   return (
     <div className="rlc-body">
       <textarea
@@ -16,6 +24,21 @@ function RefListCheckImpl({ value, onChange, result, t }) {
         rows={4}
         spellCheck={false}
       />
+      {multiWord?.length > 0 && (
+        <div className="cs-note" title={t.mwAppliedHint}>
+          <span className="cs-note-icon" aria-hidden="true">
+            ⓘ
+          </span>
+          <span>
+            {t.mwApplied(multiWord.length)}:{' '}
+            {multiWord
+              .slice(0, MW_SHOWN)
+              .map((term) => `“${term}”`)
+              .join(', ')}
+            {multiWord.length > MW_SHOWN ? ' …' : ''}
+          </span>
+        </div>
+      )}
       {result && !result.hasAny && <div className="rlc-ok">✓ {t.reconcileOk(result.matched)}</div>}
       {result?.termMismatch.map(({ sign, listTerm, textTerm }) => (
         <div className="orphan-card" key={'tm' + sign}>

@@ -631,6 +631,75 @@ describe('App (reference-list check and claim statistics)', () => {
     await waitFor(() => expect(refListInput(container).value).toBe('10 Vorrichtung\n12 Gehäuse'));
   });
 
+  // The list already says which terms are multi-word, so the text scan reads
+  // them from it instead of leaving every one to be extended by hand.
+  describe('multi-word terms taken from the list', () => {
+    const MW_BODY = [
+      para('DETAILED DESCRIPTION', { style: 'Heading1' }),
+      para('The device 10 comprises a control unit 30.'),
+      para('The control unit 30 is grey.'),
+      para('CLAIMS', { style: 'Heading1' }),
+      para('1. A device (10) comprising a control unit (30).'),
+      para('REFERENCE SIGNS', { style: 'Heading1' }),
+      para('10 device'),
+      para('30 control unit'),
+    ].join('');
+
+    it('extends a term in the text from a pasted list, and says so', async () => {
+      const { container } = render(<App />);
+      typeInto('The device 10 comprises a control unit 30. The control unit 30 is grey.');
+      await sidebar(container).findByText('30');
+      expect(sidebar(container).getByText('unit')).toBeInTheDocument();
+
+      fireEvent.change(refListInput(container), {
+        target: { value: '10 device\n30 control unit' },
+      });
+      expect(await sidebar(container).findByText('control unit')).toBeInTheDocument();
+      // Reported as information, and the list now agrees with the text.
+      expect(
+        await refPane(container).findByText(/1 multi-word term taken from the list/)
+      ).toBeInTheDocument();
+      expect(refPane(container).getByText(/2 entries match the text/)).toBeInTheDocument();
+    });
+
+    it('lets the drafter reduce an auto-extended term back again', async () => {
+      const { container } = render(<App />);
+      typeInto('The device 10 comprises a control unit 30.');
+      await sidebar(container).findByText('30');
+      fireEvent.change(refListInput(container), { target: { value: '30 control unit' } });
+      await sidebar(container).findByText('control unit');
+
+      const ed = editor();
+      const pos = ed.value.indexOf('30');
+      ed.setSelectionRange(pos, pos);
+      fireEvent.contextMenu(ed, { clientX: 50, clientY: 50 });
+      // The menu counts the term as it stands, not as mwo left it.
+      expect(await screen.findByText(/Extend term \(2 words\)/)).toBeInTheDocument();
+      fireEvent.click(screen.getByText('Reduce term'));
+
+      expect(await sidebar(container).findByText('unit')).toBeInTheDocument();
+      expect(sidebar(container).queryByText('control unit')).not.toBeInTheDocument();
+      // An explicit 0, so the list cannot silently put the word back.
+      await waitFor(() => expect(JSON.parse(localStorage.getItem('rsc_mwo')).unit).toBe(0));
+      // …and the reduction is what the panel now reports.
+      await waitFor(() =>
+        expect(refPane(container).queryByText(/multi-word term/)).not.toBeInTheDocument()
+      );
+    });
+
+    it('extends terms in both buffers from an imported .docx sign list', async () => {
+      const { container } = render(<App />);
+      const dt = { types: ['Files'], files: [docxFile(MW_BODY)] };
+      fireEvent.drop(window, { dataTransfer: dt });
+
+      await waitFor(() => expect(refListInput(container).value).toContain('30 control unit'));
+      expect(await sidebar(container).findByText('control unit')).toBeInTheDocument();
+      // Claims mode reads the same list — it describes the whole application.
+      fireEvent.click(screen.getByText('Claims'));
+      expect(await sidebar(container).findByText('control unit')).toBeInTheDocument();
+    });
+  });
+
   it('shows claim-set statistics in claims mode', async () => {
     const { container } = render(<App />);
     fireEvent.click(screen.getByText('Claims'));

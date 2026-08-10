@@ -94,7 +94,7 @@ export const T = {
       'The right pane lists what it found. Click a card to jump to it in the text; click again for the next occurrence.',
       'Right-click a highlighted sign or term in the text to extend the term, write in a missing sign, or dismiss it.',
       'Dismiss anything that does not apply — dismissals are remembered.',
-      'The left pane holds the reference list: the signs found in the text, and your own list to check against it.',
+      'The left pane holds the reference list: the signs found in the text, and your own list to check against it — multi-word terms in that list are applied to the text automatically.',
       'Export writes your edits back into the imported .docx, changing only the paragraphs you touched.',
     ],
     helpKeysTitle: 'Keyboard',
@@ -151,6 +151,9 @@ export const T = {
     usedNotListed: 'used in the text, not listed',
     refTermMismatch: (l, t) => `list: "${l}" · text: "${t}"`,
     refDuplicate: (terms) => `listed twice: ${terms.map((x) => `"${x}"`).join(' · ')}`,
+    mwApplied: (n) => `${n} multi-word term${n === 1 ? '' : 's'} taken from the list`,
+    mwAppliedHint:
+      'Terms your list spells out with more than one word are matched in the text and extended automatically. Right-click one in the text to reduce it again.',
     claimStatsLbl: 'Claim set',
     csTotal: 'Count',
     csIndep: 'Independent',
@@ -258,7 +261,7 @@ export const T = {
       'Der rechte Bereich listet die Funde. Ein Klick auf eine Karte springt in den Text, ein weiterer zum nächsten Vorkommen.',
       'Ein Rechtsklick auf ein hervorgehobenes Bezugszeichen oder einen Begriff im Text erweitert den Begriff, ergänzt ein fehlendes Bezugszeichen oder blendet den Fehler aus.',
       'Nicht Zutreffendes ausblenden — Ausblendungen werden gespeichert.',
-      'Der linke Bereich zeigt die Bezugszeichenliste: die im Text gefundenen Zeichen und Ihre eigene Liste zum Abgleich.',
+      'Der linke Bereich zeigt die Bezugszeichenliste: die im Text gefundenen Zeichen und Ihre eigene Liste zum Abgleich — mehrteilige Begriffe aus dieser Liste werden im Text automatisch übernommen.',
       'Der Export schreibt Ihre Änderungen in die importierte .docx zurück und ändert nur die bearbeiteten Absätze.',
     ],
     helpKeysTitle: 'Tastatur',
@@ -316,6 +319,10 @@ export const T = {
     usedNotListed: 'im Text verwendet, nicht in der Liste',
     refTermMismatch: (l, t) => `Liste: „${l}“ · Text: „${t}“`,
     refDuplicate: (terms) => `doppelt gelistet: ${terms.map((x) => `„${x}“`).join(' · ')}`,
+    mwApplied: (n) =>
+      `${n} mehrteilige${n === 1 ? 'r' : ''} Begriff${n === 1 ? '' : 'e'} aus der Liste übernommen`,
+    mwAppliedHint:
+      'Mehrteilige Begriffe aus Ihrer Liste werden im Text erkannt und automatisch erweitert. Zum Kürzen im Text rechtsklicken.',
     claimStatsLbl: 'Anspruchssatz',
     csTotal: 'Anzahl',
     csIndep: 'Unabhängig',

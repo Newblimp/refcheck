@@ -9,6 +9,11 @@ errors. It also reconciles the draft's own list of reference signs against the t
 reports claim-set statistics — independent/dependent counts, multiple dependency, and the
 claim-count thresholds that attract DPMA and EPO fees.
 
+The reference list is not only checked against the text but read from: the multi-word
+terms it spells out ("30 control unit") are matched in the description and the claims and
+applied there automatically, so a listed term is checked as the whole phrase rather than
+as its last noun. Right-click a term in the text to widen or reduce it by hand.
+
 Word `.docx` files can be dragged straight in; description and claims are found by their
 headings, and edits can be written back into the original file.
 

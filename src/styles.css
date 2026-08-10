@@ -1347,13 +1347,15 @@ mark.h-hover {
   padding: 2px 0 4px;
 }
 
+/* Shared by the claim-set panel and the reference-list check. Informational,
+   not a warning: fee and structure facts about a legitimate claim set, and the
+   multi-word terms the reference list contributed, are things to know — not
+   things to fix — so they must not read like the error cards. */
 .cs-note {
   display: flex;
   gap: 6px;
   align-items: baseline;
   font-size: 11px;
-  /* Informational, not a warning: these are fee and structure facts about a
-     legitimate claim set, so they must not read like the error cards. */
   color: var(--text-muted);
   padding: 3px 0;
   line-height: 1.5;

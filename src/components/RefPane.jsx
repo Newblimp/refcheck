@@ -13,7 +13,15 @@ import { Section } from './Section.jsx';
 // drafter working from an existing list wants to paste it in before typing a
 // word, and while it lived in the sidebar's `totalSigns > 0` branch there was
 // nowhere to put it.
-function RefPaneImpl({ t, signData, termData, refListText, onRefListChange, reconciled }) {
+function RefPaneImpl({
+  t,
+  signData,
+  termData,
+  refListText,
+  onRefListChange,
+  reconciled,
+  multiWord,
+}) {
   const findings = reconciled
     ? reconciled.termMismatch.length +
       reconciled.duplicates.length +
@@ -31,7 +39,13 @@ function RefPaneImpl({ t, signData, termData, refListText, onRefListChange, reco
         count={findings}
         alwaysShow
       >
-        <RefListCheck value={refListText} onChange={onRefListChange} result={reconciled} t={t} />
+        <RefListCheck
+          value={refListText}
+          onChange={onRefListChange}
+          result={reconciled}
+          multiWord={multiWord}
+          t={t}
+        />
       </Section>
     </div>
   );

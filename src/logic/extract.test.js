@@ -4,6 +4,7 @@ import { getAllErrors } from './errorSpans.js';
 import { tokenize } from './tokenize.js';
 import { stem } from './stem.js';
 import { compareSigns } from './constants.js';
+import { listTermIndex } from './listTerms.js';
 
 // Raw terms recorded for a given sign (across all its term stems).
 const rawTermsFor = (res, sign) =>
@@ -231,6 +232,143 @@ describe('detectOrdStems & multi-word terms', () => {
     // Without the claims flag the line-leading "1" counts as a sign after "bearing".
     expect(detectOrdStems(tokenize(text), 'en', text, false).has(stem('bearing', 'en'))).toBe(true);
     expect(detectOrdStems(tokenize(text), 'en', text, true).size).toBe(0);
+  });
+});
+
+// The drafter's own reference list already says which terms are multi-word, so
+// the extraction reads them from it instead of making them hand-extend each one.
+describe('multi-word terms from the reference list', () => {
+  const LIST = '10 device\n30 control unit\n20 first bearing surface';
+  const idx = listTermIndex(LIST, 'en');
+  const UNIT = stem('unit', 'en');
+
+  it('extends a term the list spells out', () => {
+    const res = extractData('The control unit 30 is mounted.', 'en', {}, true, false, idx);
+    expect(Object.keys(res.signData['30'].terms)).toEqual(['control unit']);
+  });
+
+  it('takes three-word terms too', () => {
+    const res = extractData('The first bearing surface 20 is flat.', 'en', {}, true, false, idx);
+    expect(Object.keys(res.signData['20'].terms)).toEqual([
+      [stem('first', 'en'), stem('bearing', 'en'), stem('surface', 'en')].join(' '),
+    ]);
+  });
+
+  it('leaves a term the list does not name that way alone', () => {
+    // Only "control unit" is listed, so a "drive unit" keeps its base noun and
+    // the two do not collapse into one term.
+    const res = extractData(
+      'The control unit 30 drives the drive unit 40.',
+      'en',
+      {},
+      true,
+      false,
+      idx
+    );
+    expect(Object.keys(res.signData['30'].terms)).toEqual(['control unit']);
+    expect(Object.keys(res.signData['40'].terms)).toEqual([UNIT]);
+  });
+
+  it('applies to bare occurrences, so a missing sign is reported for the full term', () => {
+    const res = extractData(
+      'The control unit 30 is mounted. The control unit is grey.',
+      'en',
+      {},
+      true,
+      false,
+      idx
+    );
+    const bt = res.bareTerms.find((b) => b.termStem === 'control unit');
+    expect(bt).toBeTruthy();
+    expect(bt.term).toBe('control unit');
+    expect(bt.signs).toEqual(['30']);
+  });
+
+  it('applies in claims mode as well', () => {
+    const res = extractData(
+      '1. A device (10) comprising a control unit (30).',
+      'en',
+      {},
+      true,
+      true,
+      idx
+    );
+    expect(Object.keys(res.signData['30'].terms)).toEqual(['control unit']);
+  });
+
+  it('is overridden by a manual reduction', () => {
+    // "Reduce term" writes an explicit 0, which must win over the list — a
+    // reduction that the next keystroke undoes is not a reduction at all.
+    const res = extractData(
+      'The control unit 30 is mounted.',
+      'en',
+      { [UNIT]: 0 },
+      true,
+      false,
+      idx
+    );
+    expect(Object.keys(res.signData['30'].terms)).toEqual([UNIT]);
+  });
+
+  it('is overridden by a manual extension', () => {
+    const res = extractData(
+      'The rotary control unit 30 is mounted.',
+      'en',
+      { [UNIT]: 2 },
+      true,
+      false,
+      idx
+    );
+    expect(Object.keys(res.signData['30'].terms)).toEqual(['rotari control unit']);
+  });
+
+  it('lets a manual reduction take back an ordinal-detected extension too', () => {
+    const text = 'The first bearing 20 supports the shaft 22. The second bearing 21 is here.';
+    expect(Object.keys(extractData(text, 'en').signData['20'].terms)).toEqual([
+      stem('first', 'en') + ' ' + stem('bearing', 'en'),
+    ]);
+    const res = extractData(text, 'en', { [stem('bearing', 'en')]: 0 });
+    expect(Object.keys(res.signData['20'].terms)).toEqual([stem('bearing', 'en')]);
+  });
+
+  it('keeps the ordinal detection for terms the list says nothing about', () => {
+    const res = extractData(
+      'The first bearing 20 supports the shaft 22. The second bearing 21 is here.',
+      'en',
+      {},
+      true,
+      false,
+      idx
+    );
+    expect(Object.keys(res.signData['20'].terms)).toEqual([
+      stem('first', 'en') + ' ' + stem('bearing', 'en'),
+    ]);
+  });
+
+  it('extends German terms', () => {
+    const de = listTermIndex('30 erstes Lager', 'de');
+    const res = extractData('Das erste Lager 30 trägt die Welle 22.', 'de', {}, true, false, de);
+    expect(Object.keys(res.signData['30'].terms)).toEqual([
+      [stem('erstes', 'de'), stem('Lager', 'de')].join(' '),
+    ]);
+  });
+
+  it('changes nothing when no index is passed', () => {
+    const res = extractData('The control unit 30 is mounted.', 'en');
+    expect(Object.keys(res.signData['30'].terms)).toEqual([UNIT]);
+  });
+
+  it('registers ranges under the extended term as well', () => {
+    const res = extractData(
+      'The control units 30, 32 and 34 are wired.',
+      'en',
+      {},
+      true,
+      false,
+      idx
+    );
+    for (const s of ['30', '32', '34'])
+      expect(Object.keys(res.signData[s].terms)).toEqual(['control unit']);
   });
 });
 

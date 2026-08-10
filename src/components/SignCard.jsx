@@ -1,5 +1,4 @@
 import { memo } from 'react';
-import { stem } from '../logic/stem.js';
 import { classify } from '../logic/extract.js';
 import { disKey } from '../logic/constants.js';
 import { activatable } from './cardProps.js';
@@ -12,9 +11,7 @@ function SignCardImpl({
   mode,
   focused,
   t,
-  lang,
   dis,
-  mwo,
   onFocus,
   onDismiss,
   hoverSign,
@@ -23,8 +20,6 @@ function SignCardImpl({
   const isDis = dis.has(disKey.sign(sign));
   const sev = isDis ? 'dim' : classify(sign, sData, termData, mode);
   const terms = Object.keys(sData.terms);
-  const bs = stem(sData.positions[0]?.term.split(' ').pop() || '', lang);
-  const wc = 1 + (mwo[bs] || 0);
 
   const notes = [];
   if (!isDis) {
@@ -65,6 +60,11 @@ function SignCardImpl({
                 sev === 'warn' &&
                 (terms.length > 1 || (termData[ts] && Object.keys(termData[ts].signs).length > 1));
               const raw = [...(termData[ts]?.rawTerms || new Set())][0] || ts;
+              // Width comes from the term as recorded, per chip. Reading it back
+              // out of `mwo` only knew about manual overrides, so a term widened
+              // by the ordinal detector or by the reference list showed no badge
+              // — and a sign carrying both a one- and a two-word term badged both.
+              const wc = ts.split(' ').length;
               return (
                 <span key={ts} className={`tc ${isConf ? 'err' : sev === 'ok' ? 'ok' : ''}`}>
                   {raw}

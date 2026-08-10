@@ -13,6 +13,7 @@ import {
 import { stem } from './stem.js';
 import { tokenize } from './tokenize.js';
 import { computeClaimGraph } from './claims.js';
+import { listExtra } from './listTerms.js';
 
 // ── EXTRACTION ─────────────────────────────────────────────────────────────
 //
@@ -449,8 +450,20 @@ function findSignGroups(text) {
   };
 }
 
-/** @returns {ExtractResult} */
-export function extractData(text, lang, mwo = {}, autoMW = true, isClaims = false) {
+/**
+ * @param {string} text
+ * @param {'en'|'de'} lang
+ * @param {Object<string, number>} mwo  Manual multi-word overrides: base stem →
+ *   extra words. An entry wins outright over every automatic source, including
+ *   an explicit 0 — that is what "Reduce term" writes, and without it a term the
+ *   reference list or the ordinal detector extends could not be reduced at all.
+ * @param {boolean} autoMW  Run the ordinal ("first bearing") detection
+ * @param {boolean} isClaims
+ * @param {import('./listTerms.js').ListTermIndex} [listIdx]  Multi-word terms
+ *   read out of the drafter's reference list (see logic/listTerms.js)
+ * @returns {ExtractResult}
+ */
+export function extractData(text, lang, mwo = {}, autoMW = true, isClaims = false, listIdx = null) {
   const toks = tokenize(text);
   const ordStems = autoMW ? detectOrdStems(toks, lang, text, isClaims) : new Set();
   const signData = {},
@@ -467,14 +480,24 @@ export function extractData(text, lang, mwo = {}, autoMW = true, isClaims = fals
   function recordOccurrence(sign, signStart, signEnd, allTT, artTok, inParens) {
     const baseW = allTT[allTT.length - 1].word;
     const bs = stem(baseW, lang);
-    const manExtra = mwo[bs] || 0;
+    // Two automatic sources extend the term leftwards from its base noun: the
+    // ordinal pattern ("first bearing" / "second bearing") and the drafter's own
+    // reference list, which spells its multi-word terms out. They do not stack —
+    // the wider of the two wins.
     let autoExtra = 0;
     if (ordStems.has(bs) && allTT.length >= 2 && isOrd(allTT[allTT.length - 2].word, lang))
       autoExtra = 1;
-    // The base noun always counts; a manual override (context menu) or an
-    // auto-detected ordinal pattern ("first bearing") each extend it leftwards.
-    // They do not stack — the larger of the two wins.
-    const wc = 1 + Math.max(manExtra, autoExtra);
+    if (listIdx) {
+      const le = listExtra(listIdx, allTT, bs, lang);
+      if (le > autoExtra) autoExtra = le;
+    }
+    // A manual override wins outright rather than being maxed with the
+    // automatic ones, so "Reduce term" can take a term back below what the list
+    // or the ordinal detector proposed. Only a non-negative number counts — a
+    // corrupted localStorage value must not silently widen every term.
+    const man = mwo[bs];
+    const manExtra = typeof man === 'number' && man >= 0 ? Math.floor(man) : null;
+    const wc = 1 + (manExtra === null ? autoExtra : manExtra);
     const termToks = allTT.slice(Math.max(0, allTT.length - wc));
 
     const termStr = termToks.map((t) => t.word.toLowerCase()).join(' ');
