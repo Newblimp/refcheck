@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { extractData } from './extract.js';
-import { eachErrorSpan, getAllErrors } from './errorSpans.js';
+import { eachErrorSpan, getAllErrors, errorGroup } from './errorSpans.js';
 import { HL } from './buildHtml.js';
 import { disKey } from './constants.js';
 
@@ -84,6 +84,60 @@ describe('getAllErrors', () => {
     const art = errs.find((e) => e.type === 'art');
     expect(art).toBeDefined();
     expect(art.ae).toBeDefined();
+  });
+
+  it('names the term every term-bearing error is about', () => {
+    // "banana" is bare at the end; the sign is inconsistent (banana vs kiwi).
+    const all = getAllErrors(
+      extractData('The banana 10 is here. The kiwi 10 is odd. Another banana.'),
+      'description',
+      new Set()
+    );
+    const term = (type) => all.find((e) => e.type === type)?.term;
+    expect(term('bare')).toBe('banana');
+    expect(term('art')).toBe('banana');
+    // A sign is named by the term of ITS occurrence, not by the sign's terms as
+    // a whole — that is what makes the same-term jump skip the other spelling.
+    expect(all.filter((e) => e.type === 'sign').map((e) => e.term)).toEqual(['banana', 'kiwi']);
+  });
+
+  it('leaves term null on errors that have none', () => {
+    const res = extractData('1. A device (10).\n3. A device (10).', 'en', {}, true, true);
+    const num = getAllErrors(res, 'claims', new Set()).find((e) => e.type === 'num');
+    expect(num).toBeDefined();
+    expect(num.term).toBeNull();
+  });
+});
+
+describe('errorGroup', () => {
+  const all = (text) => getAllErrors(extractData(text), 'description', new Set());
+
+  it('puts every error about one term in the same group', () => {
+    const errs = all('The banana 10 is here. A banana 10 is odd. Another banana.');
+    const groups = new Set(errs.map(errorGroup));
+    expect(errs.length).toBeGreaterThan(1);
+    expect(groups.size).toBe(1);
+  });
+
+  it('separates the groups of two different terms', () => {
+    // Article error on "banana", article error on "kiwi", bare "kiwi".
+    const errs = all('The banana 10 is here. The kiwi 12 is here. Another kiwi.');
+    expect(errs.map(errorGroup)).toEqual(['t:banana', 't:kiwi', 't:kiwi']);
+  });
+
+  it('groups term-less errors by category rather than into one bucket', () => {
+    const res = extractData(
+      '1. A device (10).\n3. A device (10) according to claim 9.',
+      'en',
+      {},
+      true,
+      true
+    );
+    const errs = getAllErrors(res, 'claims', new Set());
+    const num = errs.find((e) => e.type === 'num');
+    const dep = errs.find((e) => e.type === 'dep');
+    expect(errorGroup(num)).toBe('k:num');
+    expect(errorGroup(dep)).toBe('k:dep');
   });
 });
 

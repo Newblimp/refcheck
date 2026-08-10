@@ -128,6 +128,22 @@ describe('findAtPos', () => {
     expect(at?.ae.article).toBe('the');
   });
 
+  it('locates a bare term — the occurrence with no sign after it', () => {
+    const text = 'A bendy banana 10 is next to another bendy banana.';
+    const r = extractData(text, 'en');
+    const at = findAtPos(text.lastIndexOf('banana') + 2, r.signData, r.artErrors, r.bareTerms);
+    expect(at?.type).toBe('bare');
+    expect(at?.bt.term).toBe('banana');
+    expect(at?.bt.signs).toEqual(['10']);
+  });
+
+  it('does not report a bare term where the sign-attached occurrence is', () => {
+    const text = 'A bendy banana 10 is next to another bendy banana.';
+    const r = extractData(text, 'en');
+    const at = findAtPos(text.indexOf('banana') + 2, r.signData, r.artErrors, r.bareTerms);
+    expect(at?.type).toBe('sign');
+  });
+
   it('returns null when nothing is at the position', () => {
     const r = extractData('The housing 12 is large.', 'en');
     expect(findAtPos(999, r.signData, r.artErrors)).toBeNull();

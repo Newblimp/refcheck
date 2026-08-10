@@ -17,6 +17,8 @@ const modLabel = (lang) => {
 export const BINDINGS = [
   { keys: ['mod', '↓'], desc: 'keyNextErr' },
   { keys: ['mod', '↑'], desc: 'keyPrevErr' },
+  { keys: ['mod', 'Shift', '↓'], desc: 'keyNextTerm' },
+  { keys: ['mod', 'Shift', '↑'], desc: 'keyPrevTerm' },
   { keys: ['mod', 'F'], desc: 'keySearch' },
   { keys: ['mod', 'M'], desc: 'keyMode' },
   { keys: ['mod', 'B'], desc: 'keyRefPane' },

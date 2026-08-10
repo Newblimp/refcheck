@@ -342,6 +342,100 @@ describe('App (interactive)', () => {
     expect(JSON.parse(localStorage.getItem('rsc_mwo'))).toHaveProperty('unit', 1);
   });
 
+  // A term written without its sign is highlighted, but until now the editor's
+  // context menu only knew about signs and articles — so the very occurrence the
+  // tool complains about was the one that could not be acted on.
+  describe('bare-term context menu', () => {
+    const BARE = 'A bendy banana 10 is arranged next to another bendy banana.';
+    // Right-click the second (sign-less) "banana".
+    const openOnBareTerm = async (container) => {
+      typeInto(BARE);
+      await sidebar(container).findByText(/missing sign/);
+      const ed = editor();
+      const pos = ed.value.lastIndexOf('banana') + 2;
+      ed.setSelectionRange(pos, pos);
+      fireEvent.contextMenu(ed, { clientX: 50, clientY: 50 });
+      return screen.findByRole('menu');
+    };
+
+    it('offers extend, insert-sign and dismiss on a term with no sign', async () => {
+      const { container } = render(<App />);
+      const menu = await openOnBareTerm(container);
+      expect(within(menu).getByText(/Extend term \(1 word\)/)).toBeInTheDocument();
+      expect(within(menu).getByText(/Insert reference sign 10 here/)).toBeInTheDocument();
+      expect(
+        within(menu).getByText(/Dismiss missing-sign errors for "banana"/)
+      ).toBeInTheDocument();
+    });
+
+    it('writes the sign into the text, clearing the error', async () => {
+      const { container } = render(<App />);
+      const menu = await openOnBareTerm(container);
+      fireEvent.click(within(menu).getByText(/Insert reference sign 10 here/));
+      await waitFor(() =>
+        expect(editor().value).toBe(
+          'A bendy banana 10 is arranged next to another bendy banana 10.'
+        )
+      );
+      await waitFor(() =>
+        expect(sidebar(container).queryByText(/missing sign/)).not.toBeInTheDocument()
+      );
+      // The caret is left after the inserted sign, ready to type on.
+      expect(editor().selectionStart).toBe(
+        editor().value.indexOf('banana 10.') + 'banana 10'.length
+      );
+    });
+
+    it('brackets the inserted sign in claims mode', async () => {
+      const { container } = render(<App />);
+      fireEvent.click(screen.getByText('Claims'));
+      typeInto('1. A banana (10) arranged next to another banana.');
+      await sidebar(container).findByText(/missing sign/);
+      const ed = editor();
+      const pos = ed.value.lastIndexOf('banana') + 2;
+      ed.setSelectionRange(pos, pos);
+      fireEvent.contextMenu(ed, { clientX: 50, clientY: 50 });
+      const menu = await screen.findByRole('menu');
+      fireEvent.click(within(menu).getByText(/Insert reference sign 10 here/));
+      await waitFor(() =>
+        expect(editor().value).toBe('1. A banana (10) arranged next to another banana (10).')
+      );
+    });
+
+    it('does not offer a sign when the term has more than one', async () => {
+      const { container } = render(<App />);
+      typeInto('A banana 10 and a banana 12 are here. Another banana.');
+      await sidebar(container).findByText(/missing sign/);
+      const ed = editor();
+      const pos = ed.value.lastIndexOf('banana') + 2;
+      ed.setSelectionRange(pos, pos);
+      fireEvent.contextMenu(ed, { clientX: 50, clientY: 50 });
+      const menu = await screen.findByRole('menu');
+      // Which of 10 and 12 belongs here is the drafter's call, not the tool's.
+      expect(within(menu).queryByText(/Insert reference sign/)).not.toBeInTheDocument();
+      expect(within(menu).getByText(/Dismiss missing-sign errors/)).toBeInTheDocument();
+    });
+
+    it('dismisses the error from the menu', async () => {
+      const { container } = render(<App />);
+      const menu = await openOnBareTerm(container);
+      fireEvent.click(within(menu).getByText(/Dismiss missing-sign errors for "banana"/));
+      await waitFor(() =>
+        expect(sidebar(container).queryByText(/missing sign/)).not.toBeInTheDocument()
+      );
+    });
+
+    it('extends the term from a sign-less occurrence', async () => {
+      const { container } = render(<App />);
+      const menu = await openOnBareTerm(container);
+      fireEvent.click(within(menu).getByText(/Extend term \(1 word\)/));
+      expect(await sidebar(container).findByText('bendy banana')).toBeInTheDocument();
+      await waitFor(() =>
+        expect(JSON.parse(localStorage.getItem('rsc_mwo'))).toHaveProperty('banana', 1)
+      );
+    });
+  });
+
   it('language toggle switches labels and persists', async () => {
     render(<App />);
     fireEvent.click(screen.getByText('DE'));
@@ -578,6 +672,55 @@ describe('App (keyboard shortcuts and help)', () => {
     await waitFor(() => expect(label.textContent).toMatch(/1 \//));
   });
 
+  // Ctrl+Shift+Down/Up: same idea, but restricted to the term the current error
+  // is about. The fixture alternates the two terms, so a jump that ignored the
+  // term would land on the neighbouring error every time.
+  //   1 art "banana" · 2 art "kiwi" · 3 bare "banana" · 4 bare "kiwi"
+  const ALTERNATING = 'The banana 10 is here. The kiwi 12 is here. Another banana. Another kiwi.';
+
+  it('jumps to the next error for the same term with Ctrl+Shift+Down', async () => {
+    render(<App />);
+    typeInto(ALTERNATING);
+    const label = await screen.findByText(/1 \/ 4/);
+    fireEvent.keyDown(editor(), { key: 'ArrowDown', ctrlKey: true, shiftKey: true });
+    await waitFor(() => expect(label.textContent).toMatch(/3 \/ 4/));
+    // …and it really is the sign-less "banana" that got selected.
+    expect(editor().value.slice(editor().selectionStart, editor().selectionEnd)).toBe('banana');
+  });
+
+  it('wraps back to the first error for the term with Ctrl+Shift+Up', async () => {
+    render(<App />);
+    typeInto(ALTERNATING);
+    const label = await screen.findByText(/1 \/ 4/);
+    fireEvent.keyDown(editor(), { key: 'ArrowDown', ctrlKey: true, shiftKey: true });
+    await waitFor(() => expect(label.textContent).toMatch(/3 \/ 4/));
+    fireEvent.keyDown(editor(), { key: 'ArrowUp', ctrlKey: true, shiftKey: true });
+    await waitFor(() => expect(label.textContent).toMatch(/1 \/ 4/));
+  });
+
+  it('follows the term of a card the user clicked, not the arrow cursor', async () => {
+    const { container } = render(<App />);
+    typeInto(ALTERNATING);
+    await screen.findByText(/1 \/ 4/);
+    const label = () => container.querySelector('.nav-lbl').textContent;
+    // Click the "kiwi" missing-sign card: the nav cursor still sits on error 1
+    // ("banana"), but the user's attention has moved.
+    fireEvent.click(sidebar(container).getByText(/"kiwi" — missing sign/));
+    fireEvent.keyDown(editor(), { key: 'ArrowDown', ctrlKey: true, shiftKey: true });
+    // The other "kiwi" error, wrapping past the end — not error 1 or 2.
+    await waitFor(() => expect(label()).toMatch(/2 \/ 4/));
+  });
+
+  it('stays put when the term has only this one error', async () => {
+    render(<App />);
+    typeInto('The banana 10 is here. The kiwi 12 is here.');
+    const label = await screen.findByText(/1 \/ 2/);
+    fireEvent.keyDown(editor(), { key: 'ArrowDown', ctrlKey: true, shiftKey: true });
+    // A jump to the "kiwi" error would be exactly what the binding exists to
+    // avoid, so the only correct move is none.
+    await waitFor(() => expect(label.textContent).toMatch(/1 \/ 2/));
+  });
+
   it('focuses the sign filter with Ctrl+F, which the browser find would take', async () => {
     const { container } = render(<App />);
     typeInto('The housing 12 is fixed.');
@@ -618,8 +761,10 @@ describe('App (keyboard shortcuts and help)', () => {
     // Named by its own heading, and focus starts inside rather than behind it.
     expect(dialog).toHaveAccessibleName();
     expect(dialog.contains(document.activeElement)).toBe(true);
-    // Every shortcut the app binds is listed — the point of the screen.
-    expect(within(dialog).getByText(/next error/i)).toBeInTheDocument();
+    // Every shortcut the app binds is listed — the point of the screen. Exact
+    // strings, since "Next error" is a prefix of the same-term binding's row.
+    expect(within(dialog).getByText('Next error')).toBeInTheDocument();
+    expect(within(dialog).getByText('Next error for the same term')).toBeInTheDocument();
     expect(within(dialog).getByText(/export a \.docx/i)).toBeInTheDocument();
 
     fireEvent.keyDown(document, { key: 'Escape' });
@@ -638,6 +783,6 @@ describe('App (keyboard shortcuts and help)', () => {
     fireEvent.click(screen.getByRole('button', { name: /hilfe und tastenkürzel/i }));
     const dialog = await screen.findByRole('dialog');
     expect(within(dialog).getAllByText('Strg').length).toBeGreaterThan(0);
-    expect(within(dialog).getByText(/nächster fehler/i)).toBeInTheDocument();
+    expect(within(dialog).getByText('Nächster Fehler')).toBeInTheDocument();
   });
 });
