@@ -952,11 +952,27 @@ jest-dom matchers and `matchMedia`/`clipboard` stubs). The `include` glob covers
 
 Types are checked too: `npm run typecheck` runs `tsc` over `src/logic/` and `build/` with
 `checkJs`, driven entirely by the JSDoc already in those files — no `.ts` files, no build
-step. `strict` is off on purpose (this is a checker retrofitted onto working code, so the
-useful signal is "this property does not exist", not several hundred implicit-any
-reports), and it is scoped to the logic layer because that is where the typedefs are and
-where a wrong shape is expensive. It caught five typedefs that had drifted from what their
-function actually returned. CI runs it before the tests.
+step. It is scoped to the logic layer because that is where the typedefs are and where a
+wrong shape is expensive. It caught five typedefs that had drifted from what their function
+actually returned. CI runs it before the tests.
+
+`strict` is off but **`strictNullChecks` is on**, which is the one strict flag worth having
+here. The two were measured rather than guessed: `strictNullChecks` cost four fixes across
+the whole logic layer, while `noImplicitAny` (the bulk of the rest of `strict`) would cost
+**403** annotations, concentrated in `i18n.js` and `extract.js` — where the payoff is
+smallest. Nullability is part of a function's contract; an implicit `any` on a local
+usually is not.
+
+Two JSDoc constraints are worth knowing before adding a typedef, because both cost real
+time to rediscover:
+
+- **A union member whose discriminant is a union of literals is never narrowed away.**
+  `ErrorSpan` therefore splits `SignSpan` (`kind: 'sign'`) and `SignTermSpan`
+  (`kind: 'signTerm'`) into two typedefs instead of one carrying `'sign'|'signTerm'`.
+  With the combined form, `getAllErrors` could not reach `sp.item` after excluding both
+  sign kinds without an assertion.
+- **A boolean discriminant does not narrow reliably either.** `exportPatentDoc` tests
+  `'reason' in can` rather than `!can.ok` for exactly this reason.
 
 Formatting is enforced: `.prettierrc` exists and CI runs `npm run format:check` before
 the tests. Keep it green — 51 of ~55 files once violated the repo's own config because

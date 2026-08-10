@@ -159,7 +159,10 @@ export function docxXmlToParagraphs(xml) {
           break;
         }
         if (isClose) {
-          if (p) {
+          // `p` and `chunks` are opened and cleared together, so the second
+          // test is free at runtime — it states the invariant rather than
+          // leaving a reader (or the type checker) to infer it.
+          if (p && chunks) {
             p.text = chunks.join('');
             p.bold = runCount > 0 && boldRuns === runCount;
             p.src.xmlEnd = m.index + full.length;

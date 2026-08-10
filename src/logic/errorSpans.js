@@ -16,16 +16,51 @@ import { ERROR_KINDS, KIND_BY_ID, kindItems } from './errorKinds.js';
 // step — and it stops the highlighter and the error navigator from silently
 // disagreeing about what counts as an error.
 
+// The span is a discriminated union on `kind` rather than one shape with four
+// optional fields. That is not decoration: `sev` is present exactly when the
+// span is a sign, and with it optional every consumer had to either assert or
+// risk indexing HL with undefined. Narrowing on `kind` now proves it.
+//
+// The two sign shapes are separate typedefs carrying ONE literal `kind` each,
+// rather than one typedef with `'sign'|'signTerm'`. That is a JSDoc constraint,
+// not a stylistic choice: a member whose discriminant is a union of literals is
+// not eliminated by narrowing, so `getAllErrors` could not reach `sp.item`
+// without an assertion. One literal per member and it narrows.
+
 /**
- * @typedef {Object} ErrorSpan
- * @property {'sign'|'signTerm'|'art'|'bare'|'num'|'dep'} kind
+ * A sign occurrence.
+ * @typedef {Object} SignSpan
+ * @property {'sign'} kind
  * @property {number} start
  * @property {number} end
- * @property {string} [sign]     'sign'/'signTerm' only
- * @property {'warn'|'ok'|'dis'} [sev]  'sign' only
- * @property {string} [term]     Stemmed term this span is about, where it has one
- * @property {Object} [item]     The originating error record, for the rest
+ * @property {string} sign
+ * @property {'warn'|'ok'|'dis'} sev
+ * @property {string} term       The term stem of THIS occurrence
  */
+
+/**
+ * The term attached to a warned sign — highlighted alongside it, but never a
+ * navigation target of its own.
+ * @typedef {Object} SignTermSpan
+ * @property {'signTerm'} kind
+ * @property {number} start
+ * @property {number} end
+ * @property {string} sign
+ * @property {'warn'|'ok'|'dis'} sev
+ * @property {string} term
+ */
+
+/**
+ * One of the four ERROR_KINDS categories.
+ * @typedef {Object} KindSpan
+ * @property {'art'|'bare'|'num'|'dep'} kind
+ * @property {number} start
+ * @property {number} end
+ * @property {string|null} term  null for the categories that name no term
+ * @property {Object} item       The originating error record
+ */
+
+/** @typedef {SignSpan|SignTermSpan|KindSpan} ErrorSpan */
 
 /**
  * Visit every span of interest, in no particular order.
@@ -65,7 +100,7 @@ export function eachErrorSpan(res, mode, dis, visit) {
     for (const item of kindItems(res, kind)) {
       if (dis.has(kind.disKey(item))) continue;
       visit({
-        kind: /** @type {ErrorSpan['kind']} */ (kind.id),
+        kind: /** @type {KindSpan['kind']} */ (kind.id),
         start: kind.start(item),
         end: kind.end(item),
         term: kind.term(item),
@@ -87,23 +122,21 @@ export function eachErrorSpan(res, mode, dis, visit) {
 export function getAllErrors(res, mode, dis) {
   const out = [];
   eachErrorSpan(res, mode, dis, (sp) => {
-    if (sp.kind === 'signTerm') return; // the sign itself is the navigation target
-    if (sp.kind === 'sign') {
-      if (sp.sev !== 'warn') return;
-      out.push({
-        type: 'sign',
-        start: sp.start,
-        end: sp.end,
-        sign: sp.sign,
-        term: sp.term ?? null,
-      });
+    // Both sign shapes are handled in one branch, so what follows is a KindSpan
+    // by elimination — which is also what lets `sp.item` below be reached
+    // without an assertion.
+    if (sp.kind === 'sign' || sp.kind === 'signTerm') {
+      // Only a warned sign is an error to step through, and the term beside it
+      // is a highlight rather than a target of its own.
+      if (sp.kind === 'signTerm' || sp.sev !== 'warn') return;
+      out.push({ type: 'sign', start: sp.start, end: sp.end, sign: sp.sign, term: sp.term });
       return;
     }
     out.push({
       type: sp.kind,
       start: sp.start,
       end: sp.end,
-      term: sp.term ?? null,
+      term: sp.term,
       [KIND_BY_ID[sp.kind].navProp]: sp.item,
     });
   });

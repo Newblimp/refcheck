@@ -459,7 +459,7 @@ function findSignGroups(text) {
  *   reference list or the ordinal detector extends could not be reduced at all.
  * @param {boolean} autoMW  Run the ordinal ("first bearing") detection
  * @param {boolean} isClaims
- * @param {import('./listTerms.js').ListTermIndex} [listIdx]  Multi-word terms
+ * @param {import('./listTerms.js').ListTermIndex|null} [listIdx]  Multi-word terms
  *   read out of the drafter's reference list (see logic/listTerms.js)
  * @returns {ExtractResult}
  */

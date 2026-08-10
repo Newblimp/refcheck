@@ -19,7 +19,14 @@
     "allowJs": true,
     "checkJs": true,
     "noEmit": true,
+    // `strict` stays off — see above. `strictNullChecks` is pulled out of it on
+    // purpose: it is the one strict flag that pays for itself here. Turning it
+    // on cost four fixes across the whole logic layer, where the rest of `strict`
+    // (noImplicitAny alone) would have cost 403 annotations for far less signal.
+    // It is what makes "this can be null" part of the contract rather than
+    // something you have to read the implementation to find out.
     "strict": false,
+    "strictNullChecks": true,
     "skipLibCheck": true,
     "resolveJsonModule": true,
     "types": ["node"],
