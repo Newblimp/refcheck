@@ -9,9 +9,13 @@
     "build": "vite build",
     "preview": "vite preview",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "typecheck": "tsc -p jsconfig.json",
+    "test:watch": "vitest",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
   },
   "dependencies": {
+    "fflate": "^0.8.3",
     "react": "18.3.1",
     "react-dom": "18.3.1"
   },
@@ -19,8 +23,11 @@
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",
     "@testing-library/user-event": "^14.6.1",
+    "@types/node": "^22.20.1",
     "@vitejs/plugin-react": "^4.3.4",
     "jsdom": "^29.1.1",
+    "prettier": "^3.8.1",
+    "typescript": "^5.9.3",
     "vite": "^5.4.11",
     "vitest": "^2.1.8"
   }

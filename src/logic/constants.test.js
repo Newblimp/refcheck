@@ -1,5 +1,16 @@
 import { describe, it, expect } from 'vitest';
-import { likelySign, isClaimNumber, isArt, isOrd, artType, isSignToken, compareSigns, romanToInt, signVal } from './constants.js';
+import {
+  disKey,
+  likelySign,
+  isClaimNumber,
+  isArt,
+  isOrd,
+  artType,
+  isSignToken,
+  compareSigns,
+  romanToInt,
+  signVal,
+} from './constants.js';
 import { tokenize } from './tokenize.js';
 
 describe('likelySign', () => {
@@ -22,7 +33,7 @@ describe('likelySign', () => {
 describe('isClaimNumber', () => {
   // Helper: find the token for the first occurrence of `word` in `text`.
   const tokFor = (text, word, occ = 0) => {
-    const matches = tokenize(text).filter(t => t.word === word);
+    const matches = tokenize(text).filter((t) => t.word === word);
     return matches[occ];
   };
 
@@ -71,7 +82,7 @@ describe('isSignToken', () => {
   it('accepts plain, lettered and primed signs', () => {
     expect(isSignToken('10')).toBe(true);
     expect(isSignToken('12a')).toBe(true);
-    expect(isSignToken("10'")).toBe(true);   // ASCII apostrophe
+    expect(isSignToken("10'")).toBe(true); // ASCII apostrophe
     expect(isSignToken('10′')).toBe(true); // U+2032 prime
   });
   it('rejects words, out-of-range and uppercase-suffixed numbers', () => {
@@ -91,8 +102,8 @@ describe('isSignToken', () => {
   it('rejects malformed Roman numerals and lowercase forms', () => {
     expect(isSignToken('IIII')).toBe(false); // four I's is not valid
     expect(isSignToken('VV')).toBe(false);
-    expect(isSignToken('ii')).toBe(false);   // must be uppercase
-    expect(isSignToken('I.')).toBe(false);   // substep needs an Arabic numeral
+    expect(isSignToken('ii')).toBe(false); // must be uppercase
+    expect(isSignToken('I.')).toBe(false); // substep needs an Arabic numeral
   });
 });
 
@@ -119,7 +130,7 @@ describe('signVal', () => {
 });
 
 describe('compareSigns', () => {
-  it('orders numerically, then by suffix (10 < 10\' < 10a < 12)', () => {
+  it("orders numerically, then by suffix (10 < 10' < 10a < 12)", () => {
     const sorted = ['12', '10a', "10'", '10'].sort(compareSigns);
     expect(sorted).toEqual(['10', "10'", '10a', '12']);
   });
@@ -153,5 +164,38 @@ describe('article helpers', () => {
     expect(artType('a')).toBe('indef');
     expect(artType('eine')).toBe('indef');
     expect(artType('der')).toBe('def');
+  });
+});
+
+describe('disKey', () => {
+  // The declared single source of truth for dismissal keys. Every test that
+  // exercises dismissals elsewhere hard-codes the literal strings ('s:12'), so
+  // without these the scheme could change and the suite would stay green while
+  // every saved dismissal in a user's localStorage silently stopped matching.
+  it('namespaces each category so keys cannot collide across types', () => {
+    const keys = [
+      disKey.sign('12'),
+      disKey.art('12'),
+      disKey.bare('12'),
+      disKey.num('12'),
+      disKey.dep('12'),
+    ];
+    expect(new Set(keys).size).toBe(5);
+  });
+
+  it('produces the prefixes the persisted format uses', () => {
+    expect(disKey.sign('12')).toBe('s:12');
+    expect(disKey.art('hous')).toBe('a:hous');
+    expect(disKey.bare('hous')).toBe('b:hous');
+    expect(disKey.num('3#1')).toBe('n:3#1');
+    expect(disKey.dep('3>9#1')).toBe('d:3>9#1');
+  });
+
+  it('is stable for the same id', () => {
+    expect(disKey.sign('12a')).toBe(disKey.sign('12a'));
+  });
+
+  it('keeps multi-word term stems distinct', () => {
+    expect(disKey.art('first bear')).not.toBe(disKey.art('second bear'));
   });
 });

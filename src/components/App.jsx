@@ -1,42 +1,94 @@
-import { useState, useRef, useCallback, useEffect, useLayoutEffect, useMemo } from 'react';
+import { useState, useRef, useCallback, useEffect, useMemo } from 'react';
 import { T } from '../i18n.js';
-import { extractData, classify, getAllErrors } from '../logic/extract.js';
+import { extractData, classify } from '../logic/extract.js';
+import { getAllErrors, errorGroup } from '../logic/errorSpans.js';
+import { ERROR_KINDS, KIND_BY_ID, kindItems } from '../logic/errorKinds.js';
 import { buildHtml, findAtPos } from '../logic/buildHtml.js';
 import { computeCrossRef } from '../logic/crossref.js';
+import { reconcileRefList } from '../logic/reconcile.js';
+import { listTermIndex, appliedListTerms } from '../logic/listTerms.js';
+import { claimStats } from '../logic/claimStats.js';
 import { compareSigns, disKey } from '../logic/constants.js';
-import { stem } from '../logic/stem.js';
+import { ctxMenuItems } from '../logic/ctxMenuItems.js';
 import { useDebounced } from '../hooks/useDebounced.js';
 import { usePersistentState, jsonCodec, setCodec, oneOf } from '../hooks/usePersistentState.js';
 import { useTheme } from '../hooks/useTheme.js';
+import { useBee } from '../hooks/useBee.js';
+import { useHotkeys } from '../hooks/useHotkeys.js';
+import { useEditorSync } from '../hooks/useEditorSync.js';
+import { useDocumentIO } from '../hooks/useDocumentIO.js';
 import { CtxMenu } from './CtxMenu.jsx';
 import { Sidebar } from './Sidebar.jsx';
+import { RefPane } from './RefPane.jsx';
+import { HelpDialog } from './HelpDialog.jsx';
+import { DropOverlay } from './DropOverlay.jsx';
+import { ImportBanner } from './ImportBanner.jsx';
+import { TopBar } from './TopBar.jsx';
+import { StatusBar } from './StatusBar.jsx';
+import { Bee } from './Bee.jsx';
 
-const EMPTY_RESULT = { signData: {}, termData: {}, artErrors: [], bareTerms: [], numErrors: [], depErrors: [], noTermSigns: new Set() };
+// The shape extractData returns, with nothing in it. The per-category arrays are
+// derived from ERROR_KINDS so a new category cannot be forgotten here — an
+// omission would surface as a crash on an empty buffer, which is the one moment
+// nobody tests by hand.
+const EMPTY_RESULT = {
+  signData: {},
+  termData: {},
+  noTermSigns: new Set(),
+  claimGraph: null,
+  ...Object.fromEntries(ERROR_KINDS.map((k) => [k.field, []])),
+};
 
-// useLayoutEffect on the client (runs before paint, so no highlight flash); plain
-// useEffect on the server so the render smoke test logs no SSR warning.
-const useIsoLayoutEffect = typeof window !== 'undefined' ? useLayoutEffect : useEffect;
+// How long the text buffers wait before being written to localStorage. Long
+// enough that a burst of typing produces one write, short enough that a refresh
+// straight after typing keeps the text.
+const SAVE_MS = 400;
 
 // ── APP ─────────────────────────────────────────────────────────────────────
+// State and wiring. The three things App used to do itself and no longer does:
+// the imperative editor/backdrop plumbing (hooks/useEditorSync.js), the .docx
+// round trip (hooks/useDocumentIO.js), and ~150 lines of chrome markup
+// (TopBar.jsx, StatusBar.jsx, icons.jsx).
 export function App() {
   // Persisted preferences and buffers (all survive a refresh; see CLAUDE.md for keys)
   const [lang, setLang] = usePersistentState('rsc_lang', 'en', oneOf(['en', 'de'], 'en'));
-  const [mode, setMode] = usePersistentState('rsc_mode', 'description', oneOf(['description', 'claims'], 'description'));
-  const [descText, setDescText] = usePersistentState('rsc_desc', '');
-  const [claimsText, setClaimsText] = usePersistentState('rsc_claims', '');
+  const [mode, setMode] = usePersistentState(
+    'rsc_mode',
+    'description',
+    oneOf(['description', 'claims'], 'description')
+  );
+  // The two text buffers are the only large values stored, so they are the only
+  // ones that need a debounce (an undebounced write serialised the whole buffer
+  // on every keystroke) and the only ones that can realistically hit the quota.
+  const [storageFull, setStorageFull] = useState(false);
+  const onStorageError = useCallback(() => setStorageFull(true), []);
+  const textOpts = useMemo(
+    () => ({ debounce: SAVE_MS, onError: onStorageError }),
+    [onStorageError]
+  );
+  const [descText, setDescText] = usePersistentState('rsc_desc', '', undefined, textOpts);
+  const [claimsText, setClaimsText] = usePersistentState('rsc_claims', '', undefined, textOpts);
+  // The drafter's own reference-sign list, checked against the active buffer.
+  // Small enough not to need the debounce the text buffers use.
+  const [refListText, setRefListText] = usePersistentState('rsc_reflist', '');
+  // Which side panes are open. Persisted because it is a working preference,
+  // not transient state — a drafter who folds the reference pane away wants it
+  // to stay away.
+  const [panes, setPanes] = usePersistentState('rsc_panes', { left: true, right: true }, jsonCodec);
+  // Narrow screens show exactly one pane; ignored by the desktop layout.
+  const [mobilePane, setMobilePane] = useState('editor');
+  const [helpOpen, setHelpOpen] = useState(false);
   const [mwo, setMwo] = usePersistentState('rsc_mwo', {}, jsonCodec);
   const [dis, setDis] = usePersistentState('rsc_dis', new Set(), setCodec);
   const [theme, setTheme] = useTheme();
   // Transient UI state
   const text = mode === 'description' ? descText : claimsText;
-  const [hoverSign, setHoverSign] = useState(null);
   // Currently highlighted error card: {type: 'sign'|'art'|'bare'|'num'|'dep', key}
   // (key = sign string for signs, char position for everything else).
   const [focus, setFocus] = useState(null);
   const [search, setSearch] = useState('');
   const [navIdx, setNavIdx] = useState(0);
   const [ctx, setCtx] = useState(null);
-  const bdRef = useRef(null), taRef = useRef(null);
   // Occurrence cursor for click-to-cycle on the sidebar error cards: which
   // occurrence of the currently-focused error the next click should advance from.
   const focusOcc = useRef({ id: null, idx: 0 });
@@ -47,66 +99,95 @@ export function App() {
   const debDesc = useDebounced(descText, descText.length > 5000 ? 200 : 0);
   const debClaims = useDebounced(claimsText, claimsText.length > 5000 ? 200 : 0);
   const debText = mode === 'description' ? debDesc : debClaims;
-  const descResult = useMemo(() => debDesc ? extractData(debDesc, lang, mwo, true, false) : null, [debDesc, lang, mwo]);
-  const claimsResult = useMemo(() => debClaims ? extractData(debClaims, lang, mwo, true, true) : null, [debClaims, lang, mwo]);
-  const res = (mode === 'description' ? descResult : claimsResult) ?? EMPTY_RESULT;
-  const { signData, termData, artErrors, bareTerms, numErrors, depErrors } = res;
 
-  const orphaned = useMemo(() => computeCrossRef(descResult, claimsResult), [descResult, claimsResult]);
+  // Multi-word terms read out of the drafter's own reference list, applied to
+  // BOTH buffers — the list describes the invention, not one section of it.
+  // Debounced on the same rule as the buffers: editing the list box re-runs
+  // extraction, so on a large document it must not do so per keystroke.
+  const bigDoc = descText.length + claimsText.length > 5000;
+  const debRefList = useDebounced(refListText, bigDoc ? 200 : 0);
+  const rawListIdx = useMemo(() => listTermIndex(debRefList, lang), [debRefList, lang]);
+  // Hold the identity stable while the parsed content is unchanged: most edits
+  // in that box (a typo in a term, a re-ordered line, a sign whose entry has no
+  // second word) change nothing the extraction can see, and a fresh object
+  // would still invalidate both extraction memos.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const listIdx = useMemo(() => rawListIdx, [rawListIdx.sig]);
+
+  const descResult = useMemo(
+    () => (debDesc ? extractData(debDesc, lang, mwo, true, false, listIdx) : null),
+    [debDesc, lang, mwo, listIdx]
+  );
+  const claimsResult = useMemo(
+    () => (debClaims ? extractData(debClaims, lang, mwo, true, true, listIdx) : null),
+    [debClaims, lang, mwo, listIdx]
+  );
+  const res = (mode === 'description' ? descResult : claimsResult) ?? EMPTY_RESULT;
+  const { signData, termData } = res;
+
+  const orphaned = useMemo(
+    () => computeCrossRef(descResult, claimsResult),
+    [descResult, claimsResult]
+  );
 
   const allErrors = useMemo(() => getAllErrors(res, mode, dis), [res, mode, dis]);
 
+  // The reference list describes the invention as a whole, so it is checked
+  // against the description when there is one and the claims otherwise.
+  const refListTarget = descResult || claimsResult;
+  const reconciled = useMemo(
+    () => reconcileRefList(refListText, refListTarget, lang),
+    [refListText, refListTarget, lang]
+  );
+  // Which of the list's multi-word terms the text actually uses as such — the
+  // panel reports what the automatic extension did, so a drafter is never left
+  // guessing why a term suddenly reads wider (or, after a manual reduce, why it
+  // does not).
+  const listMultiWord = useMemo(
+    () => appliedListTerms(listIdx, refListTarget?.termData),
+    [listIdx, refListTarget]
+  );
+  const claimSetStats = useMemo(() => claimStats(claimsResult?.claimGraph), [claimsResult]);
+
   useEffect(() => setNavIdx(0), [allErrors.length]);
 
-  const focusSign = focus?.type === 'sign' ? focus.key : null;
-  const html = useMemo(() => buildHtml(debText, res, mode, dis, focusSign), [debText, res, mode, dis, focusSign]);
-
-  const syncScroll = useCallback(() => { if (taRef.current && bdRef.current) bdRef.current.scrollTop = taRef.current.scrollTop; }, []);
-
-  // Re-mirror the scroll position whenever the backdrop's highlight content
-  // (re-)renders. On a large paste the textarea scrolls to the caret at once,
-  // but the backdrop html is debounced (≥5000 chars) — so the single scroll
-  // event that fired synced against stale, short content and clamped, leaving
-  // the highlights shifted until the next manual scroll. Re-syncing after the
-  // content commits realigns the two layers before the browser paints.
-  useIsoLayoutEffect(() => { syncScroll(); }, [html, syncScroll]);
-
-  // Editor hover → sidebar-card highlight. elementFromPoint forces a synchronous
-  // hit-test, so throttle to one lookup per animation frame instead of running
-  // it on every mousemove.
-  const hoverPending = useRef(false);
-  const handleEditorHover = useCallback(e => {
-    if (hoverPending.current) return;
-    hoverPending.current = true;
-    const x = e.clientX, y = e.clientY;
-    const raf = typeof requestAnimationFrame === 'function' ? requestAnimationFrame : cb => setTimeout(cb, 16);
-    raf(() => {
-      hoverPending.current = false;
-      const ta = taRef.current;
-      if (!ta) return;
-      ta.style.pointerEvents = 'none';
-      const el = document.elementFromPoint(x, y);
-      ta.style.pointerEvents = '';
-      const sign = el?.dataset?.sign || el?.closest?.('[data-sign]')?.dataset?.sign || null;
-      setHoverSign(prev => prev === sign ? prev : sign);
-    });
-  }, []);
-
+  // Keep <html lang> in step with the checking language. It was hardcoded to
+  // "en" in index.html, so screen readers announced German patent text with
+  // English pronunciation rules.
   useEffect(() => {
-    const bd = bdRef.current;
-    if (!bd) return;
-    bd.querySelectorAll('mark[data-sign]').forEach(m => {
-      m.classList.toggle('h-hover', m.dataset.sign === hoverSign);
-    });
-  }, [hoverSign, html]);
+    if (typeof document !== 'undefined') document.documentElement.lang = lang;
+  }, [lang]);
+
+  const focusSign = focus?.type === 'sign' ? focus.key : null;
+  const html = useMemo(
+    () => buildHtml(debText, res, mode, dis, focusSign),
+    [debText, res, mode, dis, focusSign]
+  );
+
+  // Everything imperative about the editor's two layers: scroll mirroring, the
+  // per-sign mark index behind hover highlighting, scroll-to-span and the caret
+  // restore after an edit the app made itself.
+  const {
+    taRef,
+    bdRef,
+    hoverSign,
+    setHoverSign,
+    syncScroll,
+    scrollTo,
+    onEditorHover,
+    setCaretAfterCommit,
+  } = useEditorSync({ html, text });
 
   // ── Search-filtered card lists (also drive the status-bar chips) ──
   const { errSigns, okSigns } = useMemo(() => {
-    const q = search.toLowerCase(), err = [], ok = [];
+    const q = search.toLowerCase(),
+      err = [],
+      ok = [];
     for (const [sign, sData] of Object.entries(signData)) {
       if (q && !sign.toLowerCase().includes(q)) {
-        const termMatch = Object.keys(sData.terms).some(ts =>
-          [...(termData[ts]?.rawTerms || [])].some(r => r.includes(q)));
+        const termMatch = Object.keys(sData.terms).some((ts) =>
+          [...(termData[ts]?.rawTerms || [])].some((r) => r.includes(q))
+        );
         if (!termMatch) continue;
       }
       (classify(sign, sData, termData, mode) === 'warn' ? err : ok).push([sign, sData]);
@@ -115,33 +196,46 @@ export function App() {
     return { errSigns: err.sort(byN), okSigns: ok.sort(byN) };
   }, [signData, termData, mode, search]);
 
-  const visArt = useMemo(() => { const q = search.toLowerCase(); return artErrors.filter(ae => !q || ae.termStem.includes(q) || [...(termData[ae.termStem]?.rawTerms || [])].some(r => r.includes(q))); }, [artErrors, termData, search]);
-  const visArtActive = visArt.filter(ae => !dis.has(disKey.art(ae.termStem)));
-  const visBare = useMemo(() => { const q = search.toLowerCase(); return bareTerms.filter(bt => !q || bt.term.includes(q) || bt.termStem.includes(q)); }, [bareTerms, search]);
-  const visBareActive = visBare.filter(bt => !dis.has(disKey.bare(bt.termStem)));
-  const visNum = useMemo(() => { const q = search.toLowerCase(); return numErrors.filter(ne => !q || String(ne.value).includes(q) || String(ne.expected).includes(q)); }, [numErrors, search]);
-  const visNumActive = visNum.filter(ne => !dis.has(disKey.num(ne.key)));
-  const visDep = useMemo(() => { const q = search.toLowerCase(); return depErrors.filter(de => !q || String(de.claim).includes(q) || String(de.ref).includes(q)); }, [depErrors, search]);
-  const visDepActive = visDep.filter(de => !dis.has(disKey.dep(de.key)));
-  const errSignsActive = errSigns.filter(([s]) => !dis.has(disKey.sign(s)));
-  const errSignsDismissed = errSigns.filter(([s]) => dis.has(disKey.sign(s)));
+  // Search + dismissal filtering for the four non-sign categories, in one pass
+  // over ERROR_KINDS. This was four hand-written memo PAIRS, each re-deriving
+  // the lowercased query and each naming its own disKey.
+  //
+  // It stays memoized for the same reason the pairs were: the lists feed Sidebar
+  // and every card under it, so recomputing them per render would hand down
+  // fresh array identities on every hover, every search keystroke and every bee
+  // frame — which is what made memoizing the card components pointless before.
+  // Cheap on their own; the identity is the point.
+  const errorLists = useMemo(() => {
+    const q = search.toLowerCase();
+    const out = {};
+    for (const kind of ERROR_KINDS)
+      out[kind.id] = kindItems(res, kind).filter(
+        (e) => (!q || kind.matches(e, q, termData)) && !dis.has(kind.disKey(e))
+      );
+    return out;
+  }, [res, termData, search, dis]);
+
+  const errSignsActive = useMemo(
+    () => errSigns.filter(([s]) => !dis.has(disKey.sign(s))),
+    [errSigns, dis]
+  );
+  const errSignsDismissed = useMemo(
+    () => errSigns.filter(([s]) => dis.has(disKey.sign(s))),
+    [errSigns, dis]
+  );
   const disCt = dis.size;
   const totalSigns = Object.keys(signData).length;
-  const anyActive = errSignsActive.length || visArtActive.length || visBareActive.length || visNumActive.length || visDepActive.length;
+  const anyActive = errSignsActive.length || ERROR_KINDS.some((k) => errorLists[k.id].length > 0);
 
-  function scrollTo(start, end) {
-    const ta = taRef.current;
-    if (!ta) return;
-    ta.focus();
-    ta.setSelectionRange(start, end);
-    // Measure the real line height instead of hardcoding it, so CSS changes and
-    // browser zoom cannot desync click-to-navigate scrolling.
-    let lh = parseFloat(getComputedStyle(ta).lineHeight);
-    if (!Number.isFinite(lh)) lh = (parseFloat(getComputedStyle(ta).fontSize) || 13.5) * 1.75;
-    const lines = text.slice(0, start).split('\n').length;
-    ta.scrollTop = Math.max(0, (lines - 5) * lh);
-    syncScroll();
-  }
+  // Live mirrors of state the card callbacks below read. Keeping them in refs is
+  // what lets those callbacks be genuinely stable: every one of them is passed
+  // down to Sidebar and the cards, so a fresh identity per render would defeat
+  // the React.memo on each of them and re-render the whole sidebar on every
+  // keystroke, hover and bee frame.
+  const focusRef = useRef(focus);
+  focusRef.current = focus;
+  const signDataRef = useRef(signData);
+  signDataRef.current = signData;
 
   // Click an error card: the first click focuses it and jumps to its first
   // occurrence; each further click on the same card advances to the next
@@ -149,83 +243,230 @@ export function App() {
   // focus. `occs` is the sorted [start, end] spans for the error, so a
   // single-occurrence card (article/bare/numbering/dependency) simply toggles,
   // exactly as before, while a multi-occurrence sign cycles through its marks.
-  function focusCycle(type, key, occs) {
-    if (!occs.length) return;
-    const id = type + ':' + key;
-    const cur = focusOcc.current;
-    // Only continue an existing cycle if this same error is still focused.
-    const advancing = !!focus && focus.type === type && focus.key === key && cur.id === id;
-    const idx = advancing ? cur.idx + 1 : 0;
-    if (advancing && idx >= occs.length) { // stepped past the last → unfocus
-      focusOcc.current = { id: null, idx: 0 };
-      setFocus(null);
-      return;
-    }
-    focusOcc.current = { id, idx };
-    setFocus({ type, key });
-    scrollTo(occs[idx][0], occs[idx][1]);
-  }
-  const onFocusSign = sign => {
-    const occs = (signData[sign]?.positions || [])
-      .map(p => [p.signStart, p.signEnd]).sort((a, b) => a[0] - b[0]);
-    focusCycle('sign', sign, occs);
-  };
-  const onFocusArt = ae => focusCycle('art', ae.artStart, [[ae.artStart, ae.artEnd]]);
-  const onFocusBare = bt => focusCycle('bare', bt.termStart, [[bt.termStart, bt.termEnd]]);
-  const onFocusNum = ne => focusCycle('num', ne.start, [[ne.start, ne.end]]);
-  const onFocusDep = de => focusCycle('dep', de.start, [[de.start, de.end]]);
+  const focusCycle = useCallback(
+    (type, key, occs) => {
+      if (!occs.length) return;
+      const id = type + ':' + key;
+      const cur = focusOcc.current;
+      const focus = focusRef.current;
+      // Only continue an existing cycle if this same error is still focused.
+      const advancing = !!focus && focus.type === type && focus.key === key && cur.id === id;
+      const idx = advancing ? cur.idx + 1 : 0;
+      if (advancing && idx >= occs.length) {
+        // stepped past the last → unfocus
+        focusOcc.current = { id: null, idx: 0 };
+        setFocus(null);
+        return;
+      }
+      focusOcc.current = { id, idx };
+      setFocus({ type, key });
+      scrollTo(occs[idx][0], occs[idx][1]);
+    },
+    [scrollTo]
+  );
+  const onFocusSign = useCallback(
+    (sign) => {
+      const occs = (signDataRef.current[sign]?.positions || [])
+        .map((p) => [p.signStart, p.signEnd])
+        .sort((a, b) => a[0] - b[0]);
+      focusCycle('sign', sign, occs);
+    },
+    [focusCycle]
+  );
+  // One handler for all four non-sign categories. Each has a single occurrence,
+  // so the card simply toggles; the focus key is the span start, which is the
+  // convention every card's `focused` comparison uses. (Signs keep their own
+  // handler: their key is the sign string, and they cycle through occurrences.)
+  const onFocusError = useCallback(
+    (kindId, item) => {
+      const kind = KIND_BY_ID[kindId];
+      const start = kind.start(item);
+      focusCycle(kindId, start, [[start, kind.end(item)]]);
+    },
+    [focusCycle]
+  );
 
-  function navigate(dir) {
-    if (!allErrors.length) return;
-    const next = (navIdx + dir + allErrors.length) % allErrors.length;
-    setNavIdx(next);
-    const e = allErrors[next];
+  function goToError(idx) {
+    const e = allErrors[idx];
+    if (!e) return;
+    setNavIdx(idx);
     scrollTo(e.start, e.end);
     setFocus({ type: e.type, key: e.type === 'sign' ? e.sign : e.start });
     focusOcc.current = { id: null, idx: 0 }; // arrows drive their own cursor; restart card-cycling
   }
 
-  function toggleDis(key) { setDis(d => { const n = new Set(d); n.has(key) ? n.delete(key) : n.add(key); return n; }); }
+  function navigate(dir) {
+    if (!allErrors.length) return;
+    goToError((navIdx + dir + allErrors.length) % allErrors.length);
+  }
+
+  // Which error a jump measures from. The arrows own navIdx, but a sidebar card
+  // click focuses an error without moving it — so when the focus points at a
+  // different error than navIdx does, the focus is the more recent intent.
+  function anchorIdx() {
+    const f = focusRef.current;
+    if (!f) return navIdx;
+    const matches = (e) =>
+      e.type === f.type && (e.type === 'sign' ? e.sign === f.key : e.start === f.key);
+    if (matches(allErrors[navIdx] || {})) return navIdx;
+    const i = allErrors.findIndex(matches);
+    return i >= 0 ? i : navIdx;
+  }
+
+  // Ctrl+Shift+↓/↑: the next error about the SAME term, skipping everything
+  // else — stepping through every faulty "banana" without wading through the
+  // "kiwi" errors between them. Errors with no term (claim numbering,
+  // dependencies) step within their own category; see errorGroup.
+  function navigateTerm(dir) {
+    const n = allErrors.length;
+    if (!n) return;
+    const from = anchorIdx();
+    const group = errorGroup(allErrors[from]);
+    // Walk outwards, wrapping. `step === n` lands back on `from`, so a term with
+    // a single error simply stays put instead of jumping to an unrelated one.
+    for (let step = 1; step <= n; step++) {
+      const i = (((from + dir * step) % n) + n) % n;
+      if (errorGroup(allErrors[i]) === group) {
+        goToError(i);
+        return;
+      }
+    }
+  }
+
+  // ── .docx import / export ─────────────────────────────────────────────────
+  // The hook owns the file plumbing and the banner report; App keeps deciding
+  // what loading a document means for the rest of its state.
+  const buffers = useMemo(
+    () => ({ description: descText, claims: claimsText, refList: refListText }),
+    [descText, claimsText, refListText]
+  );
+  const applyDoc = useCallback(
+    (next) => {
+      setDescText(next.description);
+      setClaimsText(next.claims);
+      setRefListText(next.refList);
+      setLang(next.lang);
+      setFocus(null);
+    },
+    [setDescText, setClaimsText, setRefListText, setLang]
+  );
+  const {
+    imported,
+    report,
+    setReport,
+    dragging,
+    fileRef,
+    pickFile,
+    openPicker,
+    doExport,
+    undoImport,
+    canUndo,
+    clear: clearDocIO,
+  } = useDocumentIO({ t, lang, buffers, apply: applyDoc });
+
+  // Keyboard shortcuts. Every binding takes Ctrl/Cmd, because the editor holds
+  // focus almost always and useHotkeys suppresses unmodified keys while typing
+  // — a shortcut that dies mid-sentence is worse than none.
+  //
+  // The choice of keys is a German-layout decision. "[" and "]" need AltGr
+  // there and "/" needs Shift, so the old bindings were awkward to reach on the
+  // very keyboards this tool is written for. Arrows, F and ? are unshifted or
+  // standard on both layouts. Up/Down rather than Left/Right: Ctrl+Left/Right
+  // is word-by-word cursor movement inside a textarea, which a drafter uses
+  // constantly and which we must not take away.
+  //
+  // "?" arrives as Shift+ß on a German layout and Shift+/ on a US one; both
+  // report e.key === '?', so one binding covers both — with the shift-less
+  // spelling accepted too, since some layouts get there without it.
+  const searchRef = useRef(null);
+  const toggleMode = useCallback(
+    () => setMode((m) => (m === 'description' ? 'claims' : 'description')),
+    [setMode]
+  );
+  const openHelp = useCallback(() => setHelpOpen(true), []);
+  useHotkeys({
+    'mod+ArrowDown': () => navigate(1),
+    'mod+ArrowUp': () => navigate(-1),
+    'mod+shift+ArrowDown': () => navigateTerm(1),
+    'mod+shift+ArrowUp': () => navigateTerm(-1),
+    'mod+f': () => searchRef.current?.focus(),
+    'mod+m': toggleMode,
+    'mod+b': () => setPanes((p) => ({ ...p, left: !p.left })),
+    'mod+shift+b': () => setPanes((p) => ({ ...p, right: !p.right })),
+    'mod+o': openPicker,
+    'mod+s': doExport,
+    'mod+shift+?': openHelp,
+    'mod+?': openHelp,
+    // Kept from before: harmless on a US layout, and muscle memory is cheap to
+    // honour. The help screen documents the arrows.
+    'mod+[': () => navigate(-1),
+    'mod+]': () => navigate(1),
+    '/': () => searchRef.current?.focus(),
+    Escape: () => setCtx(null),
+  });
+
+  const toggleDis = useCallback(
+    (key) => {
+      setDis((d) => {
+        const n = new Set(d);
+        n.has(key) ? n.delete(key) : n.add(key);
+        return n;
+      });
+    },
+    [setDis]
+  );
   function disAll() {
     const k = new Set();
-    Object.keys(signData).forEach(s => k.add(disKey.sign(s)));
-    artErrors.forEach(ae => k.add(disKey.art(ae.termStem)));
-    bareTerms.forEach(bt => k.add(disKey.bare(bt.termStem)));
-    numErrors.forEach(ne => k.add(disKey.num(ne.key)));
-    depErrors.forEach(de => k.add(disKey.dep(de.key)));
+    Object.keys(signData).forEach((s) => k.add(disKey.sign(s)));
+    // Every category, including ones added after this was written.
+    for (const kind of ERROR_KINDS) for (const e of kindItems(res, kind)) k.add(kind.disKey(e));
     setDis(k);
   }
-  function restoreAll() { setDis(new Set()); }
+  const restoreAll = useCallback(() => setDis(new Set()), [setDis]);
 
   function handleCtxMenu(e) {
     e.preventDefault();
     const pos = taRef.current?.selectionStart ?? 0;
-    const found = findAtPos(pos, signData, artErrors);
-    if (!found) return;
-    const items = [];
-    if (found.type === 'sign') {
-      const { sign, pos: p } = found;
-      const bs = stem(p.term.split(' ').pop(), lang);
-      const cur = 1 + (mwo[bs] || 0);
-      items.push({ label: t.extendTerm(cur), a: 'extend', d: { bs } });
-      if (cur > 1) items.push({ label: t.reduceTerm, a: 'reduce', d: { bs } });
-      items.push({ sep: true });
-      const isDis = dis.has(disKey.sign(sign));
-      items.push({ label: isDis ? `↩ Restore "${sign}"` : t.disSign(sign), a: 'toggle-dis', d: { key: disKey.sign(sign) } });
-    } else {
-      const { ae } = found;
-      const isDis = dis.has(disKey.art(ae.termStem));
-      items.push({ label: isDis ? `↩ Restore article` : t.disArt(ae.termStem), a: 'toggle-dis', d: { key: disKey.art(ae.termStem) } });
-    }
-    items.push({ sep: true });
-    items.push({ label: t.disAll, a: 'dis-all', v: 'warn' });
-    if (disCt) items.push({ label: `↩ ${t.restoreAll} (${disCt})`, a: 'restore-all' });
-    setCtx({ x: e.clientX, y: e.clientY, items, label: found.type === 'sign' ? `Sign ${found.sign}` : `Article: ${found.ae?.article}` });
+    // findAtPos names artErrors/bareTerms directly rather than going through
+    // ERROR_KINDS: the menu is genuinely per-category, so there is no uniform
+    // behaviour for a registry to drive. See logic/ctxMenuItems.js.
+    const menu = ctxMenuItems(findAtPos(pos, signData, res.artErrors, res.bareTerms), {
+      t,
+      lang,
+      dis,
+    });
+    if (!menu) return;
+    setCtx({ x: e.clientX, y: e.clientY, ...menu });
+  }
+
+  /**
+   * Write a bare term's reference sign into the text, right after the term.
+   * Claims mode brackets it, because a bare sign there is an error of its own.
+   */
+  function insertSign(bt, sign) {
+    // The spans come from the (debounced) extraction, so the buffer may have
+    // moved on. Check the term is still where it was said to be rather than
+    // splicing a sign into the middle of some other word.
+    const at = text.slice(bt.termStart, bt.termEnd).toLowerCase().replace(/\s+/g, ' ');
+    if (at !== bt.term) return;
+    const ins = mode === 'claims' ? ` (${sign})` : ` ${sign}`;
+    const next = text.slice(0, bt.termEnd) + ins + text.slice(bt.termEnd);
+    (mode === 'description' ? setDescText : setClaimsText)(next);
+    setFocus(null);
+    // Leave the caret after what was just written, so the drafter carries on
+    // where they were reading. Applied once the new value has been committed.
+    setCaretAfterCommit(bt.termEnd + ins.length);
   }
 
   function handleCtxAction(a, d) {
-    if (a === 'extend') setMwo(m => ({ ...m, [d.bs]: (m[d.bs] || 0) + 1 }));
-    else if (a === 'reduce') setMwo(m => { const n = { ...m }; n[d.bs] > 1 ? n[d.bs]-- : delete n[d.bs]; return n; });
+    // Both write an ABSOLUTE width (extra words beyond the base noun) measured
+    // from what is on screen, so the override lands where the drafter expects
+    // whatever widened the term in the first place. Reduce stores an explicit 0
+    // rather than deleting the key — deleting it would just hand the term back
+    // to the reference list, and the reduction would appear not to work.
+    if (a === 'extend') setMwo((m) => ({ ...m, [d.bs]: d.cur }));
+    else if (a === 'reduce') setMwo((m) => ({ ...m, [d.bs]: Math.max(0, d.cur - 2) }));
+    else if (a === 'insert-sign') insertSign(d.bt, d.sign);
     else if (a === 'toggle-dis') toggleDis(d.key);
     else if (a === 'dis-all') disAll();
     else if (a === 'restore-all') restoreAll();
@@ -237,102 +478,205 @@ export function App() {
     setMwo({});
     setDescText('');
     setClaimsText('');
+    setRefListText('');
+    clearDocIO();
   }
 
-  const chip = (count, color, label) => count > 0 && (
-    <div className="s-chip" style={{ color: `var(--${color})` }}>
-      <span className="s-dot" style={{ background: `var(--${color})` }} />{count} {label}
-    </div>
+  const switchMode = useCallback(
+    (m) => {
+      setMode(m);
+      setFocus(null);
+    },
+    [setMode]
   );
 
-  return (<>
-    {ctx && <CtxMenu menu={ctx} onClose={() => setCtx(null)} onAction={handleCtxAction} />}
+  // Watch both buffers at once, so switching modes never looks like new text.
+  const [bees, beeDone] = useBee(`${descText}\n${claimsText}`, lang);
 
-    <div className="topbar">
-      <div className="logo">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-          <polyline points="14 2 14 8 20 8" /><line x1="9" y1="13" x2="15" y2="13" /><line x1="9" y1="17" x2="12" y2="17" />
-        </svg>
-        <span>RefSign<em> Checker</em></span>
-      </div>
-      <div className="spacer" />
-      <div className="theme-toggle">
-        <button className={theme === 'light' ? 'active' : ''} onClick={() => setTheme('light')} title={t.themeLight} aria-label={t.themeLight}>
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <circle cx="12" cy="12" r="4" />
-            <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41" />
-          </svg>
-        </button>
-        <button className={theme === 'system' ? 'active' : ''} onClick={() => setTheme('system')} title={t.themeSystem} aria-label={t.themeSystem}>
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <rect x="2" y="4" width="20" height="13" rx="1.5" />
-            <path d="M8 20h8M12 17v3" />
-          </svg>
-        </button>
-        <button className={theme === 'dark' ? 'active' : ''} onClick={() => setTheme('dark')} title={t.themeDark} aria-label={t.themeDark}>
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M20 12.5A8 8 0 1 1 11.5 4a6.5 6.5 0 0 0 8.5 8.5z" />
-          </svg>
-        </button>
-      </div>
-      <div className="pill-toggle">
-        <button className={mode === 'description' ? 'active' : ''} onClick={() => { setMode('description'); setFocus(null); }}>{t.modeDesc}{descText && <span className="buf-dot" />}</button>
-        <button className={mode === 'claims' ? 'active' : ''} onClick={() => { setMode('claims'); setFocus(null); }}>{t.modeClaims}{claimsText && <span className="buf-dot" />}</button>
-      </div>
-      <div className="lang-toggle">
-        <button className={lang === 'en' ? 'active' : ''} onClick={() => setLang('en')}>EN</button>
-        <button className={lang === 'de' ? 'active' : ''} onClick={() => setLang('de')}>DE</button>
-      </div>
-    </div>
+  return (
+    <>
+      {ctx && <CtxMenu menu={ctx} onClose={() => setCtx(null)} onAction={handleCtxAction} />}
+      <DropOverlay visible={dragging} t={t} />
+      {bees.map((id) => (
+        <Bee key={id} t={t} onDone={() => beeDone(id)} />
+      ))}
 
-    <div className="main">
-      <div className="editor-pane">
-        <div className="pane-hdr">
-          <span className="pane-title">{t.editorLbl}</span>
-          <span style={{ fontSize: '11px', color: 'var(--text-dim)', fontFamily: 'var(--font-mono)' }}>{t.charCount(text.length)}</span>
-        </div>
-        <div className="editor-wrap" onMouseMove={handleEditorHover} onMouseLeave={() => setHoverSign(null)}>
-          <div className="backdrop" ref={bdRef} aria-hidden="true" dangerouslySetInnerHTML={{ __html: html }} />
-          <textarea className="editor-ta" ref={taRef} value={text}
-            placeholder={mode === 'description' ? t.placeholder_desc : t.placeholder_claims}
-            onChange={e => { mode === 'description' ? setDescText(e.target.value) : setClaimsText(e.target.value); setFocus(null); }}
-            onScroll={syncScroll} onContextMenu={handleCtxMenu}
-            spellCheck={false} autoCorrect="off" autoCapitalize="off" />
-        </div>
-        <div className="statusbar">
-          {chip(errSignsActive.length, 'warn', t.errLbl)}
-          {chip(visArtActive.length, 'art', t.artLbl)}
-          {chip(visBareActive.length, 'bare', t.bareLbl)}
-          {chip(visNumActive.length, 'num', t.numberingLbl)}
-          {chip(visDepActive.length, 'dep', t.depLbl)}
-          {totalSigns > 0 && !anyActive &&
-            <div className="s-chip" style={{ color: 'var(--ok)' }}><span className="s-dot" style={{ background: 'var(--ok)' }} />All consistent</div>}
-          {allErrors.length > 0 && <div className="err-nav" style={{ marginLeft: 'auto' }}>
-            <button className="nav-btn" onClick={() => navigate(-1)}>
-              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="15 18 9 12 15 6" /></svg>
+      <TopBar
+        t={t}
+        lang={lang}
+        onLang={setLang}
+        mode={mode}
+        onMode={switchMode}
+        theme={theme}
+        onTheme={setTheme}
+        hasDesc={!!descText}
+        hasClaims={!!claimsText}
+        imported={imported}
+        fileRef={fileRef}
+        onPickFile={pickFile}
+        onImportClick={openPicker}
+        onExport={doExport}
+        onHelp={openHelp}
+      />
+
+      {helpOpen && <HelpDialog t={t} lang={lang} onClose={() => setHelpOpen(false)} />}
+
+      <ImportBanner
+        report={report}
+        t={t}
+        onUndo={canUndo ? undoImport : null}
+        onDismiss={() => setReport(null)}
+      />
+
+      {/* Storage failures used to be swallowed, so a user pasting an oversized
+          patent lost their work at the next refresh with no warning at all. */}
+      {storageFull && (
+        <div className="imp-banner imp-error" role="alert">
+          <span className="imp-main">
+            <strong>{t.storageFull}</strong>
+          </span>
+          <span className="imp-actions">
+            <button className="imp-x" onClick={() => setStorageFull(false)} aria-label={t.dismiss}>
+              ×
             </button>
-            <span className="nav-lbl">{t.navLabel(navIdx + 1, allErrors.length)}</span>
-            <button className="nav-btn" onClick={() => navigate(1)}>
-              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="9 18 15 12 9 6" /></svg>
-            </button>
-          </div>}
-          {disCt > 0 && <button className="restore-btn" onClick={restoreAll}>↩ {t.restoreAll} ({disCt})</button>}
-          {mode === 'claims' && text.length > 0 && <div className="s-chip" style={{ color: 'var(--text-dim)', fontSize: '11px' }}>{t.claimsNote}</div>}
+          </span>
         </div>
+      )}
+
+      {/* Mobile shows one pane at a time — three columns do not fit a phone,
+          and stacking them buries the reference list under a long scroll. */}
+      <div className="pane-tabs" role="tablist" aria-label={t.paneTabsLbl}>
+        {[
+          ['ref', t.refPaneLbl],
+          ['editor', t.editorLbl],
+          ['signs', t.ovLbl],
+        ].map(([id, label]) => (
+          <button
+            key={id}
+            role="tab"
+            aria-selected={mobilePane === id}
+            className={mobilePane === id ? 'active' : ''}
+            onClick={() => setMobilePane(id)}
+          >
+            {label}
+          </button>
+        ))}
       </div>
 
-      <Sidebar t={t} lang={lang} mode={mode} signData={signData} termData={termData}
-        search={search} onSearch={setSearch}
-        errSignsActive={errSignsActive} errSignsDismissed={errSignsDismissed} okSigns={okSigns}
-        visArtActive={visArtActive} visBareActive={visBareActive}
-        visNumActive={visNumActive} visDepActive={visDepActive}
-        focus={focus} dis={dis} disCt={disCt} mwo={mwo}
-        hoverSign={hoverSign} onHover={setHoverSign}
-        onFocusSign={onFocusSign} onFocusArt={onFocusArt} onFocusBare={onFocusBare}
-        onFocusNum={onFocusNum} onFocusDep={onFocusDep}
-        onDismiss={toggleDis} onRestoreAll={restoreAll} orphaned={orphaned} />
-    </div>
-    <button className="reset-btn" onClick={doReset} title={t.resetAll}>{t.resetAll}</button>
-  </>);
+      <main
+        className={`main pane-${mobilePane}${panes.left ? '' : ' left-off'}${panes.right ? '' : ' right-off'}`}
+      >
+        <aside className="ref-pane" aria-label={t.refPaneLbl}>
+          <div className="pane-hdr">
+            <span className="pane-title">{t.refPaneLbl}</span>
+            <button
+              className="pane-collapse"
+              onClick={() => setPanes((p) => ({ ...p, left: !p.left }))}
+              title={panes.left ? t.paneHideRef : t.paneShowRef}
+              aria-label={panes.left ? t.paneHideRef : t.paneShowRef}
+              aria-expanded={panes.left}
+            >
+              {panes.left ? '‹' : '›'}
+            </button>
+          </div>
+          {/* Always mounted; collapsing is CSS, so the mobile tab bar and the
+              desktop chevron cannot disagree about what exists. */}
+          <RefPane
+            t={t}
+            signData={signData}
+            termData={termData}
+            refListText={refListText}
+            onRefListChange={setRefListText}
+            reconciled={reconciled}
+            multiWord={listMultiWord}
+          />
+        </aside>
+
+        <div className="editor-pane">
+          <div className="pane-hdr">
+            <span className="pane-title">{t.editorLbl}</span>
+            <span
+              style={{ fontSize: '11px', color: 'var(--text-dim)', fontFamily: 'var(--font-mono)' }}
+            >
+              {t.charCount(text.length)}
+            </span>
+          </div>
+          <div
+            className="editor-wrap"
+            onMouseMove={onEditorHover}
+            onMouseLeave={() => setHoverSign(null)}
+          >
+            <div
+              className="backdrop"
+              ref={bdRef}
+              aria-hidden="true"
+              dangerouslySetInnerHTML={{ __html: html }}
+            />
+            <textarea
+              className="editor-ta"
+              aria-label={t.editorAria}
+              ref={taRef}
+              value={text}
+              placeholder={mode === 'description' ? t.placeholder_desc : t.placeholder_claims}
+              onChange={(e) => {
+                mode === 'description'
+                  ? setDescText(e.target.value)
+                  : setClaimsText(e.target.value);
+                setFocus(null);
+              }}
+              onScroll={syncScroll}
+              onContextMenu={handleCtxMenu}
+              spellCheck={false}
+              autoCorrect="off"
+              autoCapitalize="off"
+            />
+          </div>
+          <StatusBar
+            t={t}
+            mode={mode}
+            hasText={text.length > 0}
+            signErrCount={errSignsActive.length}
+            errorLists={errorLists}
+            totalSigns={totalSigns}
+            anyActive={anyActive}
+            errorCount={allErrors.length}
+            navIdx={navIdx}
+            onNavigate={navigate}
+            disCt={disCt}
+            onRestoreAll={restoreAll}
+          />
+        </div>
+
+        <Sidebar
+          t={t}
+          mode={mode}
+          signData={signData}
+          termData={termData}
+          search={search}
+          onSearch={setSearch}
+          searchRef={searchRef}
+          errSignsActive={errSignsActive}
+          errSignsDismissed={errSignsDismissed}
+          okSigns={okSigns}
+          errorLists={errorLists}
+          focus={focus}
+          dis={dis}
+          disCt={disCt}
+          hoverSign={hoverSign}
+          onHover={setHoverSign}
+          onFocusSign={onFocusSign}
+          onFocusError={onFocusError}
+          onDismiss={toggleDis}
+          onRestoreAll={restoreAll}
+          orphaned={orphaned}
+          collapsed={!panes.right}
+          onToggleCollapse={() => setPanes((p) => ({ ...p, right: !p.right }))}
+          claimSetStats={claimSetStats}
+        />
+      </main>
+      <button className="reset-btn" onClick={doReset} title={t.resetAll}>
+        {t.resetAll}
+      </button>
+    </>
+  );
 }

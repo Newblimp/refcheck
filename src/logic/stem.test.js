@@ -70,3 +70,24 @@ describe('stem dispatch', () => {
     expect(stem('housings', 'fr')).toBe(stemEn('housings'));
   });
 });
+
+describe('memo cache', () => {
+  it('is transparent across an eviction', () => {
+    // The cache clears wholesale at 50k entries rather than evicting per-entry,
+    // so the sole guarantee that matters is that results do not change.
+    const before = stem('housings', 'en');
+    for (let i = 0; i < 60000; i++) stem('w' + i, 'en');
+    expect(stem('housings', 'en')).toBe(before);
+  });
+
+  it('keeps the two languages apart', () => {
+    // One shared cache keyed on the bare word would collide here.
+    expect(stem('enden', 'de')).not.toBe(stem('enden', 'en'));
+    expect(stem('enden', 'de')).toBe(stemDe('enden'));
+    expect(stem('enden', 'en')).toBe(stemEn('enden'));
+  });
+
+  it('returns the same result on a repeat call', () => {
+    expect(stem('bearings', 'en')).toBe(stem('bearings', 'en'));
+  });
+});

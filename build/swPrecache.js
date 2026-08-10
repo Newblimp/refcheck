@@ -1,0 +1,110 @@
+// Build-time generation of the service worker's precache list.
+//
+// Why this exists: the app promises to keep working offline, but the service
+// worker registers *after* the page has already fetched its JS, CSS and fonts.
+// Those first-visit requests are never intercepted, so a worker that only
+// populates its cache from the fetch handler has an empty cache after the first
+// visit — the app only became offline-capable on the *second* one. Precaching an
+// explicit list at install time is what actually delivers the guarantee.
+//
+// The list has to be generated because Vite content-hashes every asset filename.
+// The build id is derived from that same list, so a deploy that changes any
+// asset gets a new cache name and the activate handler can evict the old one —
+// otherwise old bundles accumulate in a single never-renamed cache forever.
+
+/** Assets served without a content hash: they can change under a stable URL. */
+export const UNHASHED = ['manifest.webmanifest', 'icon.svg'];
+
+/**
+ * Short, stable id for a set of filenames (FNV-1a, base36).
+ * Not cryptographic — it only needs to change when the asset set changes.
+ * @param {string[]} names
+ * @returns {string}
+ */
+export function buildId(names) {
+  const joined = [...names].sort().join('\n');
+  let h = 0x811c9dc5;
+  for (let i = 0; i < joined.length; i++) {
+    h ^= joined.charCodeAt(i);
+    h = Math.imul(h, 0x01000193) >>> 0;
+  }
+  return h.toString(36);
+}
+
+/**
+ * Build the list of URLs the service worker should precache.
+ *
+ * `base` itself is included deliberately: a navigation to /refcheck/ is cached
+ * under the key "/refcheck/", not "/refcheck/index.html", so precaching only the
+ * latter leaves the offline navigation fallback pointing at a key that is never
+ * populated.
+ *
+ * @param {string} base       Vite base path, e.g. "/refcheck/"
+ * @param {string[]} emitted  Bundle-relative filenames, e.g. "assets/index-ab12.js"
+ * @returns {string[]} absolute URLs, deduplicated, in stable order
+ */
+export function precacheUrls(base, emitted) {
+  const prefix = base.endsWith('/') ? base : base + '/';
+  const urls = new Set([prefix]);
+  for (const name of emitted) {
+    // index.html is reachable as the base URL, already added above. sw.js must
+    // never cache itself — the browser handles worker updates separately, and a
+    // cached worker script would pin the app to a stale build.
+    if (name === 'sw.js' || name === 'index.html') continue;
+    urls.add(prefix + name);
+  }
+  for (const name of UNHASHED) urls.add(prefix + name);
+  return [...urls];
+}
+
+const TOKENS = ['__SW_BUILD_ID__', '__SW_BASE__', '__SW_PRECACHE__'];
+
+/**
+ * Substitute the build-time constants into the service worker source.
+ * Throws if a token is missing, so a rename in sw.js cannot silently ship a
+ * worker that precaches nothing.
+ *
+ * @param {string} source  Contents of public/sw.js
+ * @param {{base: string, emitted: string[]}} opts
+ * @returns {string}
+ */
+export function renderServiceWorker(source, { base, emitted }) {
+  for (const token of TOKENS) {
+    if (!source.includes(token))
+      throw new Error(`sw.js is missing the ${token} placeholder — precaching would be skipped`);
+  }
+  const urls = precacheUrls(base, emitted);
+  return source
+    .replaceAll('__SW_BUILD_ID__', buildId(urls))
+    .replaceAll('__SW_BASE__', base.endsWith('/') ? base : base + '/')
+    .replaceAll('__SW_PRECACHE__', JSON.stringify(urls));
+}
+
+/**
+ * Vite plugin: rewrite dist/sw.js after the bundle is on disk.
+ *
+ * `writeBundle` rather than `generateBundle` because sw.js is copied verbatim
+ * from public/ and so never appears in the bundle object.
+ */
+export function swPrecachePlugin() {
+  let config;
+  return {
+    name: 'refcheck-sw-precache',
+    apply: 'build',
+    configResolved(resolved) {
+      config = resolved;
+    },
+    async writeBundle(options, bundle) {
+      const { readFile, writeFile } = await import('node:fs/promises');
+      const { join } = await import('node:path');
+      const outDir = options.dir || join(config.root, config.build.outDir);
+      const swPath = join(outDir, 'sw.js');
+      const source = await readFile(swPath, 'utf8');
+      const rendered = renderServiceWorker(source, {
+        base: config.base,
+        emitted: Object.keys(bundle),
+      });
+      await writeFile(swPath, rendered);
+    },
+  };
+}

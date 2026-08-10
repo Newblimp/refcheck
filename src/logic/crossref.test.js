@@ -2,8 +2,8 @@ import { describe, it, expect } from 'vitest';
 import { extractData } from './extract.js';
 import { computeCrossRef } from './crossref.js';
 
-const desc = txt => extractData(txt, 'en', {}, true, false);
-const claims = txt => extractData(txt, 'en', {}, true, true);
+const desc = (txt) => extractData(txt, 'en', {}, true, false);
+const claims = (txt) => extractData(txt, 'en', {}, true, true);
 
 describe('computeCrossRef', () => {
   it('returns null when a buffer is missing', () => {
@@ -35,8 +35,8 @@ describe('computeCrossRef', () => {
     const d = desc('The housing 12 is large.');
     const c = claims('1. A device with a cover (12).');
     const x = computeCrossRef(d, c);
-    expect(x.signConflicts.map(s => s.sign)).toContain('12');
-    const conflict = x.signConflicts.find(s => s.sign === '12');
+    expect(x.signConflicts.map((s) => s.sign)).toContain('12');
+    const conflict = x.signConflicts.find((s) => s.sign === '12');
     expect(conflict.descTerms).toContain('housing');
     expect(conflict.claimsTerms).toContain('cover');
   });

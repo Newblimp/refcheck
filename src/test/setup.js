@@ -8,13 +8,25 @@ if (typeof window !== 'undefined') {
   if (!window.matchMedia) {
     window.matchMedia = () => ({
       matches: false,
-      addEventListener() {}, removeEventListener() {},
-      addListener() {}, removeListener() {},
+      addEventListener() {},
+      removeEventListener() {},
+      addListener() {},
+      removeListener() {},
     });
   }
 
   // jsdom has no clipboard; RefList copy writes through it.
   if (!navigator.clipboard) {
     navigator.clipboard = { writeText: vi.fn(() => Promise.resolve()) };
+  }
+
+  // jsdom has no object URLs; .docx export hands the bytes to a download link
+  // through one. Keep the Blob so a test can read back what was exported.
+  if (!URL.createObjectURL) {
+    URL.createObjectURL = (blob) => {
+      URL.lastBlob = blob;
+      return 'blob:refcheck/export';
+    };
+    URL.revokeObjectURL = () => {};
   }
 }

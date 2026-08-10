@@ -1,0 +1,32 @@
+{
+  // Type-checks the pure logic layer from its existing JSDoc — no syntax change,
+  // no build step, no .ts files. `npm run typecheck` runs it; editors pick it up
+  // automatically.
+  //
+  // Scoped to src/logic/ on purpose. That is where the typedefs already are
+  // (ExtractResult, Para, ClaimSpan, ErrorKind, …) and where a wrong shape is
+  // expensive; the React components would need far more annotation for far less
+  // return, and the UI tests already cover them.
+  //
+  // `strict` is off: this is a checker retrofitted onto working code, and the
+  // useful signal is "this property does not exist" / "this call has the wrong
+  // arity", not several hundred implicit-any and null-check reports.
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "lib": ["ES2022", "DOM"],
+    "allowJs": true,
+    "checkJs": true,
+    "noEmit": true,
+    "strict": false,
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+    "types": ["node"],
+    // @types/node otherwise drags plain .js files out of node_modules into the
+    // check (punycode, and whatever else is reachable). Nothing in there is ours.
+    "maxNodeModuleJsDepth": 0
+  },
+  "include": ["src/logic/**/*.js", "build/**/*.js"],
+  "exclude": ["node_modules", "dist", "**/*.test.js"]
+}

@@ -14,11 +14,17 @@ Patent documents must maintain strict consistency between reference signs (numer
 5. **Missing signs** - Terms that appear without their reference sign nearby
 6. **Orphaned signs** - Signs present in description but not claims, or vice versa
 7. **Claim dependency errors** - "according to claim N" references to nonexistent claims, forward references, and self-references
+8. **Reference-list drift** - the draft's own list of reference signs disagreeing with the text
+   (listed-but-unused, used-but-unlisted, or the same sign under a different term)
+9. **Claim-set structure** - independent/dependent counts, multiple dependency, and the
+   claim-count thresholds that attract fees
 
 ## Architecture
 
 A React 18 + Vite project. The UI (JSX components) is separated from the pure
-parsing/validation logic so the logic can be unit-tested in Node with no DOM.
+parsing/validation logic so the logic can be unit-tested in Node with no DOM. That seam is
+real and worth keeping real: nothing outside `logic/` imports fflate or touches OOXML,
+which is why the whole suite runs in about ten seconds.
 Styling uses CSS custom properties for theming. The production bundle is built to
 `dist/` and published to GitHub Pages by `.github/workflows/deploy.yml`. The app
 runs fully client-side and is self-contained after the first load — see Offline
@@ -27,6 +33,10 @@ Support below.
 ```
 index.html              Vite entry (HTML shell; sets initial theme to avoid FOUC;
                         links manifest.webmanifest + icon.svg)
+build/
+  swPrecache.js         Vite plugin: injects the built asset list + a build id into
+                        dist/sw.js. Without it the worker precaches nothing and the
+                        offline guarantee does not hold (see Offline Support)
 public/
   sw.js                 Hand-rolled service worker: caches the app shell so the
                         tool keeps working offline after the first load
@@ -37,123 +47,662 @@ src/
   styles.css            All styles + self-hosted @font-face declarations
   fonts/                 Space Grotesk / JetBrains Mono .woff2 files (self-hosted,
                         no CDN dependency — bundled + hashed by Vite like any asset)
+  assets/bee.svg        Noto Color Emoji bee (Google, Apache-2.0), vendored so the
+                        easter egg needs no CDN either
   i18n.js               English/German UI strings (T)
   logic/                Pure, framework-free logic (unit-tested)
+    headings.js         SECTION_KINDS + the EN/DE heading dictionary (DATA) and
+                        matchHeading — drives .docx section detection
+    docSplit.js         splitPatentDoc (document model → Description/Claims buffers).
+                        Section ranges are clipped against each other so the buffers
+                        are ALWAYS disjoint — export splices into the paragraphs a
+                        buffer names, so two buffers naming one paragraph means one
+                        section written over the other
+    detectLang.js       detectLang / detectLangFromText (headings first, words second)
+    importDoc.js        fileKind / importPatentDoc / exportPatentDoc (UI seam)
+    docx/read.js        docxXmlToParagraphs, readDocx — the ONLY OOXML-aware reader
+    docx/write.js       planEdits / orderSplices / writeDocx / createDocx — turns a
+                        buffer edit into splices into document.xml and applies them
+    docx/lineDiff.js    alignLines — which imported line became which edited line.
+                        Pure string work; knows nothing about OOXML or claims
+    docx/claimNumbering.js  Where a claim's number belongs in the exported file:
+                        Word's list numbering vs numbers typed into the text
+    docx/xmlText.js     stripInvalidXmlChars / xmlText — the ONLY thing that may
+                        produce `<w:t>` content. Escaping is not enough: pasted text
+                        carries characters XML 1.0 cannot hold at all
+    docx/verify.js      verifyExport — re-reads the produced file and compares it
+                        with the buffers. The one check that does not need to know
+                        the failure mode in advance
+    docx/fixture.js     Test helper: builds real .docx bytes in memory; `xmlFault`
+                        asserts well-formedness, which re-importing cannot (the
+                        reader is a tag scanner and reads bad nesting happily)
     constants.js        EXCL list, article/ordinal sets, likelySign, isClaimNumber,
+                        CLAIM_NUM_PREFIX_RE / startsWithClaimNumber / stripClaimNumber
+                        (the line-leading claim number — docSplit and the .docx writer
+                        must agree on it exactly, and once did not),
                         SIGN_RE / ROMAN_RE / isSignToken / compareSigns (sign +
                         Roman-numeral-step pattern, romanToInt/signVal + sort),
-                        disKey (the dismissal-key scheme — never build "s:…" by hand)
+                        disKey (the dismissal-key scheme — never build "s:…" by hand),
+                        CONNECTOR_ALT / RANGE_DASHES (list+range connectors, shared by
+                        the sign-list scan and the claim-reference parser — these had
+                        drifted apart as two literals; do not re-declare them)
+    escape.js           escapeMarkup — HTML/XML text escaping (was 3 identical copies)
+    blankEdges.js       blankEdges / trimBlankEdges — the blank-line trimming rule that
+                        docSplit and docx/write MUST agree on, or round-trip export
+                        diffs against text the user never saw
+    errorKinds.js       ERROR_KINDS — the table of error categories, and the ONE place
+                        that knows a category exists. Adding one is a new row here plus
+                        its production in extract.js, its i18n keys and its two colour
+                        tokens; nothing else. Never derive the dismissal prefixes from
+                        the id (they are a storage format — see Error Categories below)
+    errorSpans.js       eachErrorSpan + getAllErrors — ONE traversal of the error
+                        categories, consumed by buildHtml AND the error navigator; it
+                        loops ERROR_KINDS rather than naming them. Also errorGroup, the
+                        "same term" bucket the Ctrl+Shift+↓/↑ jump steps within
+    ctxMenuItems.js     What the editor's right-click menu offers for whatever sits at
+                        the caret. Pure, so it is testable without mounting the app —
+                        deliberately per-category, NOT driven by ERROR_KINDS
+    fileKind.js         fileKind alone, so classifying a dropped file does not pull in
+                        the lazily-loaded .docx chunk
+    refListParse.js     parseRefList — reads a drafter's reference-sign list
+    listTerms.js        listTermIndex / listExtra / appliedListTerms — the
+                        multi-word terms that list spells out, indexed on the LAST
+                        TWO words so the lookup stays O(1) on a 300-entry list
+    reconcile.js        reconcileRefList — diffs that list against the signs in the text
+    claimStats.js       claimStats + THRESHOLDS — claim-set counts and fee thresholds
     stem.js             stemEn / stemDe / stem (Porter EN, Snowball DE); stem() is
                         memoized (patent vocabulary is tiny, so this halves extraction)
     tokenize.js         tokenize() (module-level regex, lastIndex reset per call)
-    extract.js          detectOrdStems, extractData, classify, getAllErrors;
-                        JSDoc typedefs for the ExtractResult shape live at the top
+    extract.js          detectOrdStems, extractData, classify; JSDoc typedefs for the
+                        ExtractResult shape live at the top. extractData orchestrates
+                        named phase functions (findSignGroups, computeArticleErrors,
+                        findBareTerms, computeNumberingErrors) rather than inlining them
     claims.js           segmentClaims / parseClaimRefs / computeClaimGraph — claim
                         spans, dependency refs (single, lists, ranges, "preceding
                         claims", EN+DE), transitive ancestors, depErrors
+    scrollSync.js       backdropScroll — splits the textarea's scroll offset into
+                        the part the backdrop can scroll to and the elastic-
+                        overscroll remainder it can only be translated by
     buildHtml.js        esc, buildHtml, findAtPos (buildHtml appends a trailing
                         newline sentinel so the backdrop and textarea share a
                         scrollHeight — see the trailing-newline note below)
     crossref.js         computeCrossRef (Description ↔ Claims comparison)
     reflist.js          buildRefList / toPlainText (reference numeral list)
+    beeFlight.js        spawnBee / stepBee / beeGone / countBees — the easter-egg
+                        bee's motion model, pure so it is unit-testable
     *.test.js           Vitest unit tests for the above
   hooks/
     useDebounced.js     Debounce hook (defers extraction on large docs; a delay of
                         0 passes the value through with zero extra renders)
-    usePersistentState.js  useState + localStorage (codecs: jsonCodec/setCodec/oneOf)
+    useEditorSync.js    The imperative half of the editor: scroll mirroring, the
+                        per-sign mark index behind hover highlighting, scroll-to-span
+                        and the caret restore. The only place that touches the DOM
+    useDocumentIO.js    The whole .docx round trip — import, export, undo, file
+                        picking, the banner report. It does NOT own the buffers: it
+                        reads them through `buffers` and writes through `apply`, so
+                        App keeps deciding what loading a document means elsewhere
+    usePersistentState.js  useState + localStorage (codecs: jsonCodec/setCodec/oneOf).
+                        Optional {debounce, onError}: the text buffers debounce their
+                        writes and flush on pagehide/visibilitychange
     useTheme.js         Theme preference + <html data-theme> application
+    useFileDrop.js      Window-level file drag/drop (preventDefault on dragover +
+                        drop, or the browser opens the file instead of the app)
+    useBee.js           Decides when a bee appears (rare random draw + typing "bee")
+    useHotkeys.js       Window-level shortcuts. Unmodified keys are suppressed while
+                        the user is typing — the editor holds focus nearly always, so
+                        a bare "/" binding would make the app impossible to type in
   test/
     setup.js            Vitest setup (jest-dom + matchMedia/clipboard stubs)
   components/           React components
-    App.jsx             Application state, editor pane, status bar
+    App.jsx             Application state and wiring, editor pane
+    TopBar.jsx          Logo, file actions, theme/mode/language toggles, help button
+    StatusBar.jsx       Error-count chips, prev/next stepper, restore-all
+    icons.jsx           The inline SVGs, out of the components that use them
     Sidebar.jsx         Overview pane (stats, search, card sections) — presentational
+    RefPane.jsx         Left pane: the derived numeral list + the drafter's own list
+    Section.jsx         The collapsible ▾/▸ section header, shared by both panes
+    HelpDialog.jsx      Usage guide + keybindings (the app's only focus trap)
     SignCard.jsx        A reference sign with its associated terms
-    ArtCard.jsx         Article-usage / antecedent-basis errors
-    BareCard.jsx        Missing-sign (bare term) errors
-    NumCard.jsx         Claim-numbering errors
-    DepCard.jsx         Claim-dependency errors
+    ErrorCard.jsx       ONE card for all four non-sign categories, driven by its
+                        ERROR_KINDS row. Replaced ArtCard/BareCard/NumCard/DepCard,
+                        which were the same component four times over
     RefList.jsx         Collapsible reference numeral list + copy
     CtxMenu.jsx         Right-click context menu
+    DropOverlay.jsx     Drag-over affordance (pointer-events:none — the editor
+                        hit-tests with elementFromPoint)
+    ImportBanner.jsx    Import result + warnings + one-step Undo
+    RefListCheck.jsx    Reference-list paste box + reconciliation findings
+    ClaimStats.jsx      Claim-set statistics panel (claims mode)
+    cardProps.js        activatable() — role/tabIndex/key handling shared by the cards
+    Bee.jsx             The easter-egg bee (rAF loop writing transforms directly)
     App.smoke.test.jsx  Server-render smoke test (node env)
     App.ui.test.jsx     Interactive DOM tests (jsdom env)
 ```
 
 ### Core Functions
 
-| Function | Module | Purpose |
-|----------|--------|---------|
-| `tokenize()` | `logic/tokenize.js` | Splits text into word/number tokens |
-| `extractData()` | `logic/extract.js` | Extracts signs, terms, article usage, bare terms, numbering + dependency errors |
-| `classify()` | `logic/extract.js` | Determines if a sign has errors |
-| `getAllErrors()` | `logic/extract.js` | Collects all error positions for navigation — signature `(result, mode, dis)` |
-| `computeClaimGraph()` | `logic/claims.js` | Claim spans, dependency refs, transitive ancestor sets, `depErrors` |
-| `buildHtml()` | `logic/buildHtml.js` | Generates highlighted HTML for the backdrop — signature `(text, result, mode, dis, focusSign)` |
-| `findAtPos()` | `logic/buildHtml.js` | Finds sign/article at a given character position |
-| `computeCrossRef()` | `logic/crossref.js` | Compares the Description and Claims buffers |
-| `isClaimNumber()` | `logic/constants.js` | Detects a line-leading Arabic claim number (`1.`, `1)`) |
-| `isSignToken()` | `logic/constants.js` | Single source of truth for what counts as a sign (Arabic **or** Roman-numeral step) |
-| `compareSigns()` | `logic/constants.js` | Sign sort: all Arabic first (value, then suffix — `10'`, `10a`), all Roman steps grouped at the end (`I`/`I.1`/`II`) |
-| `romanToInt()` / `signVal()` | `logic/constants.js` | Roman→integer conversion; numeric ordering value for any sign |
-| `buildRefList()` | `logic/reflist.js` | Builds the sorted sign → term numeral list |
-| `stemEn()` / `stemDe()` | `logic/stem.js` | Language-specific word stemming |
+| Function                                  | Module                         | Purpose                                                                                                                     |
+| ----------------------------------------- | ------------------------------ | --------------------------------------------------------------------------------------------------------------------------- |
+| `tokenize()`                              | `logic/tokenize.js`            | Splits text into word/number tokens                                                                                         |
+| `extractData()`                           | `logic/extract.js`             | Extracts signs, terms, article usage, bare terms, numbering + dependency errors                                             |
+| `classify()`                              | `logic/extract.js`             | Determines if a sign has errors                                                                                             |
+| `ERROR_KINDS`                             | `logic/errorKinds.js`          | The table of error categories — the single place that knows one exists (see Error Categories)                               |
+| `eachErrorSpan()`                         | `logic/errorSpans.js`          | The single walk over all error categories; `buildHtml` and `getAllErrors` both consume it                                   |
+| `ctxMenuItems()`                          | `logic/ctxMenuItems.js`        | What the editor's right-click menu offers for whatever `findAtPos` reports at the caret                                     |
+| `getAllErrors()`                          | `logic/errorSpans.js`          | Collects all error positions for navigation — signature `(result, mode, dis)`; each entry names its `term`                  |
+| `errorGroup()`                            | `logic/errorSpans.js`          | The "same term" bucket for Ctrl+Shift+↓/↑ — the term stem, or the category for errors that have no term                     |
+| `computeClaimGraph()`                     | `logic/claims.js`              | Claim spans, dependency refs, transitive ancestor sets, `depErrors`, and `direct` (per-claim parents, used by `claimStats`) |
+| `buildHtml()`                             | `logic/buildHtml.js`           | Generates highlighted HTML for the backdrop — signature `(text, result, mode, dis, focusSign)`                              |
+| `findAtPos()`                             | `logic/buildHtml.js`           | Finds the sign / article / bare term at a given character position (what the editor's context menu acts on)                 |
+| `backdropScroll()`                        | `logic/scrollSync.js`          | Splits a scroll offset into `{top, shift}` so overscroll cannot desync the highlights                                       |
+| `computeCrossRef()`                       | `logic/crossref.js`            | Compares two **already-computed** extraction results (Description vs Claims)                                                |
+| `isClaimNumber()`                         | `logic/constants.js`           | Detects a line-leading Arabic claim number (`1.`, `1)`)                                                                     |
+| `isSignToken()`                           | `logic/constants.js`           | Single source of truth for what counts as a sign (Arabic **or** Roman-numeral step)                                         |
+| `compareSigns()`                          | `logic/constants.js`           | Sign sort: all Arabic first (value, then suffix — `10'`, `10a`), all Roman steps grouped at the end (`I`/`I.1`/`II`)        |
+| `romanToInt()` / `signVal()`              | `logic/constants.js`           | Roman→integer conversion; numeric ordering value for any sign                                                               |
+| `buildRefList()`                          | `logic/reflist.js`             | Builds the sorted sign → term numeral list                                                                                  |
+| `parseRefList()`                          | `logic/refListParse.js`        | Parses a drafter's reference list (`10 housing`, `12 – Gehäuse`, tabs, dashes)                                              |
+| `listTermIndex()`                         | `logic/listTerms.js`           | Indexes the list's multi-word terms; `sig` lets a caller tell "same content" from "same object"                             |
+| `listExtra()`                             | `logic/listTerms.js`           | How many words the list says a term takes beyond its base noun (0 = it says nothing)                                        |
+| `appliedListTerms()`                      | `logic/listTerms.js`           | Which listed multi-word terms the text actually uses as such — what the panel reports                                       |
+| `reconcileRefList()`                      | `logic/reconcile.js`           | Diffs that list against the signs actually used; stem-compared, so plurals do not false-alarm                               |
+| `claimStats()`                            | `logic/claimStats.js`          | Claim-set counts, multiple dependency, DPMA/EPO claim-count thresholds                                                      |
+| `stemEn()` / `stemDe()`                   | `logic/stem.js`                | Language-specific word stemming                                                                                             |
+| `matchHeading()`                          | `logic/headings.js`            | Classifies a line as a section heading → `{kind, lang}` (whole-line match, then short-line prefix)                          |
+| `splitPatentDoc()`                        | `logic/docSplit.js`            | Document model → Description/Claims buffers + `detected` report                                                             |
+| `detectLang()`                            | `logic/detectLang.js`          | Heading-derived language, falling back to stopword scoring                                                                  |
+| `readDocx()` / `docxXmlToParagraphs()`    | `logic/docx/read.js`           | `.docx` → paragraph model (the only OOXML-aware code)                                                                       |
+| `writeDocx()` / `planEdits()`             | `logic/docx/write.js`          | Writes edits back into the original file, rewriting only changed paragraphs                                                 |
+| `orderSplices()`                          | `logic/docx/write.js`          | Orders the splices for back-to-front application and **throws** rather than applying an overlapping set                     |
+| `alignLines()`                            | `logic/docx/lineDiff.js`       | Which imported line became which edited line (LCS + positional pairing)                                                     |
+| `conformClaim()`                          | `logic/docx/claimNumbering.js` | Makes an exported claim line match how the section numbers its claims                                                       |
+| `xmlText()`                               | `logic/docx/xmlText.js`        | The only producer of `<w:t>` content: drops characters XML 1.0 forbids, then escapes                                        |
+| `verifyExport()`                          | `logic/docx/verify.js`         | Re-reads the produced file and compares it with the buffers                                                                 |
+| `importPatentDoc()` / `exportPatentDoc()` | `logic/importDoc.js`           | The seam App.jsx calls; hides read/split/detect, round-trip-vs-fresh, and verification                                      |
+| `spawnBee()` / `stepBee()` / `beeGone()`  | `logic/beeFlight.js`           | Easter-egg bee flight: spawn off a random edge, dart around, leave                                                          |
 
 ## Features
 
 ### Modes
+
 - **Description Mode**: Validates sign-term consistency throughout the text; each mode maintains its own text buffer
 - **Claims Mode**: Additionally checks that signs are wrapped in parentheses `(10)` — a grouped list such as `(6, 12; 13)` counts as parenthesised for every sign inside it — validates claim numbering and dependencies, and switches article checking to per-claim antecedent basis
 - Mode buttons show a dot indicator when their buffer contains text
 
 ### Claim dependencies (claims mode)
+
 - `logic/claims.js` segments the buffer into claims (via the line-leading claim numbers) and parses references: `according to claim 3`, `of claim 1 or 2`, `any one of claims 1 to 4`, `nach Anspruch 3`, `nach einem der Ansprüche 1 bis 4`, and `preceding claims` / `vorhergehenden Ansprüche` phrases. EN and DE patterns are always both parsed
 - **depErrors** flags references to **nonexistent** claims, **forward** references (to a later claim), and **self**-references; each carries an edit-stable dismissal key (`claim>ref#ordinal`)
 - Ranges (`claims 1 to 4`) expand into intermediates for the dependency graph, but only the literally written numbers are validated/highlighted
 - Bad references never create graph edges, so the ancestor computation is acyclic by construction
 
 ### Cross-reference
+
 - When both Description and Claims buffers have content, a **Cross-reference** section appears in the sidebar listing signs present in one buffer but absent from the other
-- Also reports **sign/term conflicts** across buffers and a `notIntroducedInDesc` category — claims signs that *do* appear in the description but only ever **bare** (without a term), i.e. never properly introduced. This is mutually exclusive with `missingInDesc` (absent entirely)
+- Also reports **sign/term conflicts** across buffers and a `notIntroducedInDesc` category — claims signs that _do_ appear in the description but only ever **bare** (without a term), i.e. never properly introduced. This is mutually exclusive with `missingInDesc` (absent entirely)
+
+### Word (.docx) import and export
+
+- **Drag a `.docx` anywhere onto the window**, or use the **Import .docx** button. The
+  drag handlers live on `window` (`hooks/useFileDrop.js`) and `preventDefault` on both
+  `dragover` and `drop` — without that the browser opens the dropped file instead,
+  because the editor is a `<textarea>`. The drop overlay is `pointer-events:none` so it
+  never interferes with the editor's `elementFromPoint` hover hit-testing
+- **Sections are found by dedicated heading lines**, never guessed from surrounding
+  prose. A paragraph qualifies only when its _entire_ text is a heading (after
+  stripping a leading `III.`/`B)` label and a trailing colon), which is what stops a
+  sentence merely mentioning "Ansprüche" from moving a boundary. Description = after a
+  `detailedDesc` heading up to the claims/sign-list; Claims = after a `claims` heading
+  up to the sign-list/abstract. The abstract, figure listing and Bezugszeichenliste are
+  therefore excluded by construction
+- The dictionary in `logic/headings.js` is **data**: adding French means adding an `fr`
+  key to each entry, with no control-flow change. Exact whole-line matches cannot
+  collide, so `Brief description of the drawings` (figure listing) and `Description of
+the drawings` (detailed description) coexist; the ordered prefix fallback for the
+  long tail is longest-first for the same reason, and only applies to short lines
+- **Language is derived from the matched headings** — a `Patentansprüche` heading _is_
+  the DE signal. The claims heading wins if the two disagree; stopword scoring
+  (`detectLang.js`) only runs when no heading matched at all
+- **Word auto-numbered claims are reconstructed.** Numbers created by Word's list
+  numbering live in `numbering.xml`, not in the text, so such claims import as
+  `A device comprising…` with no `1.` — and since `isClaimNumber` needs a literal
+  line-leading digit, claim segmentation, numbering, dependencies _and_ antecedent
+  basis would all silently go dead. `docSplit.js` synthesizes `N. ` for
+  `<w:numPr>` paragraphs (single-level decimal; deeper levels are flagged, not
+  guessed) and records the prefix on the provenance handle so export strips it again
+- Headers, footers, comments and footnotes are separate ZIP parts and are excluded for
+  free; **text boxes** (`<w:txbxContent>`) are inline in `document.xml` and are skipped
+  explicitly. Tracked insertions are kept and deletions dropped (an "all changes
+  accepted" view). Legacy binary `.doc` is detected and rejected with a clear message
+- **The reader and the writer are mirrors and must stay that way.** `<w:br/>`,
+  `<w:tab/>`, `<w:noBreakHyphen/>` and `<w:softHyphen/>` are read as `\n`, `\t`,
+  U+2011 and U+00AD, and written back as the same elements. Dropping the two hyphens
+  (as the reader once did) glues a hyphenated term together in the buffer
+  (`cross‑section` → `crosssection`) and then deletes the hyphen from the file the
+  moment that paragraph is edited. Add a fifth element to one side and the other side
+  needs it too
+- **Export writes back into the original file.** Only paragraphs the user actually
+  changed are rewritten (line-level diff in `docx/write.js`); every other paragraph and
+  every other ZIP part stays byte-identical, so the abstract and figure listing survive
+  untouched. A rewritten paragraph collapses to a single run carrying the first
+  original run's `<w:rPr>`, so intra-paragraph formatting is lost **in edited
+  paragraphs only** — the export button's tooltip says so. With no imported source
+  (hand-pasted text) the button generates a fresh minimal `.docx` instead
+- **Every exported claim lands at the same alignment as its neighbours**, because Word
+  takes both the indent and the list number from the _paragraph_. Four things in
+  `docx/write.js` protect that, and each was a real defect: (1) a line the diff sees as
+  an **insertion becomes its own `<w:p>`**, not a `<w:br/>` folded into the paragraph
+  above — a soft break inside a hanging-indent paragraph renders at the indent, so an
+  inserted claim appeared shifted right and unnumbered (a line added _between_ two lines
+  of one paragraph still stays inside it, since that paragraph really does span lines);
+  (2) `alignLines` **never pairs a blank line with a real one**, so claim text cannot be
+  written into a spacer paragraph that carries none of the claim formatting while the
+  paragraph that did carry it gets deleted; (3) a new paragraph is cloned from the
+  **nearest paragraph with text** (`templateNear`) rather than the neighbour, which may
+  be a blank spacer, and appends land after the last paragraph the user could _see_,
+  since `toText` trimmed the trailing blank ones; (4) on an auto-numbered list **any**
+  leading claim number is stripped, not just the recorded `synthesizedPrefix` — an edit
+  that inserts a claim renumbers the ones below it, so the paragraph whose prefix was
+  `2. ` now reads `3. ` and the literal number used to survive next to Word's own.
+  A cloned paragraph also drops `w14:paraId`/`w14:textId` (they must be unique) and,
+  when the new line is blank, `<w:numPr>` (an empty list item still eats a claim number)
+- **Exported claims keep the source's numbering style: list in → list out, typed
+  numbers in → typed numbers out, nothing imported → typed numbers.** Which paragraph a
+  claim line lands in is an artefact of the diff, so `conformClaim` (`docx/write.js`)
+  makes it match how the section numbers claims instead: a claims section holding a
+  paragraph with a `synthesizedPrefix` _is_ a Word list (the import injects one exactly
+  when Word numbers the paragraph), so every claim line adopts that paragraph's `pPr`
+  and gives up its typed number; otherwise no claim paragraph may carry `<w:numPr>` to
+  put a second number in front of the typed one. Without this a claim written into the
+  plain paragraph after the last list item — or into a `What is claimed is:` lead-in —
+  kept that paragraph's shape, and the claim set came back half list, half text
+- Only lines that **open with a claim number** are conformed, which is what leaves that
+  lead-in alone: it is not a claim, so it must not join the list and take a number. The
+  rule is opt-in per buffer (`planEdits(paras, text, {claims: true})`, set by
+  `exportPatentDoc`) because a description line starting `1.` is prose, not a list item.
+  Multi-level numbering (`ilvl > 0`) is left untouched — that is the case `docSplit`
+  already refuses to guess at and reports via `unusualNumbering`
+- The import fills both buffers without a confirm step, but overwriting non-empty
+  buffers asks first (same stance as **Reset all**), and a dismissible banner reports
+  what was detected plus a one-step **Undo**. Banner messages are stored as i18n _keys_
+  and resolved at render time, since the import may have just changed the language
+- **The reference list is written back too, but only when the source is unambiguous.**
+  `refListWritable` (`docSplit.js`) refuses three shapes, each of which would damage the
+  file rather than update it: `noSection` (nothing to write into), `ambiguous` (the
+  list's paragraphs are also in the description buffer — with no detailed-description
+  heading the splitter falls back to "everything before the claims", which swallows a
+  list placed there), and `table` (a two-column table puts every cell in its own `<w:p>`,
+  so the section reads "10 / device / 12 / housing" down the lines and diffing edited
+  text against it moves values between cells). The other buffers export regardless and
+  the banner names the reason — an edit that was not saved must not look like one that was
+- The list adds a **third** buffer to the same `document.xml`, which is why
+  `refListWritable` matters: the guarantee that the ranges are disjoint is what makes
+  writing three of them as safe as writing two. `orderSplices` (below) is the backstop
+  underneath it, and the export verification covers the result either way
+- `read.js` tracks `<w:tbl>` depth and flags paragraphs with `inTable`, which is what
+  makes the table case detectable at all
+- `imported` (the source bytes + paragraph provenance) is deliberately **not**
+  persisted to `localStorage` — a 200 KB document would blow the quota alongside the
+  text buffers — so a refresh keeps the text but drops round-trip export
+
+#### Three guards on "exactly those changes and no others"
+
+The export promise is narrow and total, and it is worth understanding why it takes
+three separate mechanisms rather than one.
+
+1. **The buffers are disjoint by construction** (`docSplit.js`). Each section is
+   clipped at every other _located_ section's heading, not just at the heading kinds
+   that normally follow it. Without that, a draft whose claims heading precedes the
+   description heading — an amendment sheet — gave both buffers the same paragraphs,
+   and export wrote two different texts over one range: the description vanished from
+   the file with no warning. Clipping only at located sections is deliberate; clipping
+   at every heading of a section _kind_ would truncate a German description at its own
+   `Ausführungsbeispiel 2` subheading.
+2. **`orderSplices` refuses a splice set it cannot apply safely** (`docx/write.js`).
+   Splices are applied back-to-front, and at the _same_ offset an insertion and a
+   replacement can meet: a line inserted after paragraph P lands at P's `xmlEnd`, which
+   is exactly paragraph P+1's `xmlStart`, and P+1 may have been edited too. Applying
+   the insertion first left the replacement's range pointing at the text just inserted,
+   so it ate the new paragraph and cut the next one in half — the output was not
+   well-formed XML and Word refused to open it. The replacement now goes first; anything
+   still overlapping after that throws (`DocxError('spliceOverlap')`) rather than
+   shipping a mangled application. The comparator is a _subtraction_, not `? -1 : 1`,
+   because the latter is not a total order and `sort` may then do anything with it.
+3. **The written file is read back and compared** (`docx/verify.js`). The other two
+   guards each answer a failure somebody already found; this one does not need to know
+   the failure mode. `exportPatentDoc` re-runs the whole import pipeline over the bytes
+   and diffs them against the buffers, returning `verified` + `diffs`. It tolerates
+   exactly two deliberate differences — trimmed blank edges, and claim numbers when the
+   claims are a Word list (Word owns those numbers, and the ones it renders need not
+   match what the user typed; that mismatch is the tool's own claim-numbering check, not
+   an export fault). The file is still delivered when verification fails, with a banner
+   naming the first differing line: refusing to export would leave a drafter with no way
+   to get their work out.
+
+A fourth, smaller one: `docx/xmlText.js` is the **only** producer of `<w:t>` content.
+Escaping `& < >` is not enough — a patent draft is often pasted out of a PDF, which
+brings form feeds, other C0 controls and unpaired surrogates. Those cannot appear in an
+XML 1.0 document at all, so writing one produced a file Word rejected outright. They are
+dropped. Carriage returns go too: a parser normalizes a literal CR to a line break, so
+one would come back as a break Word inserted by itself.
+
+Note that **re-importing an exported file does not prove it is well-formed** — the
+reader is a tag scanner and reads bad nesting happily, while Word does not. The tests
+use `xmlFault` (`docx/fixture.js`) for that.
+
+### Easter egg: the bee
+
+- A bee occasionally flies across the window. Two triggers: a rare random draw
+  (`useBee.js` runs a Bernoulli trial every 10s with p = tick/mean, so the wait is
+  geometric — _memoryless_, averaging one bee every 5 minutes, rather than a fixed
+  countdown), and typing the word **bee** into either buffer — or **Biene**/**Bienen**
+  when the language is German. The typed trigger fires when the _count_ rises, so
+  typing it twice summons two bees while merely restoring a saved buffer that already
+  contains the word summons none. Switching language **re-baselines** the count instead
+  of firing, so flipping to DE with "Biene" already in the buffer (or a `.docx` import,
+  which changes text and language together) does not summon one
+- The count is taken from **debounced** text (`SETTLE_MS`), because a mid-word keystroke
+  is momentarily a complete word: typing `Bienenstock` passes through `Biene` and
+  `beetle` through `bee`. Sampling only settled text means just what the user left
+  standing counts
+- `logic/beeFlight.js` is the pure motion model (unit-tested): the bee spawns just
+  outside a random edge, steers toward a waypoint that is replaced every ~0.2–0.7s, and
+  leaves through any edge after `LIFESPAN`. Roughly a quarter of waypoints are a
+  **hover** (stay put and buzz on the spot). The jitter is a real acceleration of the
+  same order as the steering term — that balance is what makes the track twitch and
+  overshoot instead of curving smoothly. Measured in-browser: ~5 direction reversals/s,
+  ~3 turns sharper than 45°/s, speed swinging 6→190 px/s, ~18% of frames hovering
+- The sprite is the **Noto Color Emoji** bee, vendored into `src/assets/bee.svg` rather
+  than loaded from Google, so the offline guarantee still holds
+- The element is `pointer-events:none` throughout, so it can never swallow a click or
+  disturb the editor's `elementFromPoint` hover hit-testing; the hover speech bubble is
+  therefore triggered _geometrically_, by comparing the pointer position to the bee's
+- Position is written straight to the DOM node each frame — a 60fps `setState` would
+  re-render the whole app, and re-renders are the expensive part. For the same reason
+  `Bee` holds `onDone` in a **ref** and runs its flight effect with `[]` deps: `onDone`
+  is a fresh closure every App render, so depending on it tore the rAF loop down and
+  respawned the bee off-screen on every keystroke — it never flew in while you typed
+- `prefers-reduced-motion` suppresses the **random** appearances, which are the motion
+  nobody asked for. Typing "bee" is an explicit by-name request and still works —
+  silently doing nothing there just reads as broken
+- Up to `MAX_BEES` (5) fly at once; `useBee` tracks a list of ids rather than a boolean,
+  which is what makes "type it twice, get two bees" actually true
+
+### Reference-list check (reconciliation)
+
+- A **Reference list check** section in the sidebar takes the draft's own list of
+  reference signs — pasted, or filled automatically from a `.docx` import — and diffs it
+  against the signs actually used in the active buffer
+- Reports **listed but never used** (usually a leftover from a deleted embodiment),
+  **used but never listed**, **term mismatch** (the list says "housing", the text says
+  "casing" — the one that matters), and a sign **listed twice** under two names
+- Terms compare on **stems**, so "housings" in the list and "housing" in the text is a
+  match, not a false alarm
+- `logic/refListParse.js` is deliberately liberal about the separator (`10 housing`,
+  `12 - cover`, `14\tshaft`, `16: seal`, `18) flange`) and strict about exactly one
+  thing: the line must START with a reference sign, so headings and prose inside the list
+  are skipped rather than guessed at
+- `splitPatentDoc` already located the Bezugszeichenliste and discarded it; it now returns
+  it as `signList`, which is what makes the import auto-fill work. It is still excluded
+  from the description and claims buffers
+- Persisted under `rsc_reflist`; cleared by **Reset all** and restored by the import
+  **Undo**, alongside the text buffers
+- The list is also **read into the extraction**, not only compared against it: its
+  multi-word terms are applied to both buffers (see Multi-word Terms). The panel says so
+  with an `ⓘ` note naming the terms it contributed — that is silent work on the drafter's
+  text, and a change nobody can see is a change nobody can undo. The note is information,
+  not a finding, so it borrows the claim-set panel's `ⓘ`/`--info` and stays out of the
+  section's count
+- Editing the list box re-runs extraction, so on a large document (>5000 chars across
+  both buffers) the index input is debounced the same way the buffers are, and the index
+  carries a content signature (`sig`) that App uses to hold its identity — most edits in
+  that box (a typo mid-term, a re-ordered line, a single-word entry) change nothing the
+  extraction can see, and a fresh object would still invalidate both memoized results
+
+### Claim-set statistics (claims mode)
+
+- A **Claim set** section reports total / independent / dependent counts and the longest
+  dependency chain, all derived from the graph `computeClaimGraph` already builds — it
+  just had to stop keeping its `direct` parent map private
+- Reports **multiple dependency** (an EPO fee) and **claims depending on a
+  multiply-dependent claim**, which is easy to introduce by accident deep in a chain
+- Reports the claim-count thresholds that attract fees, **European practice only**: DPMA
+  from the 11th claim, EPO from the 16th and again at a steeper rate from the 51st. The two
+  offices are reported **independently** — the same set can sit over the DPMA limit and
+  under the EPO one, and a drafter filing both wants both. The EPO's own two bands are
+  exclusive, since the steeper rate replaces the first rather than adding to it
+- `THRESHOLDS` in `logic/claimStats.js` holds these as **counts, not currency** — the
+  amounts are revised regularly, the structure of the rules is not. There are deliberately
+  no USPTO thresholds; a test asserts none are ever emitted
+- A range (`any one of claims 1 to 4`) is _one_ multiply-dependent claim, not four
+- **Nothing in this panel is a validation error.** A multiply-dependent claim is a
+  legitimate drafting choice with a fee attached, not a mistake, so the notes render as
+  information (`ⓘ`, `--info`, muted text) rather than borrowing the warning triangle the
+  real error cards use — which would imply something needs fixing
+
+### Keyboard
+
+- Bindings are chosen for a **German layout**: `[`/`]` need AltGr there and `/` needs
+  Shift, so the old `Ctrl`+`[`/`]` and bare `/` were awkward on the very keyboards this
+  tool is for. `Ctrl`/`Cmd`+`↓`/`↑` step through the errors, `Ctrl`+`F` focuses the sign
+  filter, `Ctrl`+`?` opens help. **Up/Down, not Left/Right** — `Ctrl`+`←`/`→` is
+  word-by-word cursor movement inside a textarea, which a drafter uses constantly
+- `Ctrl`+`Shift`+`↓`/`↑` is the same step **restricted to one term**: the next faulty
+  "banana", skipping the "kiwi" errors in between. The buckets come from `errorGroup`
+  (`logic/errorSpans.js`) — the term **stem**, so an inconsistent sign, the article in
+  front of it and a bare occurrence of the same noun are one group, and a sign is grouped
+  by the term of _that_ occurrence rather than by all the terms it was ever written with.
+  Claim numbering and dependency errors name no term and step within their own category
+  instead of sharing one nameless bucket. A term with a single error stays put: jumping to
+  an unrelated one is exactly what the binding exists to avoid. The jump measures from the
+  arrows' cursor, unless a sidebar card has since focused a different error (`anchorIdx`)
+- `Ctrl`+`M` switches mode, `Ctrl`+`B` / `Ctrl`+`Shift`+`B` fold the side panes,
+  `Ctrl`+`O` imports, `Ctrl`+`S` exports, `Escape` closes the help screen or the context
+  menu. The old `Ctrl`+`[`/`]` and `/` still work, undocumented, for muscle memory
+- `?` arrives as `Shift`+`ß` on a German layout and `Shift`+`/` on a US one; both report
+  `e.key === '?'`, so one binding covers both
+- **Every new binding takes a modifier** because `useHotkeys` suppresses unmodified keys
+  while the user is typing and the editor holds focus nearly always — a shortcut that
+  dies mid-sentence is worse than none
+- A **help screen** (circled `?` in the top bar, or `Ctrl`+`?`) carries a seven-line usage
+  guide and the full key list. It is the app's **only focus trap**: the editor is still
+  behind it, so focus escaping would send typing somewhere invisible. `HelpDialog.jsx`
+  restores focus to the button that opened it, the way `CtxMenu` does
+- Bindings **without** a modifier are suppressed while the user is typing (`useHotkeys.js`)
+  — the editor is a `<textarea>` that holds focus almost all the time, so an unqualified
+  `/` binding would make the app impossible to type in
+- Every error card is keyboard-reachable: they carry `role="button"`, `tabIndex={0}` and
+  Enter/Space handling via `activatable()` in `components/cardProps.js`. They cannot simply
+  BE `<button>`s — each already contains a nested dismiss button, and nesting interactive
+  elements is invalid HTML
 
 ### Reference numeral list
+
 - A collapsible **Reference list** section in the sidebar shows the active buffer's signs in a numerically sorted `sign → term → count` table (dominant term per sign)
 - **Copy** button puts a tab-separated `sign<TAB>term` list on the clipboard for pasting into a draft
 
 ### Languages
+
 - **English (EN)**: English article rules (a/an vs the)
 - **German (DE)**: German article rules with gender consistency checking (der/die/das)
 
 ### Theme
+
 - **Light / Dark / System**: Theme preference stored in `localStorage` (`rsc_theme`)
 
+### Layout
+
+- Three columns on desktop: **reference list** (left), **editor** (middle), **reference
+  signs** (right). Only the editor is fluid — the side panes hold lists at a readable
+  width, and giving them a share of the width squeezes the editor at every size
+- **Both side panes collapse** to a 34px rail that keeps its chevron, so the way back is
+  always visible. The choice persists (`rsc_panes`)
+- Collapsing is **CSS, not unmounting**. One mechanism has to own it, or the mobile tab
+  bar and the desktop chevron disagree about what exists; `display: none` also takes the
+  search box out of the tab order, which unmounting would have done for free
+- **Narrow screens show one pane at a time**, chosen by a tab bar (≤860px). Stacking all
+  three would bury the reference list under a screen of error cards and keep the editor
+  at the cramped height the old two-pane layout gave it. A middle breakpoint
+  (861–1100px) narrows the side panes before anything is taken away
+- The left pane renders **even with an empty document** — a drafter working from an
+  existing list wants to paste it in before typing a word. While it lived in the
+  sidebar's `totalSigns > 0` branch there was nowhere to put it
+- Two side panes means **two `complementary` landmarks**, so both are named; an unnamed
+  pair is indistinguishable to a screen reader jumping between them
+
+### Error Categories (`logic/errorKinds.js`)
+
+The four non-sign error categories — **article**, **missing sign**, **claim numbering**,
+**claim dependency** — are rows in one table rather than parallel code in nine files.
+Each row names where `extractData` puts the records, how to identify one for dismissal,
+its span, its term (or `null`), its highlight class, its search predicate, and the
+presentation data (glyph, colour token, i18n keys, message formatter).
+
+**Adding a category** is: produce it in `extract.js`, add a row, add its i18n keys, and
+define `--<color>` / `--<color>-bg` in both themes. `errorSpans.js`, `buildHtml.js`,
+`App.jsx`, `Sidebar.jsx`, `ErrorCard.jsx` and the status bar all pick it up by looping the
+table. That used to be a nine-file edit; it is a three-file one now.
+
+The rows carry UI data as well as logic on purpose. They are plain strings and pure
+functions, so the module stays framework-free and still runs under the node test env —
+and splitting them into a second table under `components/` would recreate exactly the
+two-places-to-edit problem the table removes. `message(item, t)` takes the resolved
+strings as an argument, so nothing here imports i18n or React.
+
+Three things must not be "simplified", each guarded by `errorKinds.test.js`:
+
+1. **The dismissal prefixes are a storage format.** `s:` `a:` `b:` `n:` `d:` live in
+   users' `localStorage` under `rsc_dis`. They stay literal in `disKey`
+   (`constants.js`) and are referenced by name. They happen to be first letters, so
+   deriving them from `id` would work today and silently discard every stored dismissal
+   the first time a category is added whose initial collides.
+2. **`focus.key` is not uniform.** It is the sign string for `sign` and a character
+   offset for every other kind. `focusCycle`, `anchorIdx` and each card's `focused`
+   comparison depend on that asymmetry.
+3. **`navProp`** is the property `getAllErrors` carries the raw record under
+   (`ae`/`bt`/`ne`/`de`); `App.jsx` and the tests read those by name.
+
+**Signs are deliberately not a row.** They carry a severity, several occurrences, a
+term-conflict story and their own card, so every consumer special-cases them anyway; a row
+would be mostly unused fields plus consumers that still branch. The same reasoning keeps
+`ctxMenuItems.js` per-category: a sign offers extend/reduce plus dismissal, a bare term
+additionally offers writing the missing sign in, an article offers only dismissal — there
+is no uniform behaviour there for a table to drive.
+
 ### Error Management
+
+- Every card section in the sidebar (Inconsistencies, Article Errors, Missing Signs, Claim numbering, Claim Dependencies, Consistent, Dismissed, Cross-reference) is **collapsible**, styled like the Reference list's own header (▾/▸ arrow, icon, label, count). Click the header to toggle; a section hides itself entirely when its count is 0 rather than being unmounted by the caller, so a toggle survives the count dropping to 0 and back. `Section` (a local helper in `Sidebar.jsx`) owns the open/closed state, defaulting to open
 - Click an error card in the sidebar to jump to its occurrence in the text; clicking the **same card again cycles to the next occurrence** (document order), and the click after the last one clears the focus. A single-occurrence card (article/bare/numbering/dependency) therefore just toggles, while a multi-occurrence sign steps through all its marks. `focusCycle` in `App.jsx` owns this, keyed by an occurrence cursor (`focusOcc` ref)
 - Hover a sign number in the editor to highlight its sidebar card; hover a card to highlight its marks in the editor
 - Use arrow buttons in status bar to cycle through errors
 - Dismiss individual errors or all errors
-- Right-click context menu for advanced options
+- Right-click context menu for advanced options. It acts on whatever sits at the caret —
+  a **sign**, an **article**, or a **term written without its sign**. That last one was
+  missing: the bare occurrence the tool highlights was the one thing in the editor that
+  could not be acted on, so "extend the term" had to be reached from some _other_
+  occurrence of the same word. `findAtPos` now reports bare terms too, and the menu
+  offers the same Extend / Reduce term (they are properties of the term, not of the sign
+  beside it) plus its own dismissal
+- The bare-term menu can also **write the missing sign in** — ` 10` in description mode,
+  ` (10)` in claims mode, since a bare sign there is an error of its own. Offered only
+  when the term is known under **exactly one** sign; with two or more, picking between
+  them is the drafter's call. `insertSign` re-checks that the term is still at the
+  recorded span before splicing (the spans come from the debounced extraction, so the
+  buffer may have moved on) and leaves the caret after what it wrote
 - **Reset all** button (bottom-right, fixed) clears multi-word overrides, dismissed errors **and both text buffers** (behind a confirm dialog, since it now discards typed text)
 
 ### Persistence
+
 - Both text buffers autosave to `localStorage` (`rsc_desc`, `rsc_claims`) and are restored on load, so work survives a refresh
 - **Language, mode and dismissed errors** persist too (`rsc_lang`, `rsc_mode`, `rsc_dis`) — restoring German text without also restoring the DE language setting used to produce a wall of false article errors
 - All persistence goes through the `usePersistentState` hook (one place for the localStorage try/catch and codecs)
 - Extraction is **debounced** for large documents (≥5000 chars) via `useDebounced`; the textarea stays immediate and the highlight backdrop is built from the same debounced buffer so spans never misalign
 - The textarea and the highlight backdrop are two scroll-synced layers (`syncScroll` mirrors `scrollTop` on the textarea's `onScroll`). Because the backdrop content is debounced, a large **paste** scrolls the textarea to the caret before the taller backdrop has rendered, so the one scroll event syncs against stale, short content and the highlights sit shifted until the next manual scroll. An `useIsoLayoutEffect(() => syncScroll(), [html])` in `App.jsx` re-mirrors the scroll position after the backdrop content commits, realigning the layers before paint. `buildHtml` also appends a trailing-newline sentinel so a buffer ending in `\n` keeps both layers the same height (see Sign Detection / `buildHtml.js`)
+- **Elastic overscroll used to break that mirroring at both ends of the document.** Scrolling past the top or bottom on macOS/iOS rubber-bands the textarea's content beyond its own scroll range; the backdrop clamps any offset outside `[0, scrollHeight - clientHeight]`, so the text bounced while the highlights stayed pinned to the edge of the box. `overscroll-behavior: none` on `.backdrop, .editor-ta` suppresses the rubber-band itself (it is also what stops the gesture chaining out to the page), and `syncScroll` routes through `backdropScroll` (`logic/scrollSync.js`), which splits the reported offset into the part the backdrop can scroll to and an overshoot applied as a `translateY` — the engines that _do_ surface the overscroll in `scrollTop` (iOS Safari) are then handled too. The rubber-band is a compositor effect that never reaches `scrollTop` in most engines, so the CSS line is load-bearing rather than decoration, and a unit test asserts it is still there
 
 ### Offline Support
-- The app runs entirely client-side (no backend calls), so once loaded it needs the network only for the initial fetch. Two things used to break that:
-  - The UI fonts (Space Grotesk, JetBrains Mono) were pulled from the Google Fonts CDN on every load. They're now **self-hosted** — the `.woff2` files live in `src/fonts/` and are `@font-face`-declared with relative `url()`s in `styles.css`, so Vite hashes and bundles them like any other asset (no CDN request, no external dependency at all)
-  - Nothing cached the app shell itself, so a page reload with no connection would just fail. `public/sw.js` is a small hand-rolled service worker (registered from `main.jsx`, production builds only) that caches the shell: navigations go network-first with a cached-shell fallback, and hashed assets (JS/CSS/fonts) are cache-first, since a content hash never changes meaning under the same URL
-  - `public/manifest.webmanifest` + `public/icon.svg` make the page installable (Add to Home Screen / desktop PWA install), which is the most reliable way to keep using it with no connection at all
-- Net effect: after the first successful load, the tool keeps working fully offline — including on a hard refresh — since both the shell and its assets are already cached and no external requests remain
+
+The app runs entirely client-side (no backend calls), so once loaded it needs the network
+only for the initial fetch. Three things are required for that to actually hold, and all
+three are now in place:
+
+- **The app shell is precached at install time.** `build/swPrecache.js` is a Vite plugin
+  that injects the emitted asset list (plus the base URL, the manifest and the icon) into
+  `dist/sw.js`, and `install` does `cache.addAll` over it. This is not optional polish:
+  the service worker registers _after_ the page has already fetched its JS, CSS and fonts,
+  so those requests never reach the fetch handler. A worker that only fills its cache
+  opportunistically has an empty cache when the first visit ends — the app used to become
+  offline-capable on the **second** visit, not the first, despite the docs claiming
+  otherwise.
+- **Cache lookups pass `ignoreVary`.** Static hosts (GitHub Pages, and Vite's own preview
+  server) send `Vary: Origin` on assets. Entries written by `cache.addAll` carry no
+  `Origin` header, but the page's own module-script and stylesheet requests are CORS-mode
+  and _do_ send one — so Vary matching rejects every precached entry and the page fails to
+  boot offline despite a full cache. These URLs are content-hashed, so their bytes cannot
+  legitimately vary by request header. This is only findable by testing in a real browser;
+  do not remove it.
+- **The cache name carries a build id** derived from the asset list, so each deploy gets
+  its own cache and `activate` actually evicts the previous one. A fixed name (the
+  original `refcheck-shell-v1`) meant the cleanup never matched anything and every
+  deploy's hashed bundles accumulated in one cache indefinitely.
+
+Supporting pieces: the UI fonts are **self-hosted** (`src/fonts/`, `@font-face` with
+relative `url()`s in `styles.css`), so Vite hashes and bundles them like any other asset
+and no CDN request remains; the bee sprite is vendored for the same reason; and
+`public/manifest.webmanifest` + `public/icon.svg` make the page installable.
+
+The lazily-loaded `.docx` chunk (see Word import/export) is in the precache list too, so
+a user who imports or exports for the first time while offline still gets it.
+
+Navigations are network-first with a cached-shell fallback, so a returning-online user
+picks up the latest build; unhashed assets (`icon.svg`, `manifest.webmanifest`) are
+network-first too, since their contents can change under a stable URL. Everything else is
+cache-first, and the offline navigation fallback resolves against the base URL — the
+previous `./index.html` fallback was dead code, since the navigation is cached under
+`/refcheck/`.
+
+**Verified in Chromium**, not merely reasoned about: on a first-ever visit the shell is
+precached; an offline hard reload then boots the app, runs extraction and renders the
+self-hosted fonts, and a first-ever `.docx` export succeeds from the precached chunk.
 
 ### Multi-word Terms
-- Auto-detects ordinal patterns ("first bearing", "second bearing")
-- Manual override via context menu "Extend term" / "Reduce term"
-- Settings stored in `localStorage` (`rsc_mwo`)
-- Words consumed by a multi-word term are not flagged as bare-term errors
+
+A term is the base noun in front of a sign unless something widens it. Three things can,
+and the order between them is the whole design:
+
+- **The drafter's own reference list** (`logic/listTerms.js`). An entry reading
+  `30 control unit` already states that the term is two words, so the text scan takes it
+  from there instead of leaving the drafter to extend it by hand — which also makes the
+  reference-list check stop reporting every listed multi-word term as a term mismatch
+  ("list: control unit · text: unit"). It applies to **both** buffers, because the list
+  describes the application, not one section of it; it is filled by a `.docx` import and
+  by pasting alike, since both write the same `refListText`
+- **The ordinal pattern** ("first bearing" / "second bearing"), detected from the text
+- **A manual override** via the context menu's "Extend term" / "Reduce term", stored in
+  `localStorage` (`rsc_mwo`)
+
+The two automatic sources take the **wider** of the two. A manual override **wins
+outright over both, including an explicit 0** — that is what makes "Reduce term" work at
+all here: it used to `delete` the key at width 1, which under an automatic source just
+handed the term straight back and the reduction appeared not to happen. Both menu actions
+therefore write an **absolute** width measured from the term as displayed, not `mwo + 1`.
+
+- **The match is on the whole phrase, not the base noun.** A list holding `control unit`
+  does not widen "the drive unit 40" — the words actually written in front of the sign
+  must stem-match the listed phrase. That is what lets one list hold both `unit` and
+  `control unit`, and it is the difference between reading the list and guessing from it.
+  The longest listed phrase wins, so `first bearing surface` beats `bearing surface`
+- The index is keyed on the **last two words**, not just the base noun. A real list names
+  three hundred different "… element"s, and keying on the noun alone would make every
+  occurrence compare against a third of the list; `perf.test.js` covers exactly that shape
+- Stems compare, so "control units" in the list matches "control unit" in the text
+- Words consumed by a multi-word term are not flagged as bare-term errors; a bare
+  occurrence of a widened term is reported as the full phrase
+- The term-width badge (`2w`) on a sign card comes from the recorded term stem, per chip
+  — reading it back out of `mwo` only ever knew about manual overrides
 
 ### Article Checking
+
 - **Description mode**: flags definite articles on the **first use** of a term (should introduce with "a"/"an") and indefinite articles on **subsequent uses** (should use "the"). First use is determined by document position, not by the first occurrence that has an article
 - **Claims mode (antecedent basis)**: "introduced" is evaluated **per claim chain**, not by document position. A term counts as introduced for an occurrence in claim C if it appeared earlier in C, anywhere in one of C's ancestor claims (transitive dependencies, including via ranges and "preceding claims"), or before the first claim. So a second independent claim may correctly say "a device" again, while "the seal" in a dependent claim whose chain never introduced a seal is flagged
 - German gender-consistency checking (der/die/das conflicts) applies in both modes
@@ -161,13 +710,16 @@ src/
 ## Data Flow
 
 ```
-User Input (textarea — per-mode buffer)
+User Input (textarea — per-mode buffer)      Reference list (pasted or imported)
+       |                                            |
+       v                                            v
+  tokenize() ──> Array of {word, start, end}   listTermIndex() ──> multi-word terms
+       |                                            |
+       v                                            |
+  extractData() ←────────────────────────────────────
        |
-       v
-  tokenize() ──> Array of {word, start, end}
        |
-       v
-  extractData() ──> {signData, termData, artErrors, bareTerms, numErrors, depErrors, noTermSigns}
+       ├─> {signData, termData, artErrors, bareTerms, numErrors, depErrors, noTermSigns}
        |             (claims mode also runs computeClaimGraph for deps + antecedent basis)
        v
   classify() ──> 'warn' | 'ok' for each sign
@@ -177,60 +729,134 @@ User Input (textarea — per-mode buffer)
                                  (marks carry data-sign attribute for hover)
 ```
 
-`computeCrossRef` (in `logic/crossref.js`) runs `extractData` on both buffers independently and compares sign sets.
+`computeCrossRef` (in `logic/crossref.js`) takes the two **already-computed** extraction
+results and compares them — App memoizes `extractData` per buffer and passes both in. It
+does not run extraction itself.
 
 ## localStorage Keys
 
-| Key | Purpose |
-|-----|---------|
-| `rsc_theme` | Theme preference: `'light'`, `'dark'`, or `'system'` |
-| `rsc_mwo` | Multi-word override settings (JSON object mapping stems to extra word counts) |
-| `rsc_desc` | Description-mode text buffer (autosaved) |
-| `rsc_claims` | Claims-mode text buffer (autosaved) |
-| `rsc_lang` | UI/checking language: `'en'` or `'de'` |
-| `rsc_mode` | Active mode: `'description'` or `'claims'` |
-| `rsc_dis` | Dismissed-error keys (JSON array; see `disKey` in `constants.js`) |
+| Key           | Purpose                                                                                                                                                  |
+| ------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `rsc_theme`   | Theme preference: `'light'`, `'dark'`, or `'system'`                                                                                                     |
+| `rsc_mwo`     | Manual multi-word overrides (base stem → extra words; an explicit **0** means "base noun only" and outranks the reference list and the ordinal detector) |
+| `rsc_desc`    | Description-mode text buffer (autosaved)                                                                                                                 |
+| `rsc_claims`  | Claims-mode text buffer (autosaved)                                                                                                                      |
+| `rsc_lang`    | UI/checking language: `'en'` or `'de'`                                                                                                                   |
+| `rsc_mode`    | Active mode: `'description'` or `'claims'`                                                                                                               |
+| `rsc_dis`     | Dismissed-error keys (JSON array; see `disKey` in `constants.js`)                                                                                        |
+| `rsc_reflist` | The drafter's reference-sign list, for the reference-list check                                                                                          |
 
 All access goes through `hooks/usePersistentState.js`.
 
 ## Known Limitations / Potential Improvements
 
 ### Data Persistence
+
 - [x] Text content persists to `localStorage` (`rsc_desc`, `rsc_claims`) and restores on refresh
 - [x] Language, mode and dismissed errors persist (`rsc_lang`, `rsc_mode`, `rsc_dis`)
-- [ ] Consider file save/load (no import/export to disk yet)
+- [x] Word `.docx` import (drag-and-drop + file picker) and round-trip export
+- [x] The round-trip export is **verified** before it is handed over (`docx/verify.js`)
+
+### Known .docx limitations (deliberate, and each one visible rather than silent)
+
+- An edited paragraph collapses to one run, so intra-paragraph formatting is lost **in
+  edited paragraphs only**. The tooltip says so
+- A buffer the source document has no section for cannot be written back — there are no
+  paragraphs to splice into. Verification reports this rather than dropping it quietly
+- A `.docm` exports under a `.docx` name while its content types still say
+  macro-enabled. Harmless in practice, but the extension should follow the source
+- `<w:sym>` (symbol-font characters) and field results (`<w:fldSimple>`,
+  `<w:instrText>`) are not read, so a cross-reference field's rendered text is invisible
+  to the checker
+- A section break carried in a deleted paragraph's `<w:pPr><w:sectPr>` goes with the
+  paragraph. Editing preserves it; deleting the paragraph does not
+- Paragraphs inside tables are read as ordinary paragraphs, so a claim set laid out in a
+  table imports as flat lines
 
 ### Export Features
+
 - [x] Reference numeral list with copy-to-clipboard (plain text)
+- [x] Reference-list **reconciliation** against the text (`logic/reconcile.js`)
 - [ ] Could add CSV/JSON export of sign-term mappings
 - [ ] Could add copy-to-clipboard for error summary
 
 ### Keyboard Navigation
-- [ ] No keyboard shortcuts for error navigation
-- [ ] Consider: `Ctrl+[` / `Ctrl+]` for prev/next error
-- [ ] Consider: `Escape` to close context menu
+
+- [x] `Ctrl`/`Cmd`+`[` / `Ctrl`/`Cmd`+`]` for prev/next error (`hooks/useHotkeys.js`)
+- [x] `Ctrl`+`Shift`+`↓`/`↑` for prev/next error **about the same term**
+- [x] `Escape` closes the context menu; `/` focuses the sign filter
+- [x] Error cards and collapsible section headers are keyboard-activatable
+- [ ] Could add a shortcut for import/export/reset
 
 ### Accessibility
-- [ ] Missing ARIA labels on interactive elements
-- [ ] Screen reader support could be improved
-- [ ] Focus management in context menu needs work
+
+- [x] ARIA labels on the error-nav buttons, editor, search box and dismiss buttons
+- [x] `aria-pressed` on the language toggle, `aria-expanded` on the section headers
+- [x] `main`/`complementary` landmarks; `:focus-visible` styles (there were none, and
+      `.editor-ta` explicitly cleared the UA outline)
+- [x] `<html lang>` follows the language setting instead of being hardcoded to `en`
+- [x] `CtxMenu` has `role="menu"`, arrow-key navigation and focus restore
+- [ ] Mode/theme toggle groups could use `role="radiogroup"` rather than plain buttons
+- [ ] The error counts in the status bar are not in a live region
 
 ### Theming
+
 - [x] Theme toggle is icon-only (sun/monitor/moon) with localized `title`/`aria-label` text (`themeLight`/`themeSystem`/`themeDark` in `i18n.js`)
-- [ ] "All consistent" message is hardcoded in English
+- [x] **Both palettes clear WCAG AA (4.5:1) on every surface they render on**, guarded by
+      `logic/palette.test.js`. Two tokens outright failed before: light `--accent` at
+      2.66:1 (used as 10px text on the multi-word badge) and dark `--text-dim` at 2.70:1.
+      Note `--surface2` is a card hover/focus background, so dim text has to clear that too
+- [x] The test also pins the ramp ordering `text > text-muted > text-dim`. This is not
+      hypothetical: lifting dim text far enough to pass AA on its own makes it _lighter_
+      than the muted tier and inverts the hierarchy
+- [x] `--info` (soft blue) for genuinely informational content — the claim-set panel, which
+      must not look like an error
+- [x] "All consistent" is an i18n key (`allConsistent`) in both languages
 
 ### Performance
+
 - [x] Extraction is debounced for large documents (≥5000 chars) via `useDebounced`
-- [x] `stem()` is memoized and the bare-term pass reuses precomputed per-token stems (a 166KB document extracts in ~70ms, down from ~125ms); `perf.test.js` guards against regressions
+- [x] `stem()` is memoized (one cache per language, keyed on the raw word) and its suffix
+      tables live at module scope rather than being rebuilt per call
+- [x] **The quadratic scans are gone.** `extractData` had four superlinear paths; the
+      worst was the sign range/list scan locating its preceding term with a `findIndex`
+      from index 0. Measured on the same machine: a list-heavy 103KB description went
+      133ms → 16ms, a plain 146KB one 34ms → 13ms. The others: bare-term coverage is a
+      binary search over sorted ranges with a prefix-max of end offsets (an exact
+      equivalent — a coverage bitmap would wrongly treat two adjacent ranges as covering
+      a span neither contains); `inParensAt` binary-searches the sign groups; the
+      antecedent check locates each term position's claim once
+- [x] `localStorage` writes are debounced. They ran on **every keystroke**, so a 200KB
+      description serialised and stored 200KB per key press — a bigger typing-latency
+      source than extraction, and not covered by the extraction debounce
+- [x] Hovering a sign touches only that sign's marks (indexed per backdrop render), not
+      every mark in the document
+- [x] `Sidebar` and the card components are `React.memo`'d, with memoized list props and
+      `useCallback`'d handlers. Note the ordering: memo alone skips **nothing** until the
+      props are stable identities, so all three go together or none do
+- [x] The `.docx` pipeline (and fflate) is lazily imported: 227KB → 214KB initial JS,
+      77KB → 70KB gzipped. Safe only because the service worker precaches the chunk
 - [x] Editor hover hit-testing is throttled to one `elementFromPoint` per animation frame
+- [x] The reference list's multi-word terms cost one Map hit per sign occurrence: the
+      index is keyed on the term's **last two words**, so a list naming three hundred
+      "… element"s does not turn every occurrence into a hundred comparisons. Editing the
+      list box re-runs extraction, so its input is debounced with the buffers and the
+      index keeps its identity while its parsed content is unchanged
+- [x] `perf.test.js` covers the shapes it used to miss — a range/list-heavy corpus and a
+      150-claim claims-mode set — plus a **ratio** test that fails on quadratic growth
+      regardless of runner speed. The original single corpus contained no list constructs
+      and never ran in claims mode, so two of the three quadratic paths were invisible to
+      the guard written to catch exactly them
 - [ ] Very large documents may still lag in rendering (no virtualization)
 - [ ] A Web Worker for extraction was considered and deliberately not added — post-optimization timings sit comfortably inside the 200ms debounce
 
 ### Additional Languages
+
 - [ ] French patent applications are common
 - [ ] Could add support for other European languages
 
 ### Sign Detection
+
 - The sign pattern is centralized in `constants.js` as `SIGN_RE` (Arabic) and
   `ROMAN_RE` (Roman steps); `isSignToken` accepts either, and the tokenizer and every
   extraction site share them. Sort sign lists with `compareSigns`: Arabic and Roman
@@ -251,8 +877,7 @@ All access goes through `hooks/usePersistentState.js`.
       `18 bis 22` shares the noun via range detection rather than taking `bis` as
       its term
 - [x] Detects 1–5 digit numbers (1–99999) with optional trailing letter (`12a`) **and optional trailing prime (`10'`, `10′`)**; `10` and `10'` are distinct signs
-- [x] **Roman-numeral method steps**: uppercase Roman numerals (`I`, `II`, `IX`, up to
-      3999) are detected as signs, plus **substeps** written as a Roman numeral, a dot and
+- [x] **Roman-numeral method steps**: uppercase Roman numerals (`I`, `II`, `IX`, up to 3999) are detected as signs, plus **substeps** written as a Roman numeral, a dot and
       an Arabic numeral with no spaces (`I.1`, `II.2`, `IX.3`). A substep (`I.1`) is a
       distinct sign from its parent step (`I`). Only UPPERCASE Roman letters match, so
       lowercase units (`mm`, `cm`) are never mistaken for numerals, and a Roman step that
@@ -282,6 +907,7 @@ All access goes through `hooks/usePersistentState.js`.
       signs must be whitespace/punctuation-separated from their term to be detected
 
 ### Undo/Redo
+
 - [ ] No undo for dismiss actions
 - [ ] Browser undo works for text but not for app state
 
@@ -292,7 +918,9 @@ React + Vite. Common commands:
 ```bash
 npm install      # first-time setup
 npm run dev      # dev server with hot reload
-npm test         # run the Vitest unit tests
+npm test           # run the Vitest unit tests
+npm run typecheck  # checkJs over src/logic/ + build/ (see jsconfig.json)
+npm run format     # prettier --write . (CI runs format:check before the tests)
 npm run build    # production bundle → dist/
 npm run preview  # serve the production build locally
 ```
@@ -301,35 +929,78 @@ Because the app uses native ES modules, run it through the dev/preview server (o
 live GitHub Pages site) — opening `index.html` directly from disk will not work.
 
 ### Deployment
+
 `.github/workflows/deploy.yml` runs the tests and (on pushes to `main`) builds and
 publishes `dist/` to GitHub Pages. The repo's Pages **source must be set to "GitHub
 Actions"** in Settings → Pages. The Vite `base` is `/refcheck/` (project-site path).
 
 ### Dependencies
+
 - React / ReactDOM 18.3.1 (bundled, not CDN)
+- fflate (zip read/write for `.docx`; bundled, ~8KB gzipped — the only non-React runtime dep)
 - Vite + @vitejs/plugin-react (build)
 - Vitest (tests); jsdom + @testing-library/react + user-event + jest-dom (UI tests)
 - Space Grotesk, JetBrains Mono — self-hosted `.woff2` in `src/fonts/`, no CDN (see Offline Support)
 
 ### Testing
-Run with `npm test` (currently **207 tests**). Logic tests run under the fast `node`
+
+Run with `npm test` (currently **668 tests**). Logic tests run under the fast `node`
 environment; only `*.ui.test.jsx` files run under `jsdom` (scoped via
 `environmentMatchGlobs` in `vite.config.js`, with `src/test/setup.js` providing the
-jest-dom matchers and `matchMedia`/`clipboard` stubs). Coverage by area:
+jest-dom matchers and `matchMedia`/`clipboard` stubs). The `include` glob covers
+`build/` as well as `src/`, so the service-worker precache generator is tested too.
 
-| File | Covers |
-|------|--------|
-| `tokenize.test.js` | word/number spans, trailing-letter (`12a`) & **prime (`10'`,`10′`)** signs, **Roman steps/substeps (`II`, `I.1`) + word-fallthrough (`In`, `Die`)**, German letters/hyphens, >5-digit runs, glued word+number, decimals, **CRLF spans**, repeat-call safety |
-| `stem.test.js` | EN Porter steps (`-s`/`-ies`/`-ing`/`-ed`/`-tion`, `-ss` retention, short words), DE Snowball (plurals, umlaut folding, case), dispatch + EN fallback |
-| `constants.test.js` | `likelySign`, `isClaimNumber` (terminators, indented, parens, mid-sentence, none, **Roman `I.` guard**, **CRLF**), `isSignToken` (prime/letter/range, **Roman + malformed rejection**), **`romanToInt`/`signVal`**, `compareSigns` (**Roman ordering, Arabic-before-Roman grouping**), article/ordinal helpers |
-| `extract.test.js` | sign/term consistency & inconsistencies, claims parentheses, claim-numbering (+ stable keys, CRLF), article errors (EN+DE), DE gender conflict, ordinal multi-word + `mwo` + `detectOrdStems` guards, bare terms, **prime signs**, **Roman step/substep signs + conflicts**, **ranges (to/bis/and/und/dash/semicolon, EN+DE, with negatives, figure-word exclusion, `bis`/`Ansprüchen` never a term)**, **parenthesised sign groups (`(6, 12; 13)` all in-parens, `(see 10)` excluded)**, **`noTermSigns`**, **bracketed paragraph numbers (`[0012]`)**, **per-claim antecedent basis**, **claim dependency errors**, `getAllErrors` (five categories, dismissal keys) |
-| `claims.test.js` | `segmentClaims` spans, `parseClaimRefs` (positions, offsets, lists, range expansion, DE, "preceding claims", trailing-comma negatives), `computeClaimGraph` (transitive ancestors, range/preceding ancestry, missing/forward/self typing, duplicate keys, acyclicity) |
-| `crossref.test.js` | null/agreement, missing-in-desc/claims, numeric sort, sign & term conflicts, **`notIntroducedInDesc`** |
-| `buildHtml.test.js` | empty input, warn/data-sign marks, numbering + dependency highlights, dismissed→`h-dis`, focus class, escaping, non-overlapping marks, **strip-marks ≡ esc(text) + trailing-newline sentinel (alignment invariant)**, **trailing-newline sentinel appended (vertical alignment)**; `findAtPos` |
-| `reflist.test.js` | `buildRefList` (sort, dominant term, primes, empty), `toPlainText` |
-| `i18n.test.js` | EN/DE key parity + matching value types |
-| `perf.test.js` | extraction of a >100KB document stays well under a second (quadratic-regression guard) |
-| `App.ui.test.jsx` | (jsdom) typing populates sidebar, dismiss removes warning, nav cycles, **click-to-cycle through a sign's occurrences (+ unfocus after last)**, RefList copy, persistence restore + reset, mode switching preserves buffers, cross-ref section, dependency card + dismissal, context-menu term extension, language/theme toggles + persistence, dismissed-error restore |
+Types are checked too: `npm run typecheck` runs `tsc` over `src/logic/` and `build/` with
+`checkJs`, driven entirely by the JSDoc already in those files — no `.ts` files, no build
+step. `strict` is off on purpose (this is a checker retrofitted onto working code, so the
+useful signal is "this property does not exist", not several hundred implicit-any
+reports), and it is scoped to the logic layer because that is where the typedefs are and
+where a wrong shape is expensive. It caught five typedefs that had drifted from what their
+function actually returned. CI runs it before the tests.
+
+Formatting is enforced: `.prettierrc` exists and CI runs `npm run format:check` before
+the tests. Keep it green — 51 of ~55 files once violated the repo's own config because
+nothing checked.
+
+Coverage by area:
+
+| File                             | Covers                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| -------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `tokenize.test.js`               | word/number spans, trailing-letter (`12a`) & **prime (`10'`,`10′`)** signs, **Roman steps/substeps (`II`, `I.1`) + word-fallthrough (`In`, `Die`)**, German letters/hyphens, >5-digit runs, glued word+number, decimals, **CRLF spans**, repeat-call safety                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| `stem.test.js`                   | EN Porter steps (`-s`/`-ies`/`-ing`/`-ed`/`-tion`, `-ss` retention, short words), DE Snowball (plurals, umlaut folding, case), dispatch + EN fallback, **cache transparency across an eviction and per-language isolation**                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| `constants.test.js`              | `likelySign`, `isClaimNumber` (terminators, indented, parens, mid-sentence, none, **Roman `I.` guard**, **CRLF**), `isSignToken` (prime/letter/range, **Roman + malformed rejection**), **`romanToInt`/`signVal`**, `compareSigns` (**Roman ordering, Arabic-before-Roman grouping**), article/ordinal helpers, **`disKey`** — the declared source of truth for dismissal keys, which had no direct test at all while every dismissal test hard-coded the literals                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| `extract.test.js`                | sign/term consistency & inconsistencies, claims parentheses, claim-numbering (+ stable keys, CRLF), article errors (EN+DE), DE gender conflict, ordinal multi-word + `mwo` + `detectOrdStems` guards, bare terms, **prime signs**, **Roman step/substep signs + conflicts**, **ranges (to/bis/and/und/or/oder/through/dash/semicolon, EN+DE, with negatives, figure-word exclusion, `bis`/`Ansprüchen` never a term)**, **parenthesised sign groups**, **`noTermSigns`**, **bracketed paragraph numbers (`[0012]`) — now unit-tested directly**, **per-claim antecedent basis**, **claim dependency errors**, **`autoMW = false`** (previously never exercised by any call site), **multi-word terms from the reference list** (extension in both modes and in ranges, a different modifier left alone, bare occurrences reported as the whole phrase, DE, and both directions of the manual override — a reduction beating the list AND the ordinal detector)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| `claims.test.js`                 | `segmentClaims` spans, `parseClaimRefs` (positions, offsets, lists, range expansion, DE, "preceding claims", trailing-comma negatives), `computeClaimGraph` (transitive ancestors, range/preceding ancestry, missing/forward/self typing, duplicate keys, acyclicity)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| `crossref.test.js`               | null/agreement, missing-in-desc/claims, numeric sort, sign & term conflicts, **`notIntroducedInDesc`**                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| `buildHtml.test.js`              | empty input, warn/data-sign marks, numbering + dependency highlights, dismissed→`h-dis`, focus class, escaping, non-overlapping marks, **strip-marks ≡ esc(text) + trailing-newline sentinel (alignment invariant)**, **trailing-newline sentinel appended (vertical alignment)**; `findAtPos` (sign, article, **bare term**, and that a sign-attached occurrence is not reported as bare)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| `scrollSync.test.js`             | `backdropScroll`: in-range pass-through, overscroll past the bottom and the top split into clamped part + shift, content shorter than the box, missing geometry (no `NaN` reaching a transform), sub-pixel exactness — plus that `styles.css` still carries `overscroll-behavior: none` on the editor layers                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| `reflist.test.js`                | `buildRefList` (sort, dominant term, primes, empty), `toPlainText`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| `headings.test.js`               | normalization (leading `III.`/`B)` labels, trailing colon, NBSP, the `I claim` guard), every dictionary entry round-tripping to its own kind, the **`BRIEF DESCRIPTION` vs `DESCRIPTION OF THE DRAWINGS` collision**, and negatives — a sentence mentioning "Ansprüche" and an over-long line must NOT match                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| `docx/read.test.js`              | entity decoding, **run joining with no separator** (`hous`+`ing`), `xml:space="preserve"`, tab/br, **noBreakHyphen/softHyphen read as U+2011/U+00AD**, empty paragraphs, pStyle/numPr/bold (incl. `w:val="0"`), **text-box exclusion**, **tracked insertions kept / deletions dropped**, xml spans + pPr/rPr capture, header/footer/comment parts excluded, `notZip`/`noDocument` errors                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| `docSplit.test.js`               | EN + DE slicing, abstract/figure-listing/Bezugszeichenliste exclusion, heading-derived language, **auto-number synthesis** (per-`numId` counters, already-numbered left alone, multi-level flagged), no-heading and claims-only fallbacks, blank-edge trimming, a description whose prose mentions "Ansprüchen", **the sign list returned separately as `signList`**, and **that the three section ranges are always disjoint** — claims before the description, sign list before the description, and that a German `Ausführungsbeispiel 2` subheading does NOT truncate the description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| `docx/write.test.js`             | `planEdits` no-op on unchanged text, round trip: edit applied, **untouched paragraphs and other zip parts byte-identical**, pPr/rPr preserved, **synthesized claim numbers stripped**, XML escaping, `<w:br/>` paragraphs, appended paragraphs, re-import equals the edit, `createDocx`; plus **claim alignment**: an inserted claim gets its own paragraph (no `<w:br/>`) with the neighbours' `pPr`, an inserted claim on a list is numbered by Word and carries no typed number, a renumbering edit strips the typed number, an append past the end is not double-numbered, claim text never lands in a blank spacer, a clone comes from a real claim when the last paragraph is blank, an added blank line stays out of the numbering, and the file re-imports to the buffer; plus **numbering style**: a Word-list source exports every claim as a list item with no typed number left in the text (including a claim that lands in a plain trailing paragraph, and one appended past the end), a typed-number source exports no `<w:numPr>` at all, a lead-in line stays out of the list, and a numbered DESCRIPTION line is left as prose                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| `docx/lineDiff.test.js`          | `alignLines` (same/changed/deleted/appended/inserted) and **the LCS size bail-out** — note it trims the common head and tail _before_ measuring, so a single-edit case never reaches the degraded path however long the documents are                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| `docx/claimNumbering.test.js`    | `isClaimLine` (incl. a Roman step and an over-long number as negatives), `stripAutoNumber` on a renumbered list item vs typed text, `claimListTemplate` (found / typed-numbers / multi-level), `conformClaim` (joins the list and drops the typed number, leaves a lead-in alone, un-lists when numbers are typed, never touches `ilvl > 0`), `NUMPR_RE` on both element forms                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| `docx/xmlText.test.js`           | C0 controls dropped and tab/newline kept, CR dropped, U+FFFE/U+FFFF dropped, surrogate pairs kept but lone surrogates dropped (including a lone one adjacent to a real pair), strip-then-escape ordering                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| `docx/verify.test.js`            | accepts what the export does on purpose (unchanged doc, ordinary edits, **claim numbers Word will renumber**, trimmed blank edges, a dropped invalid character) and catches what it should (claims a source has nowhere to put, the FIRST differing line, an unreadable file). Both directions matter: a verifier that cries wolf gets ignored                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| `docx/integrity.test.js`         | the promises that are not any one feature: **an insertion and a replacement meeting at one offset** (the malformed-XML regression), `orderSplices` ordering + overlap/bounds refusals, **sections that would otherwise overlap**, **characters XML cannot hold** and a CRLF buffer not rewriting every paragraph, **noBreakHyphen surviving an edit**, every other zip part **byte-identical** (not merely present), document.xml identical outside the edited paragraph, nothing written when nothing changed, and `exportPatentDoc`'s verification results                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| `detectLang.test.js`             | EN/DE prose, umlaut signal, empty input, **headings beat text**, text fallback                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| `importDoc.test.js`              | `fileKind` (`.docx`/`.docm`/legacy `.doc`/other), import returns buffers+lang+provenance, round-trip vs fresh export, DE fresh export heading                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| `beeFlight.test.js`              | spawn off each of the four edges, entering/`entered`, jagged path (heading reversals), bounded speed, lifespan → `leaving`, exit through any side, hard age cap, `countBees` (word boundary, plural, `beetle` negative, DE `Biene`/`Bienen` gated on language, `Bienenstock` negative)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| `i18n.test.js`                   | EN/DE key parity + matching value types                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| `palette.test.js`                | contrast of every foreground token against `--bg`/`--surface`/`--surface2` in both themes at the 4.5:1 AA bar, plus the `text > muted > dim` ramp ordering. Contrast is invisible to every other kind of test, which is why two outright failures survived until now                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| `errorKinds.test.js`             | The registry's invariants: unique ids, **the historical dismissal prefixes (`s:` `a:` `b:` `n:` `d:`) — the storage-format guard, which is the one thing a naive "simplification" here would break silently**, the historical `getAllErrors` property names, a field the extractor actually fills, well-formed spans, term-vs-null per kind, a non-empty message in both languages, i18n keys that exist, search predicates that reject a non-match, and **both colour tokens defined in both themes** (the card takes its colour from those, so they are the entire stylesheet cost of a category)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| `ctxMenuItems.test.js`           | The editor's right-click menu, which previously could only be exercised by mounting the app: nothing actionable at the caret, sign vs bare term vs article, reduce offered only once a term is wider than its base noun, insert-sign offered for one sign and withheld for two, dismissed entries flipping to Restore, restore-all appearing only when something is dismissed, and German labels                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| `errorSpans.test.js`             | severity per sign, `signTerm` spans only for warned signs, a dismissed sign kept as `dis` for the backdrop while the navigator drops it, all five categories, document order, **the `term` each error names (a sign by the term of ITS occurrence, `null` where there is none)**, **`errorGroup` bucketing — one term's errors together, two terms apart, term-less errors by category** — **and that every highlight class the logic emits is actually defined in `styles.css`**                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| `reconcile.test.js`              | `parseRefList` (separator forms, multi-word terms, primed/suffixed signs, non-list lines skipped, duplicates) and `reconcileRefList` (clean list, listed-not-used, used-not-listed, term mismatch, plural/case tolerance, numeric sort, DE)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| `listTerms.test.js`              | `listTermIndex` (multi-word entries only, punctuation and stray signs dropped, stemmed duplicates collapsed, over-long phrases ignored, DE, and that layout-only edits keep the same `sig` while a real term change does not), `listExtra` (match, longest-wins, a different modifier, inflections, phrase longer than the words available) and `appliedListTerms` (list order, and a hand-reduced term dropping out)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| `claimStats.test.js`             | independent/dependent counts, multiple dependency, a range counting as ONE multiply-dependent claim, depends-on-multiple, chain depth, each DPMA/EPO threshold at and past its boundary, the two offices reported independently, and that **no USPTO threshold is ever emitted**                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| `swPrecache.test.js`             | precache list contents (base URL included, sw.js excluded, unhashed assets added, lazy chunk covered), build-id stability, and that a missing placeholder **throws** rather than shipping a worker that caches nothing                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| `usePersistentState.ui.test.jsx` | init/fallback, immediate vs debounced writes, burst coalescing, flush on pagehide and visibilitychange, quota failure reported not swallowed, private-mode degradation, all three codecs                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| `useHotkeys.ui.test.jsx`         | mod/Cmd equivalence, firing from inside the editor, suppression of unmodified bindings while typing, named keys, case-insensitivity, disable, handler swap without re-binding, unmount cleanup                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| `useFileDrop.ui.test.jsx`        | nested dragenter/dragleave balancing, **dragleave with types hidden**, **dragend on an abandoned drag**, drop delivers the file, dragover preventDefault                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| `perf.test.js`                   | a >100KB plain description, **a >100KB range/list-heavy one**, **a 150-claim claims-mode set**, **a 300-entry reference list whose entries all share three base nouns** (the shape a base-noun-only index would choke on), and **a ratio test that fails on quadratic growth regardless of runner speed**. The original corpus had no list constructs and never ran in claims mode, so two of the three quadratic paths were invisible to it                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| `App.ui.test.jsx`                | (jsdom) typing populates sidebar, dismiss removes warning, **collapsible card section toggles open/closed**, nav cycles, **click-to-cycle through a sign's occurrences (+ unfocus after last)**, RefList copy, persistence restore + reset, mode switching preserves buffers, cross-ref section, dependency card + dismissal, context-menu term extension, **the bare-term context menu** (offers extend / insert-sign / dismiss, writes the sign in — bracketed in claims mode, offers none when the term has two signs, dismisses, extends from a sign-less occurrence), language/theme toggles + persistence, dismissed-error restore, **dropped `.docx` fills both buffers + switches language + reconstructs claim numbers**, **import undo**, **export downloads the edited bytes silently when it verifies and warns with the differing line when it does not**, **legacy `.doc` rejection**, **the bee** (EN/DE bubble, no bee for a restored buffer, survives continued typing, beats reduced-motion on explicit request, two bees, no bee on language switch), **keyboard: Ctrl+[/] error nav, **same-term nav (Ctrl+Shift+↓/↑ skips the other term, wraps, follows a clicked card, stays put when the term has one error)**, Enter/Space on a card, `/` focuses the filter but not while typing, `aria-expanded`, landmarks, `<html lang>`**, **reference-list check** (match, term mismatch, stale + missing entries, persistence, auto-fill from a `.docx`), **multi-word terms from the list** (a pasted list widens a term and the panel says so; the context menu reports the width as displayed and reduces it back, storing an explicit 0; an imported `.docx` sign list widens terms in BOTH buffers), **claim-set statistics** |
 
 Manual smoke test — `npm run dev`, then paste into Description mode:
 

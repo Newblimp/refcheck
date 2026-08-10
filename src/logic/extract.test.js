@@ -1,15 +1,18 @@
 import { describe, it, expect } from 'vitest';
-import { extractData, classify, getAllErrors, detectOrdStems } from './extract.js';
+import { extractData, classify, detectOrdStems } from './extract.js';
+import { getAllErrors } from './errorSpans.js';
 import { tokenize } from './tokenize.js';
 import { stem } from './stem.js';
 import { compareSigns } from './constants.js';
+import { listTermIndex } from './listTerms.js';
 
 // Raw terms recorded for a given sign (across all its term stems).
 const rawTermsFor = (res, sign) =>
-  Object.keys(res.signData[sign].terms).flatMap(ts => [...res.termData[ts].rawTerms]);
+  Object.keys(res.signData[sign].terms).flatMap((ts) => [...res.termData[ts].rawTerms]);
 
 describe('extractData — consistency (description)', () => {
-  const text = 'The device 10 comprises a housing 12 and a cover 14. ' +
+  const text =
+    'The device 10 comprises a housing 12 and a cover 14. ' +
     'The housing 12 is made of aluminium. ' +
     'The cover 14 is secured to the housing 12 by screws 18.';
   const res = extractData(text, 'en');
@@ -56,7 +59,8 @@ describe('extractData — parenthesised sign groups "(6, 12; 13)"', () => {
     // All three signs are captured (the ";" no longer swallows 13)…
     expect(Object.keys(res.signData).sort()).toEqual(['12', '13', '6']);
     // …under the one preceding term…
-    for (const s of ['6', '12', '13']) expect(Object.keys(res.signData[s].terms)).toEqual(['klemm']);
+    for (const s of ['6', '12', '13'])
+      expect(Object.keys(res.signData[s].terms)).toEqual(['klemm']);
     // …and every one counts as written in parentheses (inPC === count).
     for (const s of ['6', '12', '13']) expect(res.signData[s].inPC).toBe(res.signData[s].count);
   });
@@ -105,10 +109,7 @@ describe('extractData — claim numbering', () => {
 
   it('flags an out-of-order / non-sequential numbering', () => {
     const bad =
-      '1. A device (1).\n' +
-      '2. A housing (2).\n' +
-      '5. A cover (3).\n' +
-      '4. A screw (4).';
+      '1. A device (1).\n' + '2. A housing (2).\n' + '5. A cover (3).\n' + '4. A screw (4).';
     const res = extractData(bad, 'en', {}, true, true);
     expect(res.numErrors).toEqual([
       { value: 5, expected: 3, start: expect.any(Number), end: expect.any(Number), key: '5#1' },
@@ -129,7 +130,7 @@ describe('extractData — claim numbering', () => {
     expect(res.numErrors).toEqual([]);
   });
 
-  it('a leading claim number does not attach to the previous claim\'s trailing word', () => {
+  it("a leading claim number does not attach to the previous claim's trailing word", () => {
     const text = '1. A device (1) made of metal.\n2. The device (1) is heavy.';
     const res = extractData(text, 'en', {}, true, true);
     // Only sign 1 (the device); no spurious "metal" sign from the leading "2."
@@ -154,7 +155,7 @@ describe('extractData — article errors', () => {
 
   it('flags an indefinite article on a later mention', () => {
     const res = extractData('A housing 12 is provided. A housing 12 is large.', 'en');
-    const repeat = res.artErrors.find(e => e.errType === 'repeat-indef');
+    const repeat = res.artErrors.find((e) => e.errType === 'repeat-indef');
     expect(repeat).toBeTruthy();
     expect(repeat.article).toBe('a');
   });
@@ -163,7 +164,7 @@ describe('extractData — article errors', () => {
 describe('extractData — bare terms', () => {
   it('flags a known term that appears without its sign', () => {
     const res = extractData('The housing 12 is shown. The housing is metallic.', 'en');
-    expect(res.bareTerms.some(bt => bt.term === 'housing')).toBe(true);
+    expect(res.bareTerms.some((bt) => bt.term === 'housing')).toBe(true);
   });
 
   it('does NOT flag a term that always carries its sign', () => {
@@ -173,14 +174,14 @@ describe('extractData — bare terms', () => {
 
   it('records the signs associated with a bare term for the hint', () => {
     const res = extractData('The cover 14 is shown. The cover is removed.', 'en');
-    const bare = res.bareTerms.find(bt => bt.term === 'cover');
+    const bare = res.bareTerms.find((bt) => bt.term === 'cover');
     expect(bare.signs).toEqual(['14']);
   });
 
   it('does not flag a term that has never been associated with a sign', () => {
     // "metal" never appears with a sign, so termData has no entry for it.
     const res = extractData('The housing 12 is made of metal. The metal is hard.', 'en');
-    expect(res.bareTerms.some(bt => bt.term === 'metal')).toBe(false);
+    expect(res.bareTerms.some((bt) => bt.term === 'metal')).toBe(false);
   });
 });
 
@@ -193,8 +194,12 @@ describe('detectOrdStems & multi-word terms', () => {
 
   it('auto-extends "first bearing" / "second bearing" into two-word terms', () => {
     const res = extractData(
-      'The first bearing 20 supports the shaft 22. The second bearing 21 is at the end.', 'en');
-    expect(Object.keys(res.signData['20'].terms)).toEqual([stem('first', 'en') + ' ' + stem('bearing', 'en')]);
+      'The first bearing 20 supports the shaft 22. The second bearing 21 is at the end.',
+      'en'
+    );
+    expect(Object.keys(res.signData['20'].terms)).toEqual([
+      stem('first', 'en') + ' ' + stem('bearing', 'en'),
+    ]);
     expect(Object.keys(res.signData['21'].terms)[0]).toContain(stem('bearing', 'en'));
     // The two bearings are distinct multi-word terms, so neither is an inconsistency.
     expect(classify('20', res.signData['20'], res.termData, 'description')).toBe('ok');
@@ -202,8 +207,13 @@ describe('detectOrdStems & multi-word terms', () => {
   });
 
   it('honours a manual multi-word override (mwo)', () => {
-    const res = extractData('The control unit 10 is here. The control unit 10 again.',
-      'en', { [stem('unit', 'en')]: 1 }, false, false);
+    const res = extractData(
+      'The control unit 10 is here. The control unit 10 again.',
+      'en',
+      { [stem('unit', 'en')]: 1 },
+      false,
+      false
+    );
     expect(Object.keys(res.signData['10'].terms)).toEqual(['control unit']);
   });
 
@@ -225,6 +235,143 @@ describe('detectOrdStems & multi-word terms', () => {
   });
 });
 
+// The drafter's own reference list already says which terms are multi-word, so
+// the extraction reads them from it instead of making them hand-extend each one.
+describe('multi-word terms from the reference list', () => {
+  const LIST = '10 device\n30 control unit\n20 first bearing surface';
+  const idx = listTermIndex(LIST, 'en');
+  const UNIT = stem('unit', 'en');
+
+  it('extends a term the list spells out', () => {
+    const res = extractData('The control unit 30 is mounted.', 'en', {}, true, false, idx);
+    expect(Object.keys(res.signData['30'].terms)).toEqual(['control unit']);
+  });
+
+  it('takes three-word terms too', () => {
+    const res = extractData('The first bearing surface 20 is flat.', 'en', {}, true, false, idx);
+    expect(Object.keys(res.signData['20'].terms)).toEqual([
+      [stem('first', 'en'), stem('bearing', 'en'), stem('surface', 'en')].join(' '),
+    ]);
+  });
+
+  it('leaves a term the list does not name that way alone', () => {
+    // Only "control unit" is listed, so a "drive unit" keeps its base noun and
+    // the two do not collapse into one term.
+    const res = extractData(
+      'The control unit 30 drives the drive unit 40.',
+      'en',
+      {},
+      true,
+      false,
+      idx
+    );
+    expect(Object.keys(res.signData['30'].terms)).toEqual(['control unit']);
+    expect(Object.keys(res.signData['40'].terms)).toEqual([UNIT]);
+  });
+
+  it('applies to bare occurrences, so a missing sign is reported for the full term', () => {
+    const res = extractData(
+      'The control unit 30 is mounted. The control unit is grey.',
+      'en',
+      {},
+      true,
+      false,
+      idx
+    );
+    const bt = res.bareTerms.find((b) => b.termStem === 'control unit');
+    expect(bt).toBeTruthy();
+    expect(bt.term).toBe('control unit');
+    expect(bt.signs).toEqual(['30']);
+  });
+
+  it('applies in claims mode as well', () => {
+    const res = extractData(
+      '1. A device (10) comprising a control unit (30).',
+      'en',
+      {},
+      true,
+      true,
+      idx
+    );
+    expect(Object.keys(res.signData['30'].terms)).toEqual(['control unit']);
+  });
+
+  it('is overridden by a manual reduction', () => {
+    // "Reduce term" writes an explicit 0, which must win over the list — a
+    // reduction that the next keystroke undoes is not a reduction at all.
+    const res = extractData(
+      'The control unit 30 is mounted.',
+      'en',
+      { [UNIT]: 0 },
+      true,
+      false,
+      idx
+    );
+    expect(Object.keys(res.signData['30'].terms)).toEqual([UNIT]);
+  });
+
+  it('is overridden by a manual extension', () => {
+    const res = extractData(
+      'The rotary control unit 30 is mounted.',
+      'en',
+      { [UNIT]: 2 },
+      true,
+      false,
+      idx
+    );
+    expect(Object.keys(res.signData['30'].terms)).toEqual(['rotari control unit']);
+  });
+
+  it('lets a manual reduction take back an ordinal-detected extension too', () => {
+    const text = 'The first bearing 20 supports the shaft 22. The second bearing 21 is here.';
+    expect(Object.keys(extractData(text, 'en').signData['20'].terms)).toEqual([
+      stem('first', 'en') + ' ' + stem('bearing', 'en'),
+    ]);
+    const res = extractData(text, 'en', { [stem('bearing', 'en')]: 0 });
+    expect(Object.keys(res.signData['20'].terms)).toEqual([stem('bearing', 'en')]);
+  });
+
+  it('keeps the ordinal detection for terms the list says nothing about', () => {
+    const res = extractData(
+      'The first bearing 20 supports the shaft 22. The second bearing 21 is here.',
+      'en',
+      {},
+      true,
+      false,
+      idx
+    );
+    expect(Object.keys(res.signData['20'].terms)).toEqual([
+      stem('first', 'en') + ' ' + stem('bearing', 'en'),
+    ]);
+  });
+
+  it('extends German terms', () => {
+    const de = listTermIndex('30 erstes Lager', 'de');
+    const res = extractData('Das erste Lager 30 trägt die Welle 22.', 'de', {}, true, false, de);
+    expect(Object.keys(res.signData['30'].terms)).toEqual([
+      [stem('erstes', 'de'), stem('Lager', 'de')].join(' '),
+    ]);
+  });
+
+  it('changes nothing when no index is passed', () => {
+    const res = extractData('The control unit 30 is mounted.', 'en');
+    expect(Object.keys(res.signData['30'].terms)).toEqual([UNIT]);
+  });
+
+  it('registers ranges under the extended term as well', () => {
+    const res = extractData(
+      'The control units 30, 32 and 34 are wired.',
+      'en',
+      {},
+      true,
+      false,
+      idx
+    );
+    for (const s of ['30', '32', '34'])
+      expect(Object.keys(res.signData[s].terms)).toEqual(['control unit']);
+  });
+});
+
 describe('extractData — trailing-letter & standalone signs', () => {
   it('keeps 12a and 12b as distinct signs', () => {
     const res = extractData('The cover 12a is here. The cover 12b is there.', 'en');
@@ -240,7 +387,9 @@ describe('extractData — trailing-letter & standalone signs', () => {
 describe('extractData — German', () => {
   it('extracts signs and stems German terms', () => {
     const res = extractData(
-      'Die Vorrichtung 10 umfasst ein Gehäuse 12. Das Gehäuse 12 besteht aus Aluminium.', 'de');
+      'Die Vorrichtung 10 umfasst ein Gehäuse 12. Das Gehäuse 12 besteht aus Aluminium.',
+      'de'
+    );
     expect(Object.keys(res.signData).sort()).toEqual(['10', '12']);
     // Singular/plural German forms collapse, so 12 has a single term stem.
     expect(Object.keys(res.signData['12'].terms)).toHaveLength(1);
@@ -248,28 +397,31 @@ describe('extractData — German', () => {
 
   it('flags a German definite article on first mention', () => {
     const res = extractData('Das Gehäuse 12 ist groß.', 'de');
-    const fd = res.artErrors.find(e => e.errType === 'first-def');
+    const fd = res.artErrors.find((e) => e.errType === 'first-def');
     expect(fd).toBeTruthy();
     expect(fd.article).toBe('das');
   });
 
   it('flags a German indefinite article on a later mention', () => {
     const res = extractData('Ein Gehäuse 12 ist da. Ein Gehäuse 12 ist hier.', 'de');
-    const ri = res.artErrors.find(e => e.errType === 'repeat-indef');
+    const ri = res.artErrors.find((e) => e.errType === 'repeat-indef');
     expect(ri).toBeTruthy();
     expect(ri.article).toBe('ein');
   });
 
   it('flags a German gender (der/die/das) conflict on the same term', () => {
-    const res = extractData('Der Deckel 14 ist da. Die Deckel 14 ist weg. Das Deckel 14 ist hier.', 'de');
-    const gender = res.artErrors.filter(e => e.errType === 'de-gender');
-    expect(gender.map(e => e.article)).toEqual(['die', 'das']);
+    const res = extractData(
+      'Der Deckel 14 ist da. Die Deckel 14 ist weg. Das Deckel 14 ist hier.',
+      'de'
+    );
+    const gender = res.artErrors.filter((e) => e.errType === 'de-gender');
+    expect(gender.map((e) => e.article)).toEqual(['die', 'das']);
     expect(gender[0].prevArt).toBe('der');
   });
 
   it('does not raise a gender conflict when the article is consistent', () => {
     const res = extractData('Der Deckel 14 ist da. Der Deckel 14 ist weg.', 'de');
-    expect(res.artErrors.some(e => e.errType === 'de-gender')).toBe(false);
+    expect(res.artErrors.some((e) => e.errType === 'de-gender')).toBe(false);
   });
 });
 
@@ -282,8 +434,7 @@ describe('extractData — prime-notation signs', () => {
 
 describe('extractData — Roman-numeral step signs', () => {
   it('detects Roman step numerals as signs, associated with their term', () => {
-    const res = extractData(
-      'The method comprises step I and step II. Step I is repeated.', 'en');
+    const res = extractData('The method comprises step I and step II. Step I is repeated.', 'en');
     expect(Object.keys(res.signData).sort(compareSigns)).toEqual(['I', 'II']);
     expect(rawTermsFor(res, 'I')).toContain('step');
   });
@@ -363,8 +514,54 @@ describe('extractData — sign ranges (endpoints only)', () => {
   it('does NOT register a German claim cross-reference (Ansprüche/Ansprüchen … bis)', () => {
     // "Anspruch"/"Ansprüche"/"Ansprüchen" and the range word "bis" are all
     // excluded, so no claim number is mistaken for a sign or a term.
-    expect(Object.keys(extractData('nach einem der Ansprüche 1 bis 4.', 'de').signData)).toEqual([]);
+    expect(Object.keys(extractData('nach einem der Ansprüche 1 bis 4.', 'de').signData)).toEqual(
+      []
+    );
     expect(Object.keys(extractData('gemäß den Ansprüchen 1 bis 4.', 'de').signData)).toEqual([]);
+  });
+  it('does NOT register "um" as a term (German, "um 10 mm nach oben")', () => {
+    const res = extractData('Das Element wird um 10 mm verschoben.', 'de');
+    expect(Object.keys(res.signData)).toEqual([]);
+  });
+  it('does NOT register English approximation words as terms (about/approximately/around/roughly)', () => {
+    expect(Object.keys(extractData('The gap is about 10 mm.', 'en').signData)).toEqual([]);
+    expect(Object.keys(extractData('The gap is approximately 10 mm.', 'en').signData)).toEqual([]);
+    expect(Object.keys(extractData('The gap is around 10 mm.', 'en').signData)).toEqual([]);
+    expect(Object.keys(extractData('The gap is roughly 10 mm.', 'en').signData)).toEqual([]);
+  });
+  it('does NOT register "wesentlichen" as a term (German, "im Wesentlichen 10")', () => {
+    const res = extractData('Das Bauteil ist im Wesentlichen 10 mm lang.', 'de');
+    expect(Object.keys(res.signData)).toEqual([]);
+  });
+  it('does NOT register "substantially" as a term (English)', () => {
+    const res = extractData('The part is substantially 10 mm long.', 'en');
+    expect(Object.keys(res.signData)).toEqual([]);
+  });
+  it('does NOT register "maximal"/"minimal" as terms (German)', () => {
+    expect(Object.keys(extractData('Der Abstand beträgt maximal 10 mm.', 'de').signData)).toEqual(
+      []
+    );
+    expect(Object.keys(extractData('Der Abstand beträgt minimal 10 mm.', 'de').signData)).toEqual(
+      []
+    );
+  });
+  it('does NOT register "maximum"/"minimum"/"maximal"/"minimal" as terms (English)', () => {
+    expect(Object.keys(extractData('The gap is maximum 10 mm.', 'en').signData)).toEqual([]);
+    expect(Object.keys(extractData('The gap is minimum 10 mm.', 'en').signData)).toEqual([]);
+    expect(Object.keys(extractData('The gap is maximal 10 mm.', 'en').signData)).toEqual([]);
+    expect(Object.keys(extractData('The gap is minimal 10 mm.', 'en').signData)).toEqual([]);
+  });
+  it('DOES register "section" as a term (English, no longer excluded)', () => {
+    expect(Object.keys(extractData('See section 10 for details.', 'en').signData)).toEqual(['10']);
+  });
+  it('does NOT register "paragraph" as a term (English, still excluded)', () => {
+    expect(Object.keys(extractData('See paragraph 10 for details.', 'en').signData)).toEqual([]);
+  });
+  it('DOES register "Abschnitt"/"Absatz" as terms (German, no longer excluded)', () => {
+    expect(Object.keys(extractData('Siehe Abschnitt 10 für Details.', 'de').signData)).toEqual([
+      '10',
+    ]);
+    expect(Object.keys(extractData('Siehe Absatz 10 für Details.', 'de').signData)).toEqual(['10']);
   });
 
   it('registers all elements of a 3+ element comma list with a conjunction', () => {
@@ -381,11 +578,16 @@ describe('extractData — sign ranges (endpoints only)', () => {
     expect(endpointsOnly('The module 18, 20 is shown.')).toEqual(['18', '20']);
   });
   it('registers a longer list of four signs', () => {
-    expect(endpointsOnly('The bolts 18, 20, 22 and 24 are used.')).toEqual(['18', '20', '22', '24']);
+    expect(endpointsOnly('The bolts 18, 20, 22 and 24 are used.')).toEqual([
+      '18',
+      '20',
+      '22',
+      '24',
+    ]);
   });
   it('shares the one preceding term across every listed sign', () => {
     const res = extractData('The screws 18, 20 and 22 hold the plate.', 'en');
-    const terms = ['18', '20', '22'].map(s => Object.keys(res.signData[s].terms)[0]);
+    const terms = ['18', '20', '22'].map((s) => Object.keys(res.signData[s].terms)[0]);
     expect(new Set(terms).size).toBe(1);
     expect(res.bareTerms).toEqual([]);
   });
@@ -405,7 +607,7 @@ describe('extractData — bracketed paragraph numbers ([0012])', () => {
 
   it('a bracketed number does not satisfy a term (bare-term flag still raised)', () => {
     const res = extractData('The housing 12 is shown. The housing [0014] is metallic.', 'en');
-    expect(res.bareTerms.some(bt => bt.termStem.includes('hous'))).toBe(true);
+    expect(res.bareTerms.some((bt) => bt.termStem.includes('hous'))).toBe(true);
   });
 
   it('a fully bracketed range/list registers no signs', () => {
@@ -457,8 +659,7 @@ describe('extractData — per-claim antecedent basis (claims mode)', () => {
 
   it('flags "the" on a term never introduced in the claim chain', () => {
     const text =
-      '1. A device (10).\n' +
-      '2. The device (10) of claim 1, wherein the seal (20) is provided.';
+      '1. A device (10).\n' + '2. The device (10) of claim 1, wherein the seal (20) is provided.';
     const res = extractData(text, 'en', {}, true, true);
     expect(res.artErrors).toHaveLength(1);
     expect(res.artErrors[0].errType).toBe('first-def');
@@ -566,21 +767,22 @@ describe('getAllErrors', () => {
     const res = extractData('The housing 12 is connected to the casing 12.', 'en');
     const errs = getAllErrors(res, 'description', new Set());
     expect(errs.length).toBeGreaterThan(0);
-    const starts = errs.map(e => e.start);
+    const starts = errs.map((e) => e.start);
     expect(starts).toEqual([...starts].sort((a, b) => a - b));
   });
 
   it('omits dismissed signs', () => {
     const res = extractData('The housing 12 is connected to the casing 12.', 'en');
     const errs = getAllErrors(res, 'description', new Set(['s:12']));
-    expect(errs.some(e => e.type === 'sign' && e.sign === '12')).toBe(false);
+    expect(errs.some((e) => e.type === 'sign' && e.sign === '12')).toBe(false);
   });
 
   it('aggregates all five error categories (sign, art, bare, num, dep)', () => {
-    const text = '1. A device 10 according to claim 9.\n3. The housing 12 is here. The housing is metal.';
+    const text =
+      '1. A device 10 according to claim 9.\n3. The housing 12 is here. The housing is metal.';
     const res = extractData(text, 'en', {}, true, true);
     const errs = getAllErrors(res, 'claims', new Set());
-    const types = new Set(errs.map(e => e.type));
+    const types = new Set(errs.map((e) => e.type));
     expect(types).toEqual(new Set(['sign', 'art', 'bare', 'num', 'dep']));
   });
 
@@ -589,7 +791,7 @@ describe('getAllErrors', () => {
     const res = extractData(text, 'en', {}, true, true);
     const ne = res.numErrors[0];
     const errs = getAllErrors(res, 'claims', new Set(['n:' + ne.key]));
-    expect(errs.some(e => e.type === 'num')).toBe(false);
+    expect(errs.some((e) => e.type === 'num')).toBe(false);
   });
 
   it('omits a dismissed dependency error by its key', () => {
@@ -597,6 +799,94 @@ describe('getAllErrors', () => {
     const res = extractData(text, 'en', {}, true, true);
     const de = res.depErrors[0];
     const errs = getAllErrors(res, 'claims', new Set(['d:' + de.key]));
-    expect(errs.some(e => e.type === 'dep')).toBe(false);
+    expect(errs.some((e) => e.type === 'dep')).toBe(false);
+  });
+});
+
+describe('shared list connectors', () => {
+  // The sign-list scan and the claim-reference parser had drifted apart: the
+  // sign scan was missing or/oder/through, so only the first sign of "18 or 22"
+  // was registered under the shared term. Both now share one vocabulary.
+  it('registers both signs of an "or" list under the shared term', () => {
+    const res = extractData('A device comprising the bearings 18 or 22.');
+    expect(res.signData['18']).toBeDefined();
+    expect(res.signData['22']).toBeDefined();
+    expect(Object.keys(res.signData['22'].terms)[0]).toBe(Object.keys(res.signData['18'].terms)[0]);
+  });
+
+  it('handles the German "oder"', () => {
+    const res = extractData('Eine Vorrichtung mit den Lagern 18 oder 22.', 'de');
+    expect(res.signData['18']).toBeDefined();
+    expect(res.signData['22']).toBeDefined();
+  });
+
+  it('handles "through" as a range word', () => {
+    const res = extractData('A device comprising the bearings 18 through 22.');
+    expect(res.signData['18']).toBeDefined();
+    expect(res.signData['22']).toBeDefined();
+  });
+
+  it('still keeps distinct terms apart across a connector', () => {
+    // The digit-connector-digit adjacency rule must survive the wider vocabulary:
+    // a word between the connector and the second number means two terms.
+    const res = extractData('A housing 12 or a cover 14 is provided.');
+    expect(Object.keys(res.signData['12'].terms)).toEqual(['hous']);
+    expect(Object.keys(res.signData['14'].terms)).toEqual(['cover']);
+  });
+});
+
+describe('autoMW = false', () => {
+  // Every other call site in the suite passes true or defaults, so the branch
+  // that skips ordinal detection entirely was never executed by a test.
+  const TEXT = 'A first bearing 20 supports the shaft. A second bearing 21 is at the end.';
+
+  it('does not auto-extend ordinal terms when disabled', () => {
+    const off = extractData(TEXT, 'en', {}, false, false);
+    // Without ordinal detection both bearings collapse onto the same term...
+    expect(Object.keys(off.signData['20'].terms)).toEqual(['bear']);
+    expect(Object.keys(off.signData['21'].terms)).toEqual(['bear']);
+  });
+
+  it('auto-extends them when enabled', () => {
+    const on = extractData(TEXT, 'en', {}, true, false);
+    expect(Object.keys(on.signData['20'].terms)).toEqual(['first bear']);
+    expect(Object.keys(on.signData['21'].terms)).toEqual(['second bear']);
+  });
+
+  it('still honours an explicit multi-word override with autoMW off', () => {
+    const off = extractData(TEXT, 'en', { bear: 1 }, false, false);
+    expect(Object.keys(off.signData['20'].terms)).toEqual(['first bear']);
+  });
+});
+
+describe('bracketed paragraph numbers', () => {
+  // The "bracket on either side" rule is subtle enough to pin directly rather
+  // than only through its effect on a whole extraction.
+  it('ignores a fully bracketed number', () => {
+    const res = extractData('The housing [0012] is shown.');
+    expect(res.signData['0012']).toBeUndefined();
+  });
+
+  it('ignores both members of a bracketed range', () => {
+    const res = extractData('See the housing [0012]-[0015] for detail.');
+    expect(res.signData['0012']).toBeUndefined();
+    expect(res.signData['0015']).toBeUndefined();
+  });
+
+  it('ignores every member of a bracketed list', () => {
+    const res = extractData('The housing [18, 20] is shown.');
+    expect(res.signData['18']).toBeUndefined();
+    expect(res.signData['20']).toBeUndefined();
+  });
+
+  it('still detects an unbracketed sign in the same sentence', () => {
+    const res = extractData('The housing 12 is shown in paragraph [0012].');
+    expect(res.signData['12']).toBeDefined();
+    expect(res.signData['0012']).toBeUndefined();
+  });
+
+  it('does not let a bracketed number satisfy a bare term', () => {
+    const res = extractData('A housing 12 is shown. The housing [0012] is aluminium.');
+    expect(res.bareTerms.some((b) => b.termStem === 'hous')).toBe(true);
   });
 });
