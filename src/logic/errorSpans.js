@@ -22,6 +22,7 @@ import { disKey } from './constants.js';
  * @property {number} end
  * @property {string} [sign]     'sign'/'signTerm' only
  * @property {'warn'|'ok'|'dis'} [sev]  'sign' only
+ * @property {string} [term]     Stemmed term this span is about, where it has one
  * @property {Object} [item]     The originating error record, for the rest
  */
 
@@ -44,19 +45,26 @@ export function eachErrorSpan(res, mode, dis, visit) {
   for (const [sign, sData] of Object.entries(signData)) {
     const sev = dis.has(disKey.sign(sign)) ? 'dis' : classify(sign, sData, termData, mode);
     for (const p of sData.positions) {
-      visit({ kind: 'sign', start: p.signStart, end: p.signEnd, sign, sev });
+      visit({ kind: 'sign', start: p.signStart, end: p.signEnd, sign, sev, term: p.termStem });
       // The term a warned sign is attached to is highlighted alongside it.
       if (sev === 'warn')
-        visit({ kind: 'signTerm', start: p.termStart, end: p.termEnd, sign, sev });
+        visit({
+          kind: 'signTerm',
+          start: p.termStart,
+          end: p.termEnd,
+          sign,
+          sev,
+          term: p.termStem,
+        });
     }
   }
   for (const ae of artErrors) {
     if (dis.has(disKey.art(ae.termStem))) continue;
-    visit({ kind: 'art', start: ae.artStart, end: ae.artEnd, item: ae });
+    visit({ kind: 'art', start: ae.artStart, end: ae.artEnd, term: ae.termStem, item: ae });
   }
   for (const bt of bareTerms) {
     if (dis.has(disKey.bare(bt.termStem))) continue;
-    visit({ kind: 'bare', start: bt.termStart, end: bt.termEnd, item: bt });
+    visit({ kind: 'bare', start: bt.termStart, end: bt.termEnd, term: bt.termStem, item: bt });
   }
   for (const ne of numErrors) {
     if (dis.has(disKey.num(ne.key))) continue;
@@ -87,11 +95,40 @@ export function getAllErrors(res, mode, dis) {
     if (sp.kind === 'signTerm') return; // the sign itself is the navigation target
     if (sp.kind === 'sign') {
       if (sp.sev !== 'warn') return;
-      out.push({ type: 'sign', start: sp.start, end: sp.end, sign: sp.sign });
+      out.push({
+        type: 'sign',
+        start: sp.start,
+        end: sp.end,
+        sign: sp.sign,
+        term: sp.term ?? null,
+      });
       return;
     }
-    out.push({ type: sp.kind, start: sp.start, end: sp.end, [NAV_PROP[sp.kind]]: sp.item });
+    out.push({
+      type: sp.kind,
+      start: sp.start,
+      end: sp.end,
+      term: sp.term ?? null,
+      [NAV_PROP[sp.kind]]: sp.item,
+    });
   });
   out.sort((a, b) => a.start - b.start);
   return out;
+}
+
+/**
+ * Grouping key for "jump to the next error about the same term" navigation
+ * (Ctrl+Shift+↓/↑).
+ *
+ * Everything that names a term groups by its STEM, so an inconsistent sign, the
+ * article in front of it and a bare occurrence of the same noun all belong to
+ * one group — that is what makes stepping through "banana" skip "kiwi". Claim
+ * numbering and dependency errors have no term at all; they group by category
+ * rather than sharing one nameless bucket, which would make the jump behave like
+ * the plain next-error arrow for them.
+ *
+ * @param {{type: string, term?: string|null}} e  An entry from getAllErrors
+ */
+export function errorGroup(e) {
+  return e?.term ? `t:${e.term}` : `k:${e?.type}`;
 }

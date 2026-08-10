@@ -1,7 +1,7 @@
 import { useState, useRef, useCallback, useEffect, useLayoutEffect, useMemo } from 'react';
 import { T } from '../i18n.js';
 import { extractData, classify } from '../logic/extract.js';
-import { getAllErrors } from '../logic/errorSpans.js';
+import { getAllErrors, errorGroup } from '../logic/errorSpans.js';
 import { buildHtml, findAtPos } from '../logic/buildHtml.js';
 import { computeCrossRef } from '../logic/crossref.js';
 import { reconcileRefList } from '../logic/reconcile.js';
@@ -105,6 +105,9 @@ export function App() {
   // Occurrence cursor for click-to-cycle on the sidebar error cards: which
   // occurrence of the currently-focused error the next click should advance from.
   const focusOcc = useRef({ id: null, idx: 0 });
+  // Caret position to restore once an edit the app made itself (inserting a
+  // reference sign) has been committed to the textarea.
+  const pendingCaret = useRef(null);
   const t = T[lang];
 
   // Debounce the expensive extraction on large documents; the textarea value
@@ -140,6 +143,19 @@ export function App() {
   const claimSetStats = useMemo(() => claimStats(claimsResult?.claimGraph), [claimsResult]);
 
   useEffect(() => setNavIdx(0), [allErrors.length]);
+
+  // Put the caret back after an edit the app made on the user's behalf. The
+  // textarea is controlled, so the new value only exists after this commit —
+  // setting the selection inside the click handler would move it in the old one.
+  useEffect(() => {
+    const at = pendingCaret.current;
+    if (at == null) return;
+    pendingCaret.current = null;
+    const ta = taRef.current;
+    if (!ta) return;
+    ta.focus();
+    ta.setSelectionRange(at, at);
+  }, [text]);
 
   // Keep <html lang> in step with the checking language. It was hardcoded to
   // "en" in index.html, so screen readers announced German patent text with
@@ -399,14 +415,51 @@ export function App() {
     [focusCycle]
   );
 
-  function navigate(dir) {
-    if (!allErrors.length) return;
-    const next = (navIdx + dir + allErrors.length) % allErrors.length;
-    setNavIdx(next);
-    const e = allErrors[next];
+  function goToError(idx) {
+    const e = allErrors[idx];
+    if (!e) return;
+    setNavIdx(idx);
     scrollTo(e.start, e.end);
     setFocus({ type: e.type, key: e.type === 'sign' ? e.sign : e.start });
     focusOcc.current = { id: null, idx: 0 }; // arrows drive their own cursor; restart card-cycling
+  }
+
+  function navigate(dir) {
+    if (!allErrors.length) return;
+    goToError((navIdx + dir + allErrors.length) % allErrors.length);
+  }
+
+  // Which error a jump measures from. The arrows own navIdx, but a sidebar card
+  // click focuses an error without moving it — so when the focus points at a
+  // different error than navIdx does, the focus is the more recent intent.
+  function anchorIdx() {
+    const f = focusRef.current;
+    if (!f) return navIdx;
+    const matches = (e) =>
+      e.type === f.type && (e.type === 'sign' ? e.sign === f.key : e.start === f.key);
+    if (matches(allErrors[navIdx] || {})) return navIdx;
+    const i = allErrors.findIndex(matches);
+    return i >= 0 ? i : navIdx;
+  }
+
+  // Ctrl+Shift+↓/↑: the next error about the SAME term, skipping everything
+  // else — stepping through every faulty "banana" without wading through the
+  // "kiwi" errors between them. Errors with no term (claim numbering,
+  // dependencies) step within their own category; see errorGroup.
+  function navigateTerm(dir) {
+    const n = allErrors.length;
+    if (!n) return;
+    const from = anchorIdx();
+    const group = errorGroup(allErrors[from]);
+    // Walk outwards, wrapping. `step === n` lands back on `from`, so a term with
+    // a single error simply stays put instead of jumping to an unrelated one.
+    for (let step = 1; step <= n; step++) {
+      const i = (((from + dir * step) % n) + n) % n;
+      if (errorGroup(allErrors[i]) === group) {
+        goToError(i);
+        return;
+      }
+    }
   }
 
   // Keyboard shortcuts. Every binding takes Ctrl/Cmd, because the editor holds
@@ -432,6 +485,8 @@ export function App() {
   useHotkeys({
     'mod+ArrowDown': () => navigate(1),
     'mod+ArrowUp': () => navigate(-1),
+    'mod+shift+ArrowDown': () => navigateTerm(1),
+    'mod+shift+ArrowUp': () => navigateTerm(-1),
     'mod+f': () => searchRef.current?.focus(),
     'mod+m': toggleMode,
     'mod+b': () => setPanes((p) => ({ ...p, left: !p.left })),
@@ -469,24 +524,57 @@ export function App() {
   }
   const restoreAll = useCallback(() => setDis(new Set()), [setDis]);
 
+  // Menu title for whatever the right-click landed on.
+  const ctxLabel = (found) => {
+    if (found.type === 'sign') return `Sign ${found.sign}`;
+    if (found.type === 'bare') return t.ctxTermLbl(found.bt.term);
+    return `Article: ${found.ae?.article}`;
+  };
+
   function handleCtxMenu(e) {
     e.preventDefault();
     const pos = taRef.current?.selectionStart ?? 0;
-    const found = findAtPos(pos, signData, artErrors);
+    const found = findAtPos(pos, signData, artErrors, bareTerms);
     if (!found) return;
     const items = [];
-    if (found.type === 'sign') {
-      const { sign, pos: p } = found;
-      const bs = stem(p.term.split(' ').pop(), lang);
+    // Extending or reducing a term is a property of the term, not of the sign
+    // next to it — so a bare occurrence offers it just as a sign-attached one
+    // does, keyed on the same base stem.
+    const termItems = (rawTerm) => {
+      const bs = stem(rawTerm.split(' ').pop(), lang);
       const cur = 1 + (mwo[bs] || 0);
       items.push({ label: t.extendTerm(cur), a: 'extend', d: { bs } });
       if (cur > 1) items.push({ label: t.reduceTerm, a: 'reduce', d: { bs } });
+    };
+    if (found.type === 'sign') {
+      const { sign, pos: p } = found;
+      termItems(p.term);
       items.push({ sep: true });
       const isDis = dis.has(disKey.sign(sign));
       items.push({
         label: isDis ? `↩ Restore "${sign}"` : t.disSign(sign),
         a: 'toggle-dis',
         d: { key: disKey.sign(sign) },
+      });
+    } else if (found.type === 'bare') {
+      const { bt } = found;
+      termItems(bt.term);
+      // Writing the sign in is only offered when the term has exactly one — with
+      // two or more, choosing between them is the drafter's call, not ours.
+      if (bt.signs.length === 1) {
+        items.push({ sep: true });
+        items.push({
+          label: t.insertSign(bt.signs[0]),
+          a: 'insert-sign',
+          d: { bt, sign: bt.signs[0] },
+        });
+      }
+      items.push({ sep: true });
+      const key = disKey.bare(bt.termStem);
+      items.push({
+        label: dis.has(key) ? `↩ ${t.restoreOne}` : t.disBare(bt.term),
+        a: 'toggle-dis',
+        d: { key },
       });
     } else {
       const { ae } = found;
@@ -500,12 +588,27 @@ export function App() {
     items.push({ sep: true });
     items.push({ label: t.disAll, a: 'dis-all', v: 'warn' });
     if (disCt) items.push({ label: `↩ ${t.restoreAll} (${disCt})`, a: 'restore-all' });
-    setCtx({
-      x: e.clientX,
-      y: e.clientY,
-      items,
-      label: found.type === 'sign' ? `Sign ${found.sign}` : `Article: ${found.ae?.article}`,
-    });
+    setCtx({ x: e.clientX, y: e.clientY, items, label: ctxLabel(found) });
+  }
+
+  /**
+   * Write a bare term's reference sign into the text, right after the term.
+   * Claims mode brackets it, because a bare sign there is an error of its own.
+   */
+  function insertSign(bt, sign) {
+    const cur = textRef.current;
+    // The spans come from the (debounced) extraction, so the buffer may have
+    // moved on. Check the term is still where it was said to be rather than
+    // splicing a sign into the middle of some other word.
+    const at = cur.slice(bt.termStart, bt.termEnd).toLowerCase().replace(/\s+/g, ' ');
+    if (at !== bt.term) return;
+    const ins = mode === 'claims' ? ` (${sign})` : ` ${sign}`;
+    const next = cur.slice(0, bt.termEnd) + ins + cur.slice(bt.termEnd);
+    (mode === 'description' ? setDescText : setClaimsText)(next);
+    setFocus(null);
+    // Leave the caret after what was just written, so the drafter carries on
+    // where they were reading. Applied once the new value has been committed.
+    pendingCaret.current = bt.termEnd + ins.length;
   }
 
   function handleCtxAction(a, d) {
@@ -516,6 +619,7 @@ export function App() {
         n[d.bs] > 1 ? n[d.bs]-- : delete n[d.bs];
         return n;
       });
+    else if (a === 'insert-sign') insertSign(d.bt, d.sign);
     else if (a === 'toggle-dis') toggleDis(d.key);
     else if (a === 'dis-all') disAll();
     else if (a === 'restore-all') restoreAll();
