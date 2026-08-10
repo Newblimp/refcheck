@@ -2,6 +2,15 @@
 
 _Structure, dataflow and processing logic; whether a big-picture restructuring is warranted._
 
+> **Status: all four steps in §5 are implemented.** The nine-file cost of adding an error
+> category is now three files (`logic/errorKinds.js` is the table); `ArtCard`/`BareCard`/
+> `NumCard`/`DepCard` are one `ErrorCard`; `App.jsx` is 682 lines (from 1,192) with the
+> `.docx` flow, the editor DOM work and the context menu extracted; and `npm run typecheck`
+> checks the logic layer from its JSDoc. The suite went 649 → 668 tests, all green, and the
+> `.docx` pipeline was not touched. The analysis below is kept as written — it is the
+> reasoning the changes were made from, including the parts that argued against changing
+> things.
+
 ## Verdict
 
 **No rewrite. No re-architecture.** The load-bearing decisions in this codebase are correct, and

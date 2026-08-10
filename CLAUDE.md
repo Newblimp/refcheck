@@ -22,7 +22,9 @@ Patent documents must maintain strict consistency between reference signs (numer
 ## Architecture
 
 A React 18 + Vite project. The UI (JSX components) is separated from the pure
-parsing/validation logic so the logic can be unit-tested in Node with no DOM.
+parsing/validation logic so the logic can be unit-tested in Node with no DOM. That seam is
+real and worth keeping real: nothing outside `logic/` imports fflate or touches OOXML,
+which is why the whole suite runs in about ten seconds.
 Styling uses CSS custom properties for theming. The production bundle is built to
 `dist/` and published to GitHub Pages by `.github/workflows/deploy.yml`. The app
 runs fully client-side and is self-contained after the first load — see Offline
@@ -88,10 +90,18 @@ src/
     blankEdges.js       blankEdges / trimBlankEdges — the blank-line trimming rule that
                         docSplit and docx/write MUST agree on, or round-trip export
                         diffs against text the user never saw
-    errorSpans.js       eachErrorSpan + getAllErrors — ONE traversal of the five error
-                        categories, consumed by buildHtml AND the error navigator; add
-                        a sixth error type here, not in two places. Also errorGroup,
-                        the "same term" bucket the Ctrl+Shift+↓/↑ jump steps within
+    errorKinds.js       ERROR_KINDS — the table of error categories, and the ONE place
+                        that knows a category exists. Adding one is a new row here plus
+                        its production in extract.js, its i18n keys and its two colour
+                        tokens; nothing else. Never derive the dismissal prefixes from
+                        the id (they are a storage format — see Error Categories below)
+    errorSpans.js       eachErrorSpan + getAllErrors — ONE traversal of the error
+                        categories, consumed by buildHtml AND the error navigator; it
+                        loops ERROR_KINDS rather than naming them. Also errorGroup, the
+                        "same term" bucket the Ctrl+Shift+↓/↑ jump steps within
+    ctxMenuItems.js     What the editor's right-click menu offers for whatever sits at
+                        the caret. Pure, so it is testable without mounting the app —
+                        deliberately per-category, NOT driven by ERROR_KINDS
     fileKind.js         fileKind alone, so classifying a dropped file does not pull in
                         the lazily-loaded .docx chunk
     refListParse.js     parseRefList — reads a drafter's reference-sign list
@@ -124,6 +134,13 @@ src/
   hooks/
     useDebounced.js     Debounce hook (defers extraction on large docs; a delay of
                         0 passes the value through with zero extra renders)
+    useEditorSync.js    The imperative half of the editor: scroll mirroring, the
+                        per-sign mark index behind hover highlighting, scroll-to-span
+                        and the caret restore. The only place that touches the DOM
+    useDocumentIO.js    The whole .docx round trip — import, export, undo, file
+                        picking, the banner report. It does NOT own the buffers: it
+                        reads them through `buffers` and writes through `apply`, so
+                        App keeps deciding what loading a document means elsewhere
     usePersistentState.js  useState + localStorage (codecs: jsonCodec/setCodec/oneOf).
                         Optional {debounce, onError}: the text buffers debounce their
                         writes and flush on pagehide/visibilitychange
@@ -137,16 +154,18 @@ src/
   test/
     setup.js            Vitest setup (jest-dom + matchMedia/clipboard stubs)
   components/           React components
-    App.jsx             Application state, editor pane, status bar
+    App.jsx             Application state and wiring, editor pane
+    TopBar.jsx          Logo, file actions, theme/mode/language toggles, help button
+    StatusBar.jsx       Error-count chips, prev/next stepper, restore-all
+    icons.jsx           The inline SVGs, out of the components that use them
     Sidebar.jsx         Overview pane (stats, search, card sections) — presentational
     RefPane.jsx         Left pane: the derived numeral list + the drafter's own list
     Section.jsx         The collapsible ▾/▸ section header, shared by both panes
     HelpDialog.jsx      Usage guide + keybindings (the app's only focus trap)
     SignCard.jsx        A reference sign with its associated terms
-    ArtCard.jsx         Article-usage / antecedent-basis errors
-    BareCard.jsx        Missing-sign (bare term) errors
-    NumCard.jsx         Claim-numbering errors
-    DepCard.jsx         Claim-dependency errors
+    ErrorCard.jsx       ONE card for all four non-sign categories, driven by its
+                        ERROR_KINDS row. Replaced ArtCard/BareCard/NumCard/DepCard,
+                        which were the same component four times over
     RefList.jsx         Collapsible reference numeral list + copy
     CtxMenu.jsx         Right-click context menu
     DropOverlay.jsx     Drag-over affordance (pointer-events:none — the editor
@@ -167,7 +186,9 @@ src/
 | `tokenize()`                              | `logic/tokenize.js`            | Splits text into word/number tokens                                                                                         |
 | `extractData()`                           | `logic/extract.js`             | Extracts signs, terms, article usage, bare terms, numbering + dependency errors                                             |
 | `classify()`                              | `logic/extract.js`             | Determines if a sign has errors                                                                                             |
-| `eachErrorSpan()`                         | `logic/errorSpans.js`          | The single walk over all five error categories; `buildHtml` and `getAllErrors` both consume it                              |
+| `ERROR_KINDS`                             | `logic/errorKinds.js`          | The table of error categories — the single place that knows one exists (see Error Categories)                               |
+| `eachErrorSpan()`                         | `logic/errorSpans.js`          | The single walk over all error categories; `buildHtml` and `getAllErrors` both consume it                                   |
+| `ctxMenuItems()`                          | `logic/ctxMenuItems.js`        | What the editor's right-click menu offers for whatever `findAtPos` reports at the caret                                     |
 | `getAllErrors()`                          | `logic/errorSpans.js`          | Collects all error positions for navigation — signature `(result, mode, dis)`; each entry names its `term`                  |
 | `errorGroup()`                            | `logic/errorSpans.js`          | The "same term" bucket for Ctrl+Shift+↓/↑ — the term stem, or the category for errors that have no term                     |
 | `computeClaimGraph()`                     | `logic/claims.js`              | Claim spans, dependency refs, transitive ancestor sets, `depErrors`, and `direct` (per-claim parents, used by `claimStats`) |
@@ -529,6 +550,45 @@ use `xmlFault` (`docx/fixture.js`) for that.
 - Two side panes means **two `complementary` landmarks**, so both are named; an unnamed
   pair is indistinguishable to a screen reader jumping between them
 
+### Error Categories (`logic/errorKinds.js`)
+
+The four non-sign error categories — **article**, **missing sign**, **claim numbering**,
+**claim dependency** — are rows in one table rather than parallel code in nine files.
+Each row names where `extractData` puts the records, how to identify one for dismissal,
+its span, its term (or `null`), its highlight class, its search predicate, and the
+presentation data (glyph, colour token, i18n keys, message formatter).
+
+**Adding a category** is: produce it in `extract.js`, add a row, add its i18n keys, and
+define `--<color>` / `--<color>-bg` in both themes. `errorSpans.js`, `buildHtml.js`,
+`App.jsx`, `Sidebar.jsx`, `ErrorCard.jsx` and the status bar all pick it up by looping the
+table. That used to be a nine-file edit; it is a three-file one now.
+
+The rows carry UI data as well as logic on purpose. They are plain strings and pure
+functions, so the module stays framework-free and still runs under the node test env —
+and splitting them into a second table under `components/` would recreate exactly the
+two-places-to-edit problem the table removes. `message(item, t)` takes the resolved
+strings as an argument, so nothing here imports i18n or React.
+
+Three things must not be "simplified", each guarded by `errorKinds.test.js`:
+
+1. **The dismissal prefixes are a storage format.** `s:` `a:` `b:` `n:` `d:` live in
+   users' `localStorage` under `rsc_dis`. They stay literal in `disKey`
+   (`constants.js`) and are referenced by name. They happen to be first letters, so
+   deriving them from `id` would work today and silently discard every stored dismissal
+   the first time a category is added whose initial collides.
+2. **`focus.key` is not uniform.** It is the sign string for `sign` and a character
+   offset for every other kind. `focusCycle`, `anchorIdx` and each card's `focused`
+   comparison depend on that asymmetry.
+3. **`navProp`** is the property `getAllErrors` carries the raw record under
+   (`ae`/`bt`/`ne`/`de`); `App.jsx` and the tests read those by name.
+
+**Signs are deliberately not a row.** They carry a severity, several occurrences, a
+term-conflict story and their own card, so every consumer special-cases them anyway; a row
+would be mostly unused fields plus consumers that still branch. The same reasoning keeps
+`ctxMenuItems.js` per-category: a sign offers extend/reduce plus dismissal, a bare term
+additionally offers writing the missing sign in, an article offers only dismissal — there
+is no uniform behaviour there for a table to drive.
+
 ### Error Management
 
 - Every card section in the sidebar (Inconsistencies, Article Errors, Missing Signs, Claim numbering, Claim Dependencies, Consistent, Dismissed, Cross-reference) is **collapsible**, styled like the Reference list's own header (▾/▸ arrow, icon, label, count). Click the header to toggle; a section hides itself entirely when its count is 0 rather than being unmounted by the caller, so a toggle survives the count dropping to 0 and back. `Section` (a local helper in `Sidebar.jsx`) owns the open/closed state, defaulting to open
@@ -751,7 +811,7 @@ All access goes through `hooks/usePersistentState.js`.
       than the muted tier and inverts the hierarchy
 - [x] `--info` (soft blue) for genuinely informational content — the claim-set panel, which
       must not look like an error
-- [ ] "All consistent" message is hardcoded in English
+- [x] "All consistent" is an i18n key (`allConsistent`) in both languages
 
 ### Performance
 
@@ -858,8 +918,9 @@ React + Vite. Common commands:
 ```bash
 npm install      # first-time setup
 npm run dev      # dev server with hot reload
-npm test         # run the Vitest unit tests
-npm run format   # prettier --write . (CI runs format:check before the tests)
+npm test           # run the Vitest unit tests
+npm run typecheck  # checkJs over src/logic/ + build/ (see jsconfig.json)
+npm run format     # prettier --write . (CI runs format:check before the tests)
 npm run build    # production bundle → dist/
 npm run preview  # serve the production build locally
 ```
@@ -883,11 +944,19 @@ Actions"** in Settings → Pages. The Vite `base` is `/refcheck/` (project-site 
 
 ### Testing
 
-Run with `npm test` (currently **649 tests**). Logic tests run under the fast `node`
+Run with `npm test` (currently **668 tests**). Logic tests run under the fast `node`
 environment; only `*.ui.test.jsx` files run under `jsdom` (scoped via
 `environmentMatchGlobs` in `vite.config.js`, with `src/test/setup.js` providing the
 jest-dom matchers and `matchMedia`/`clipboard` stubs). The `include` glob covers
 `build/` as well as `src/`, so the service-worker precache generator is tested too.
+
+Types are checked too: `npm run typecheck` runs `tsc` over `src/logic/` and `build/` with
+`checkJs`, driven entirely by the JSDoc already in those files — no `.ts` files, no build
+step. `strict` is off on purpose (this is a checker retrofitted onto working code, so the
+useful signal is "this property does not exist", not several hundred implicit-any
+reports), and it is scoped to the logic layer because that is where the typedefs are and
+where a wrong shape is expensive. It caught five typedefs that had drifted from what their
+function actually returned. CI runs it before the tests.
 
 Formatting is enforced: `.prettierrc` exists and CI runs `npm run format:check` before
 the tests. Keep it green — 51 of ~55 files once violated the repo's own config because
@@ -920,6 +989,8 @@ Coverage by area:
 | `beeFlight.test.js`              | spawn off each of the four edges, entering/`entered`, jagged path (heading reversals), bounded speed, lifespan → `leaving`, exit through any side, hard age cap, `countBees` (word boundary, plural, `beetle` negative, DE `Biene`/`Bienen` gated on language, `Bienenstock` negative)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
 | `i18n.test.js`                   | EN/DE key parity + matching value types                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
 | `palette.test.js`                | contrast of every foreground token against `--bg`/`--surface`/`--surface2` in both themes at the 4.5:1 AA bar, plus the `text > muted > dim` ramp ordering. Contrast is invisible to every other kind of test, which is why two outright failures survived until now                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| `errorKinds.test.js`             | The registry's invariants: unique ids, **the historical dismissal prefixes (`s:` `a:` `b:` `n:` `d:`) — the storage-format guard, which is the one thing a naive "simplification" here would break silently**, the historical `getAllErrors` property names, a field the extractor actually fills, well-formed spans, term-vs-null per kind, a non-empty message in both languages, i18n keys that exist, search predicates that reject a non-match, and **both colour tokens defined in both themes** (the card takes its colour from those, so they are the entire stylesheet cost of a category)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| `ctxMenuItems.test.js`           | The editor's right-click menu, which previously could only be exercised by mounting the app: nothing actionable at the caret, sign vs bare term vs article, reduce offered only once a term is wider than its base noun, insert-sign offered for one sign and withheld for two, dismissed entries flipping to Restore, restore-all appearing only when something is dismissed, and German labels                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
 | `errorSpans.test.js`             | severity per sign, `signTerm` spans only for warned signs, a dismissed sign kept as `dis` for the backdrop while the navigator drops it, all five categories, document order, **the `term` each error names (a sign by the term of ITS occurrence, `null` where there is none)**, **`errorGroup` bucketing — one term's errors together, two terms apart, term-less errors by category** — **and that every highlight class the logic emits is actually defined in `styles.css`**                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
 | `reconcile.test.js`              | `parseRefList` (separator forms, multi-word terms, primed/suffixed signs, non-list lines skipped, duplicates) and `reconcileRefList` (clean list, listed-not-used, used-not-listed, term mismatch, plural/case tolerance, numeric sort, DE)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
 | `listTerms.test.js`              | `listTermIndex` (multi-word entries only, punctuation and stray signs dropped, stemmed duplicates collapsed, over-long phrases ignored, DE, and that layout-only edits keep the same `sig` while a real term change does not), `listExtra` (match, longest-wins, a different modifier, inflections, phrase longer than the words available) and `appliedListTerms` (list order, and a hand-reduced term dropping out)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
