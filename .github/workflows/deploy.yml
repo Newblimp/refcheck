@@ -30,6 +30,10 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run format:check
+      # checkJs over src/logic/ — see jsconfig.json. It caught five typedefs
+      # that had drifted from what their function actually returned, so it runs
+      # here rather than being something you remember to do.
+      - run: npm run typecheck
       - run: npm test
       - run: npm run build
 

@@ -77,13 +77,16 @@ export function exportPatentDoc(imported, buffers, opts = {}) {
     // check covers the third buffer rather than the two it used to.
     const bytes = writeDocx(imported.doc, write);
     const check = verifyExport(bytes, buffers);
+    // `'reason' in can` rather than `!can.ok`: an `in` check narrows the union
+    // to the member that actually carries the property.
+    const refListStatus = 'reason' in can ? can.reason : unchanged ? 'unchanged' : 'written';
     return {
       bytes,
       mode: 'roundTrip',
       verified: check.ok,
       diffs: check.diffs,
       verifyError: check.error,
-      refList: can.ok ? (unchanged ? 'unchanged' : 'written') : can.reason,
+      refList: refListStatus,
     };
   }
   const sections = [];

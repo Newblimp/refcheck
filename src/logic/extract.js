@@ -466,9 +466,11 @@ function findSignGroups(text) {
 export function extractData(text, lang, mwo = {}, autoMW = true, isClaims = false, listIdx = null) {
   const toks = tokenize(text);
   const ordStems = autoMW ? detectOrdStems(toks, lang, text, isClaims) : new Set();
-  const signData = {},
-    termData = {},
-    artByTerm = {},
+  /** @type {Object<string, SignEntry>} */
+  const signData = {};
+  /** @type {Object<string, TermEntry>} */
+  const termData = {};
+  const artByTerm = {},
     termFirstPos = {};
   const termPositions = {}; // termStem → [termStart, …] (every sign-attached occurrence)
   const claimNums = [];

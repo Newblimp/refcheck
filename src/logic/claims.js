@@ -96,13 +96,20 @@ export function parseClaimRefs(body, offset = 0) {
 
 /**
  * Build the full claim graph for a claims buffer.
+ *
+ * `direct` (each claim's immediate parents) is part of the contract, not an
+ * implementation detail: claimStats reads it to tell an independent claim from a
+ * dependent one and to spot multiple dependency, without re-parsing.
+ *
  * @returns {{claims: ClaimSpan[], ancestors: Map<number, Set<number>>,
- *            depErrors: DepError[]} | null} null when there are no claims.
+ *            depErrors: DepError[], direct: Map<number, Set<number>>} | null}
+ *   null when there are no claims.
  */
 export function computeClaimGraph(text, claimNums) {
   if (!claimNums || claimNums.length === 0) return null;
   const claims = segmentClaims(text, claimNums);
   const claimSet = new Set(claims.map((c) => c.num));
+  /** @type {DepError[]} */
   const depErrors = [];
   const direct = new Map(); // claim num → Set of direct parent nums
   const keyCount = {};
@@ -112,6 +119,7 @@ export function computeClaimGraph(text, claimNums) {
     const parents = direct.get(c.num) || new Set();
     if (allPreceding) for (const o of claims) if (o.num < c.num) parents.add(o.num);
     for (const r of refs) {
+      /** @type {'missing'|'self'|'forward'|null} */
       const type = !claimSet.has(r.num)
         ? 'missing'
         : r.num === c.num

@@ -26,6 +26,8 @@ import { parseRefList } from './refListParse.js';
  * @property {{sign: string, terms: string[]}[]} duplicates  Same sign twice in the list
  * @property {number} listed  Total entries parsed, for the "n of m match" summary
  * @property {number} matched
+ * @property {boolean} hasAny  Whether there is anything at all to report — the
+ *   panel shows the "n entries match" summary when there is not
  */
 
 /**

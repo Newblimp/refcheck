@@ -65,7 +65,7 @@ export function eachErrorSpan(res, mode, dis, visit) {
     for (const item of kindItems(res, kind)) {
       if (dis.has(kind.disKey(item))) continue;
       visit({
-        kind: kind.id,
+        kind: /** @type {ErrorSpan['kind']} */ (kind.id),
         start: kind.start(item),
         end: kind.end(item),
         term: kind.term(item),

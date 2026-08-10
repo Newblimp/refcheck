@@ -193,7 +193,8 @@ export function matchHeading(line) {
   if (hit) return { kind: hit.kind, lang: hit.lang, exact: true };
   if (norm.length > MAX_HEADING_LEN) return null;
   for (const [prefix, kind, lang] of PREFIXES) {
-    if (norm.startsWith(prefix)) return { kind, lang, exact: false };
+    if (norm.startsWith(prefix))
+      return { kind, lang: /** @type {'en'|'de'} */ (lang), exact: false };
   }
   return null;
 }

@@ -22,6 +22,10 @@ import { CLAIM_NUM_PREFIX_RE } from './constants.js';
  * @property {Object} detected      What was found, for the UI banner
  * @property {import('./docx/read.js').Para[]} descParas   Paragraphs backing `description`
  * @property {import('./docx/read.js').Para[]} claimsParas Paragraphs backing `claims`
+ * @property {string} signList  The Bezugszeichenliste, excluded from both
+ *   buffers but handed back so the reference-list check can use it
+ * @property {import('./docx/read.js').Para[]} signListParas  Paragraphs backing
+ *   `signList` — what refListWritable inspects and export splices into
  */
 
 /** Locate every heading in the document, in order. */
