@@ -3,6 +3,7 @@ import { SignCard } from './SignCard.jsx';
 import { ErrorCard } from './ErrorCard.jsx';
 import { ClaimStats } from './ClaimStats.jsx';
 import { Section } from './Section.jsx';
+import { EmptyDocIcon } from './icons.jsx';
 import { ERROR_KINDS } from '../logic/errorKinds.js';
 
 // ── SIDEBAR (overview pane) ─────────────────────────────────────────────────
@@ -111,19 +112,7 @@ function SidebarImpl({
       <div className="ov-scroll">
         {totalSigns === 0 ? (
           <div className="ov-empty">
-            <svg
-              width="44"
-              height="44"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.5"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <rect x="3" y="3" width="18" height="18" rx="2" />
-              <path d="M9 9h6M9 12h6M9 15h4" />
-            </svg>
+            <EmptyDocIcon />
             <p>
               <strong style={{ color: 'var(--text-muted)' }}>{t.emptyTitle}</strong>
               <br />

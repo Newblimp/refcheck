@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback, useEffect, useLayoutEffect, useMemo } from 'react';
+import { useState, useRef, useCallback, useEffect, useMemo } from 'react';
 import { T } from '../i18n.js';
 import { extractData, classify } from '../logic/extract.js';
 import { getAllErrors, errorGroup } from '../logic/errorSpans.js';
@@ -9,27 +9,22 @@ import { reconcileRefList } from '../logic/reconcile.js';
 import { listTermIndex, appliedListTerms } from '../logic/listTerms.js';
 import { claimStats } from '../logic/claimStats.js';
 import { compareSigns, disKey } from '../logic/constants.js';
-import { backdropScroll } from '../logic/scrollSync.js';
-import { stem } from '../logic/stem.js';
+import { ctxMenuItems } from '../logic/ctxMenuItems.js';
 import { useDebounced } from '../hooks/useDebounced.js';
 import { usePersistentState, jsonCodec, setCodec, oneOf } from '../hooks/usePersistentState.js';
 import { useTheme } from '../hooks/useTheme.js';
-import { useFileDrop } from '../hooks/useFileDrop.js';
 import { useBee } from '../hooks/useBee.js';
 import { useHotkeys } from '../hooks/useHotkeys.js';
-import { fileKind } from '../logic/fileKind.js';
-
-// The .docx pipeline (and fflate with it) is loaded on demand — most sessions
-// paste text and never touch it, so it does not belong in the initial bundle.
-// The service worker precaches every emitted chunk, so this still resolves
-// offline for a user who imports for the first time with no connection.
-const loadDocIO = () => import('../logic/importDoc.js');
+import { useEditorSync } from '../hooks/useEditorSync.js';
+import { useDocumentIO } from '../hooks/useDocumentIO.js';
 import { CtxMenu } from './CtxMenu.jsx';
 import { Sidebar } from './Sidebar.jsx';
 import { RefPane } from './RefPane.jsx';
 import { HelpDialog } from './HelpDialog.jsx';
 import { DropOverlay } from './DropOverlay.jsx';
 import { ImportBanner } from './ImportBanner.jsx';
+import { TopBar } from './TopBar.jsx';
+import { StatusBar } from './StatusBar.jsx';
 import { Bee } from './Bee.jsx';
 
 // The shape extractData returns, with nothing in it. The per-category arrays are
@@ -44,16 +39,16 @@ const EMPTY_RESULT = {
   ...Object.fromEntries(ERROR_KINDS.map((k) => [k.field, []])),
 };
 
-// useLayoutEffect on the client (runs before paint, so no highlight flash); plain
-// useEffect on the server so the render smoke test logs no SSR warning.
-const useIsoLayoutEffect = typeof window !== 'undefined' ? useLayoutEffect : useEffect;
-
 // How long the text buffers wait before being written to localStorage. Long
 // enough that a burst of typing produces one write, short enough that a refresh
 // straight after typing keeps the text.
 const SAVE_MS = 400;
 
 // ── APP ─────────────────────────────────────────────────────────────────────
+// State and wiring. The three things App used to do itself and no longer does:
+// the imperative editor/backdrop plumbing (hooks/useEditorSync.js), the .docx
+// round trip (hooks/useDocumentIO.js), and ~150 lines of chrome markup
+// (TopBar.jsx, StatusBar.jsx, icons.jsx).
 export function App() {
   // Persisted preferences and buffers (all survive a refresh; see CLAUDE.md for keys)
   const [lang, setLang] = usePersistentState('rsc_lang', 'en', oneOf(['en', 'de'], 'en'));
@@ -88,29 +83,15 @@ export function App() {
   const [theme, setTheme] = useTheme();
   // Transient UI state
   const text = mode === 'description' ? descText : claimsText;
-  const [hoverSign, setHoverSign] = useState(null);
   // Currently highlighted error card: {type: 'sign'|'art'|'bare'|'num'|'dep', key}
   // (key = sign string for signs, char position for everything else).
   const [focus, setFocus] = useState(null);
   const [search, setSearch] = useState('');
   const [navIdx, setNavIdx] = useState(0);
   const [ctx, setCtx] = useState(null);
-  // .docx import/export. `imported` holds the parsed source document and the
-  // paragraph provenance that round-trip export needs. It is deliberately NOT
-  // persisted — a 200 KB document would blow the localStorage quota alongside
-  // the text buffers — so a refresh keeps the text but drops round-trip export.
-  const [imported, setImported] = useState(null);
-  const [report, setReport] = useState(null);
-  const undoRef = useRef(null);
-  const fileRef = useRef(null);
-  const bdRef = useRef(null),
-    taRef = useRef(null);
   // Occurrence cursor for click-to-cycle on the sidebar error cards: which
   // occurrence of the currently-focused error the next click should advance from.
   const focusOcc = useRef({ id: null, idx: 0 });
-  // Caret position to restore once an edit the app made itself (inserting a
-  // reference sign) has been committed to the textarea.
-  const pendingCaret = useRef(null);
   const t = T[lang];
 
   // Debounce the expensive extraction on large documents; the textarea value
@@ -170,19 +151,6 @@ export function App() {
 
   useEffect(() => setNavIdx(0), [allErrors.length]);
 
-  // Put the caret back after an edit the app made on the user's behalf. The
-  // textarea is controlled, so the new value only exists after this commit —
-  // setting the selection inside the click handler would move it in the old one.
-  useEffect(() => {
-    const at = pendingCaret.current;
-    if (at == null) return;
-    pendingCaret.current = null;
-    const ta = taRef.current;
-    if (!ta) return;
-    ta.focus();
-    ta.setSelectionRange(at, at);
-  }, [text]);
-
   // Keep <html lang> in step with the checking language. It was hardcoded to
   // "en" in index.html, so screen readers announced German patent text with
   // English pronunciation rules.
@@ -196,87 +164,19 @@ export function App() {
     [debText, res, mode, dis, focusSign]
   );
 
-  // Mirror the textarea's scroll position onto the backdrop. At the ends of
-  // the document an elastic-overscroll browser slides the textarea's content
-  // past its own scroll range and springs it back; the backdrop clamps that
-  // position, so the text bounced while the highlights sat pinned to the edge.
-  // styles.css turns the rubber-band off, and the overshoot the geometry still
-  // reports (iOS Safari puts it in scrollTop) is applied as a translation,
-  // which the backdrop's scrollTop cannot express. See logic/scrollSync.js.
-  const syncScroll = useCallback(() => {
-    const ta = taRef.current,
-      bd = bdRef.current;
-    if (!ta || !bd) return;
-    const { top, shift } = backdropScroll(ta.scrollTop, ta.scrollHeight, ta.clientHeight);
-    bd.scrollTop = top;
-    const tf = shift ? `translateY(${-shift}px)` : '';
-    if (bd.style.transform !== tf) bd.style.transform = tf;
-  }, []);
-
-  // Re-mirror the scroll position whenever the backdrop's highlight content
-  // (re-)renders. On a large paste the textarea scrolls to the caret at once,
-  // but the backdrop html is debounced (≥5000 chars) — so the single scroll
-  // event that fired synced against stale, short content and clamped, leaving
-  // the highlights shifted until the next manual scroll. Re-syncing after the
-  // content commits realigns the two layers before the browser paints.
-  useIsoLayoutEffect(() => {
-    syncScroll();
-  }, [html, syncScroll]);
-
-  // Editor hover → sidebar-card highlight. elementFromPoint forces a synchronous
-  // hit-test, so throttle to one lookup per animation frame instead of running
-  // it on every mousemove.
-  const hoverPending = useRef(false);
-  const handleEditorHover = useCallback((e) => {
-    if (hoverPending.current) return;
-    hoverPending.current = true;
-    const x = e.clientX,
-      y = e.clientY;
-    const raf =
-      typeof requestAnimationFrame === 'function'
-        ? requestAnimationFrame
-        : (cb) => setTimeout(cb, 16);
-    raf(() => {
-      hoverPending.current = false;
-      const ta = taRef.current;
-      if (!ta) return;
-      ta.style.pointerEvents = 'none';
-      const el = document.elementFromPoint(x, y);
-      ta.style.pointerEvents = '';
-      const sign = el?.dataset?.sign || el?.closest?.('[data-sign]')?.dataset?.sign || null;
-      setHoverSign((prev) => (prev === sign ? prev : sign));
-    });
-  }, []);
-
-  // Hovering a sign highlights all of its marks in the editor. Doing that by
-  // walking every mark in the document on each hover transition meant a
-  // querySelectorAll plus a classList write per mark — thousands of them on a
-  // real patent, for a pointer movement. Index the marks by sign once per
-  // backdrop render, then touch only the outgoing and incoming sign's marks.
-  const markIndex = useRef(new Map());
-  const hoveredMarks = useRef(null);
-  useIsoLayoutEffect(() => {
-    const bd = bdRef.current;
-    const index = new Map();
-    if (bd) {
-      for (const m of bd.querySelectorAll('mark[data-sign]')) {
-        const s = m.dataset.sign;
-        const list = index.get(s);
-        if (list) list.push(m);
-        else index.set(s, [m]);
-      }
-    }
-    markIndex.current = index;
-    // The nodes just got replaced, so nothing carries the hover class any more.
-    hoveredMarks.current = null;
-  }, [html]);
-
-  useEffect(() => {
-    for (const m of hoveredMarks.current || []) m.classList.remove('h-hover');
-    const next = hoverSign === null ? null : markIndex.current.get(hoverSign) || null;
-    for (const m of next || []) m.classList.add('h-hover');
-    hoveredMarks.current = next;
-  }, [hoverSign, html]);
+  // Everything imperative about the editor's two layers: scroll mirroring, the
+  // per-sign mark index behind hover highlighting, scroll-to-span and the caret
+  // restore after an edit the app made itself.
+  const {
+    taRef,
+    bdRef,
+    hoverSign,
+    setHoverSign,
+    syncScroll,
+    scrollTo,
+    onEditorHover,
+    setCaretAfterCommit,
+  } = useEditorSync({ html, text });
 
   // ── Search-filtered card lists (also drive the status-bar chips) ──
   const { errSigns, okSigns } = useMemo(() => {
@@ -332,29 +232,10 @@ export function App() {
   // down to Sidebar and the cards, so a fresh identity per render would defeat
   // the React.memo on each of them and re-render the whole sidebar on every
   // keystroke, hover and bee frame.
-  const textRef = useRef(text);
-  textRef.current = text;
   const focusRef = useRef(focus);
   focusRef.current = focus;
   const signDataRef = useRef(signData);
   signDataRef.current = signData;
-
-  const scrollTo = useCallback(
-    (start, end) => {
-      const ta = taRef.current;
-      if (!ta) return;
-      ta.focus();
-      ta.setSelectionRange(start, end);
-      // Measure the real line height instead of hardcoding it, so CSS changes and
-      // browser zoom cannot desync click-to-navigate scrolling.
-      let lh = parseFloat(getComputedStyle(ta).lineHeight);
-      if (!Number.isFinite(lh)) lh = (parseFloat(getComputedStyle(ta).fontSize) || 13.5) * 1.75;
-      const lines = textRef.current.slice(0, start).split('\n').length;
-      ta.scrollTop = Math.max(0, (lines - 5) * lh);
-      syncScroll();
-    },
-    [syncScroll]
-  );
 
   // Click an error card: the first click focuses it and jumps to its first
   // occurrence; each further click on the same card advances to the next
@@ -452,6 +333,37 @@ export function App() {
     }
   }
 
+  // ── .docx import / export ─────────────────────────────────────────────────
+  // The hook owns the file plumbing and the banner report; App keeps deciding
+  // what loading a document means for the rest of its state.
+  const buffers = useMemo(
+    () => ({ description: descText, claims: claimsText, refList: refListText }),
+    [descText, claimsText, refListText]
+  );
+  const applyDoc = useCallback(
+    (next) => {
+      setDescText(next.description);
+      setClaimsText(next.claims);
+      setRefListText(next.refList);
+      setLang(next.lang);
+      setFocus(null);
+    },
+    [setDescText, setClaimsText, setRefListText, setLang]
+  );
+  const {
+    imported,
+    report,
+    setReport,
+    dragging,
+    fileRef,
+    pickFile,
+    openPicker,
+    doExport,
+    undoImport,
+    canUndo,
+    clear: clearDocIO,
+  } = useDocumentIO({ t, lang, buffers, apply: applyDoc });
+
   // Keyboard shortcuts. Every binding takes Ctrl/Cmd, because the editor holds
   // focus almost always and useHotkeys suppresses unmodified keys while typing
   // — a shortcut that dies mid-sentence is worse than none.
@@ -481,7 +393,7 @@ export function App() {
     'mod+m': toggleMode,
     'mod+b': () => setPanes((p) => ({ ...p, left: !p.left })),
     'mod+shift+b': () => setPanes((p) => ({ ...p, right: !p.right })),
-    'mod+o': () => fileRef.current?.click(),
+    'mod+o': openPicker,
     'mod+s': doExport,
     'mod+shift+?': openHelp,
     'mod+?': openHelp,
@@ -512,80 +424,19 @@ export function App() {
   }
   const restoreAll = useCallback(() => setDis(new Set()), [setDis]);
 
-  // Menu title for whatever the right-click landed on.
-  const ctxLabel = (found) => {
-    if (found.type === 'sign') return `Sign ${found.sign}`;
-    if (found.type === 'bare') return t.ctxTermLbl(found.bt.term);
-    return `Article: ${found.ae?.article}`;
-  };
-
   function handleCtxMenu(e) {
     e.preventDefault();
     const pos = taRef.current?.selectionStart ?? 0;
-    // Named directly rather than through ERROR_KINDS: the menu is genuinely
-    // per-category (a sign offers extend/reduce + dismiss, a bare term also
-    // offers writing the sign in, an article offers only dismiss), so there is
-    // no uniform behaviour here for a registry to drive.
-    const found = findAtPos(pos, signData, res.artErrors, res.bareTerms);
-    if (!found) return;
-    const items = [];
-    // Extending or reducing a term is a property of the term, not of the sign
-    // next to it — so a bare occurrence offers it just as a sign-attached one
-    // does, keyed on the same base stem.
-    // The current width is read off the term as recorded, not off mwo: the
-    // reference list and the ordinal detector widen terms too, and a menu that
-    // offered "Extend term (1 word)" on a term already showing two words would
-    // both mislabel it and, on the next click, widen it by nothing.
-    const termItems = (rawTerm) => {
-      const words = rawTerm.split(' ');
-      const bs = stem(words[words.length - 1], lang);
-      const cur = words.length;
-      items.push({ label: t.extendTerm(cur), a: 'extend', d: { bs, cur } });
-      if (cur > 1) items.push({ label: t.reduceTerm, a: 'reduce', d: { bs, cur } });
-    };
-    if (found.type === 'sign') {
-      const { sign, pos: p } = found;
-      termItems(p.term);
-      items.push({ sep: true });
-      const isDis = dis.has(disKey.sign(sign));
-      items.push({
-        label: isDis ? `↩ Restore "${sign}"` : t.disSign(sign),
-        a: 'toggle-dis',
-        d: { key: disKey.sign(sign) },
-      });
-    } else if (found.type === 'bare') {
-      const { bt } = found;
-      termItems(bt.term);
-      // Writing the sign in is only offered when the term has exactly one — with
-      // two or more, choosing between them is the drafter's call, not ours.
-      if (bt.signs.length === 1) {
-        items.push({ sep: true });
-        items.push({
-          label: t.insertSign(bt.signs[0]),
-          a: 'insert-sign',
-          d: { bt, sign: bt.signs[0] },
-        });
-      }
-      items.push({ sep: true });
-      const key = disKey.bare(bt.termStem);
-      items.push({
-        label: dis.has(key) ? `↩ ${t.restoreOne}` : t.disBare(bt.term),
-        a: 'toggle-dis',
-        d: { key },
-      });
-    } else {
-      const { ae } = found;
-      const isDis = dis.has(disKey.art(ae.termStem));
-      items.push({
-        label: isDis ? `↩ Restore article` : t.disArt(ae.termStem),
-        a: 'toggle-dis',
-        d: { key: disKey.art(ae.termStem) },
-      });
-    }
-    items.push({ sep: true });
-    items.push({ label: t.disAll, a: 'dis-all', v: 'warn' });
-    if (disCt) items.push({ label: `↩ ${t.restoreAll} (${disCt})`, a: 'restore-all' });
-    setCtx({ x: e.clientX, y: e.clientY, items, label: ctxLabel(found) });
+    // findAtPos names artErrors/bareTerms directly rather than going through
+    // ERROR_KINDS: the menu is genuinely per-category, so there is no uniform
+    // behaviour for a registry to drive. See logic/ctxMenuItems.js.
+    const menu = ctxMenuItems(findAtPos(pos, signData, res.artErrors, res.bareTerms), {
+      t,
+      lang,
+      dis,
+    });
+    if (!menu) return;
+    setCtx({ x: e.clientX, y: e.clientY, ...menu });
   }
 
   /**
@@ -593,19 +444,18 @@ export function App() {
    * Claims mode brackets it, because a bare sign there is an error of its own.
    */
   function insertSign(bt, sign) {
-    const cur = textRef.current;
     // The spans come from the (debounced) extraction, so the buffer may have
     // moved on. Check the term is still where it was said to be rather than
     // splicing a sign into the middle of some other word.
-    const at = cur.slice(bt.termStart, bt.termEnd).toLowerCase().replace(/\s+/g, ' ');
+    const at = text.slice(bt.termStart, bt.termEnd).toLowerCase().replace(/\s+/g, ' ');
     if (at !== bt.term) return;
     const ins = mode === 'claims' ? ` (${sign})` : ` ${sign}`;
-    const next = cur.slice(0, bt.termEnd) + ins + cur.slice(bt.termEnd);
+    const next = text.slice(0, bt.termEnd) + ins + text.slice(bt.termEnd);
     (mode === 'description' ? setDescText : setClaimsText)(next);
     setFocus(null);
     // Leave the caret after what was just written, so the drafter carries on
     // where they were reading. Applied once the new value has been committed.
-    pendingCaret.current = bt.termEnd + ins.length;
+    setCaretAfterCommit(bt.termEnd + ins.length);
   }
 
   function handleCtxAction(a, d) {
@@ -629,159 +479,19 @@ export function App() {
     setDescText('');
     setClaimsText('');
     setRefListText('');
-    setImported(null);
-    setReport(null);
-    undoRef.current = null;
+    clearDocIO();
   }
 
-  // ── .docx import ──────────────────────────────────────────────────────────
-  const handleFile = useCallback(
-    async (file) => {
-      const kind = fileKind(file?.name);
-      if (kind !== 'ok') {
-        setReport({
-          kind: 'error',
-          messageKey: kind === 'legacyDoc' ? 'impErrLegacy' : 'impErrUnsupported',
-        });
-        return;
-      }
-      let result;
-      try {
-        const { importPatentDoc } = await loadDocIO();
-        result = importPatentDoc(await file.arrayBuffer());
-      } catch {
-        setReport({ kind: 'error', messageKey: 'impErrRead' });
-        return;
-      }
-      // Filling the buffers discards whatever is in them — same stance doReset takes.
-      if (
-        (descText || claimsText) &&
-        typeof window !== 'undefined' &&
-        !window.confirm(t.impConfirm)
-      )
-        return;
-
-      undoRef.current = { desc: descText, claims: claimsText, lang, mode, refList: refListText };
-      const { split, lang: detectedLang } = result;
-      result.fileName = file.name;
-      setDescText(split.description);
-      setClaimsText(split.claims);
-      // The Bezugszeichenliste is excluded from both buffers, but it is exactly
-      // what the reference-list check wants, so hand it over instead of dropping it.
-      if (split.signList) setRefListText(split.signList);
-      setLang(detectedLang);
-      setImported(result);
+  const switchMode = useCallback(
+    (m) => {
+      setMode(m);
       setFocus(null);
-
-      // Warnings are stored as i18n KEYS, not resolved strings: the import may
-      // have just switched the language, and `t` here is still the outgoing one.
-      // Resolving in ImportBanner also keeps the banner correct if the user
-      // toggles EN/DE afterwards.
-      const warnings = [];
-      const d = split.detected;
-      if (!d.description) warnings.push({ key: 'impNoDesc' });
-      if (!d.claims) warnings.push({ key: 'impNoClaims' });
-      if (d.synthesizedClaimNumbers)
-        warnings.push({ key: 'impRenumbered', arg: d.synthesizedClaimNumbers });
-      if (d.unusualNumbering) warnings.push({ key: 'impUnusualNum' });
-      setReport({
-        kind: warnings.length ? 'warn' : 'ok',
-        descChars: split.description.length,
-        claimsChars: split.claims.length,
-        lang: detectedLang,
-        warnings,
-      });
     },
-    [descText, claimsText, lang, mode, t, setDescText, setClaimsText, setLang]
+    [setMode]
   );
 
-  const dragging = useFileDrop(handleFile);
   // Watch both buffers at once, so switching modes never looks like new text.
   const [bees, beeDone] = useBee(`${descText}\n${claimsText}`, lang);
-
-  function undoImport() {
-    const u = undoRef.current;
-    if (!u) return;
-    setDescText(u.desc);
-    setClaimsText(u.claims);
-    setRefListText(u.refList ?? '');
-    setLang(u.lang);
-    setImported(null);
-    setReport(null);
-    undoRef.current = null;
-  }
-
-  function pickFile(e) {
-    const file = e.target.files?.[0];
-    e.target.value = ''; // re-selecting the same file must fire change again
-    if (file) handleFile(file);
-  }
-
-  async function doExport() {
-    const { exportPatentDoc } = await loadDocIO();
-    let result;
-    try {
-      result = exportPatentDoc(
-        imported,
-        { description: descText, claims: claimsText, refList: refListText },
-        {
-          claimsHeading: lang === 'de' ? 'Patentansprüche' : 'Claims',
-          refListHeading: lang === 'de' ? 'Bezugszeichenliste' : 'Reference signs',
-        }
-      );
-    } catch {
-      // The writer refuses to emit a document it knows is broken. Say so —
-      // silently downloading nothing is the one outcome a drafter cannot act on.
-      setReport({ kind: 'error', messageKey: 'expErrFailed' });
-      return;
-    }
-    const { bytes, verified, diffs = [], refList } = result;
-    // The reference list is the one buffer that can be left out on purpose — the
-    // source may not mark it out unambiguously enough to rewrite (see
-    // refListWritable). Saying nothing would let the user believe an edit was
-    // saved when it was not.
-    const skipped = {
-      noSection: 'expRefNoSection',
-      ambiguous: 'expRefAmbiguous',
-      table: 'expRefTable',
-    };
-    // The file was written, but reading it back did not reproduce the buffers.
-    // It is still handed over — the drafter needs a way to get their work out —
-    // with a warning naming the first place the two disagree. That outranks a
-    // skipped reference list: one says the file may be wrong, the other says a
-    // part of it was deliberately not touched.
-    if (!verified) {
-      const d = diffs[0];
-      setReport({
-        kind: 'warn',
-        messageKey: 'expErrUnverified',
-        warnings: d ? [{ key: 'expDiffAt', arg: d }] : [],
-      });
-    } else if (skipped[refList]) {
-      setReport({ kind: 'warn', messageKey: skipped[refList] });
-    }
-    const base = imported?.fileName ? imported.fileName.replace(/\.docm?x?$/i, '') : 'refcheck';
-    const blob = new Blob([bytes], {
-      type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-    });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `${base}-checked.docx`;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    setTimeout(() => URL.revokeObjectURL(url), 0);
-  }
-
-  // Takes a key because the category chips are produced by a map now.
-  const chip = (key, count, color, label) =>
-    count > 0 && (
-      <div key={key} className="s-chip" style={{ color: `var(--${color})` }}>
-        <span className="s-dot" style={{ background: `var(--${color})` }} />
-        {count} {label}
-      </div>
-    );
 
   return (
     <>
@@ -791,165 +501,30 @@ export function App() {
         <Bee key={id} t={t} onDone={() => beeDone(id)} />
       ))}
 
-      <div className="topbar">
-        <div className="logo">
-          <svg
-            width="20"
-            height="20"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="var(--accent)"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          >
-            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-            <polyline points="14 2 14 8 20 8" />
-            <line x1="9" y1="13" x2="15" y2="13" />
-            <line x1="9" y1="17" x2="12" y2="17" />
-          </svg>
-          <span>
-            RefSign<em> Checker</em>
-          </span>
-        </div>
-        <div className="spacer" />
-        <div className="file-actions">
-          <input
-            ref={fileRef}
-            type="file"
-            accept=".docx,.docm"
-            onChange={pickFile}
-            style={{ display: 'none' }}
-            data-testid="file-input"
-          />
-          <button className="file-btn" onClick={() => fileRef.current?.click()}>
-            {t.impBtn}
-          </button>
-          {(descText || claimsText) && (
-            <button
-              className="file-btn"
-              onClick={doExport}
-              title={imported ? t.expTitleRound : t.expTitleFresh}
-            >
-              {imported ? t.expBtn : t.expFresh}
-            </button>
-          )}
-        </div>
-        <div className="theme-toggle">
-          <button
-            className={theme === 'light' ? 'active' : ''}
-            onClick={() => setTheme('light')}
-            title={t.themeLight}
-            aria-label={t.themeLight}
-          >
-            <svg
-              width="15"
-              height="15"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <circle cx="12" cy="12" r="4" />
-              <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41" />
-            </svg>
-          </button>
-          <button
-            className={theme === 'system' ? 'active' : ''}
-            onClick={() => setTheme('system')}
-            title={t.themeSystem}
-            aria-label={t.themeSystem}
-          >
-            <svg
-              width="15"
-              height="15"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <rect x="2" y="4" width="20" height="13" rx="1.5" />
-              <path d="M8 20h8M12 17v3" />
-            </svg>
-          </button>
-          <button
-            className={theme === 'dark' ? 'active' : ''}
-            onClick={() => setTheme('dark')}
-            title={t.themeDark}
-            aria-label={t.themeDark}
-          >
-            <svg
-              width="15"
-              height="15"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <path d="M20 12.5A8 8 0 1 1 11.5 4a6.5 6.5 0 0 0 8.5 8.5z" />
-            </svg>
-          </button>
-        </div>
-        <div className="pill-toggle">
-          <button
-            className={mode === 'description' ? 'active' : ''}
-            onClick={() => {
-              setMode('description');
-              setFocus(null);
-            }}
-          >
-            {t.modeDesc}
-            {descText && <span className="buf-dot" />}
-          </button>
-          <button
-            className={mode === 'claims' ? 'active' : ''}
-            onClick={() => {
-              setMode('claims');
-              setFocus(null);
-            }}
-          >
-            {t.modeClaims}
-            {claimsText && <span className="buf-dot" />}
-          </button>
-        </div>
-        <div className="lang-toggle" role="group" aria-label="Language">
-          <button
-            className={lang === 'en' ? 'active' : ''}
-            aria-pressed={lang === 'en'}
-            onClick={() => setLang('en')}
-          >
-            EN
-          </button>
-          <button
-            className={lang === 'de' ? 'active' : ''}
-            aria-pressed={lang === 'de'}
-            onClick={() => setLang('de')}
-          >
-            DE
-          </button>
-        </div>
-        <button
-          className="help-btn"
-          onClick={() => setHelpOpen(true)}
-          title={t.helpBtn}
-          aria-label={t.helpBtn}
-        >
-          ?
-        </button>
-      </div>
+      <TopBar
+        t={t}
+        lang={lang}
+        onLang={setLang}
+        mode={mode}
+        onMode={switchMode}
+        theme={theme}
+        onTheme={setTheme}
+        hasDesc={!!descText}
+        hasClaims={!!claimsText}
+        imported={imported}
+        fileRef={fileRef}
+        onPickFile={pickFile}
+        onImportClick={openPicker}
+        onExport={doExport}
+        onHelp={openHelp}
+      />
 
       {helpOpen && <HelpDialog t={t} lang={lang} onClose={() => setHelpOpen(false)} />}
 
       <ImportBanner
         report={report}
         t={t}
-        onUndo={undoRef.current && !report?.messageKey ? undoImport : null}
+        onUndo={canUndo ? undoImport : null}
         onDismiss={() => setReport(null)}
       />
 
@@ -1028,7 +603,7 @@ export function App() {
           </div>
           <div
             className="editor-wrap"
-            onMouseMove={handleEditorHover}
+            onMouseMove={onEditorHover}
             onMouseLeave={() => setHoverSign(null)}
           >
             <div
@@ -1056,65 +631,20 @@ export function App() {
               autoCapitalize="off"
             />
           </div>
-          <div className="statusbar">
-            {chip('sign', errSignsActive.length, 'warn', t.errLbl)}
-            {ERROR_KINDS.map((k) => chip(k.id, errorLists[k.id].length, k.color, t[k.chipLbl]))}
-            {totalSigns > 0 && !anyActive && (
-              <div className="s-chip" style={{ color: 'var(--ok)' }}>
-                <span className="s-dot" style={{ background: 'var(--ok)' }} />
-                All consistent
-              </div>
-            )}
-            {allErrors.length > 0 && (
-              <div className="err-nav" style={{ marginLeft: 'auto' }}>
-                <button
-                  className="nav-btn"
-                  onClick={() => navigate(-1)}
-                  aria-label={t.navPrev}
-                  title={t.navPrev}
-                >
-                  <svg
-                    width="10"
-                    height="10"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2.5"
-                  >
-                    <polyline points="15 18 9 12 15 6" />
-                  </svg>
-                </button>
-                <span className="nav-lbl">{t.navLabel(navIdx + 1, allErrors.length)}</span>
-                <button
-                  className="nav-btn"
-                  onClick={() => navigate(1)}
-                  aria-label={t.navNext}
-                  title={t.navNext}
-                >
-                  <svg
-                    width="10"
-                    height="10"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2.5"
-                  >
-                    <polyline points="9 18 15 12 9 6" />
-                  </svg>
-                </button>
-              </div>
-            )}
-            {disCt > 0 && (
-              <button className="restore-btn" onClick={restoreAll}>
-                ↩ {t.restoreAll} ({disCt})
-              </button>
-            )}
-            {mode === 'claims' && text.length > 0 && (
-              <div className="s-chip" style={{ color: 'var(--text-dim)', fontSize: '11px' }}>
-                {t.claimsNote}
-              </div>
-            )}
-          </div>
+          <StatusBar
+            t={t}
+            mode={mode}
+            hasText={text.length > 0}
+            signErrCount={errSignsActive.length}
+            errorLists={errorLists}
+            totalSigns={totalSigns}
+            anyActive={anyActive}
+            errorCount={allErrors.length}
+            navIdx={navIdx}
+            onNavigate={navigate}
+            disCt={disCt}
+            onRestoreAll={restoreAll}
+          />
         </div>
 
         <Sidebar
