@@ -1,5 +1,6 @@
 import { classify } from './extract.js';
 import { disKey } from './constants.js';
+import { ERROR_KINDS, KIND_BY_ID, kindItems } from './errorKinds.js';
 
 // ── ERROR SPANS ─────────────────────────────────────────────────────────────
 //
@@ -40,7 +41,7 @@ import { disKey } from './constants.js';
  * @param {(span: ErrorSpan) => void} visit
  */
 export function eachErrorSpan(res, mode, dis, visit) {
-  const { signData, termData, artErrors, bareTerms, numErrors, depErrors } = res;
+  const { signData, termData } = res;
 
   for (const [sign, sData] of Object.entries(signData)) {
     const sev = dis.has(disKey.sign(sign)) ? 'dis' : classify(sign, sData, termData, mode);
@@ -58,27 +59,21 @@ export function eachErrorSpan(res, mode, dis, visit) {
         });
     }
   }
-  for (const ae of artErrors) {
-    if (dis.has(disKey.art(ae.termStem))) continue;
-    visit({ kind: 'art', start: ae.artStart, end: ae.artEnd, term: ae.termStem, item: ae });
-  }
-  for (const bt of bareTerms) {
-    if (dis.has(disKey.bare(bt.termStem))) continue;
-    visit({ kind: 'bare', start: bt.termStart, end: bt.termEnd, term: bt.termStem, item: bt });
-  }
-  for (const ne of numErrors) {
-    if (dis.has(disKey.num(ne.key))) continue;
-    visit({ kind: 'num', start: ne.start, end: ne.end, item: ne });
-  }
-  for (const de of depErrors || []) {
-    if (dis.has(disKey.dep(de.key))) continue;
-    visit({ kind: 'dep', start: de.start, end: de.end, item: de });
+  // The four non-sign categories differ only in the accessors ERROR_KINDS
+  // already names, so they are one loop rather than four copies of it.
+  for (const kind of ERROR_KINDS) {
+    for (const item of kindItems(res, kind)) {
+      if (dis.has(kind.disKey(item))) continue;
+      visit({
+        kind: kind.id,
+        start: kind.start(item),
+        end: kind.end(item),
+        term: kind.term(item),
+        item,
+      });
+    }
   }
 }
-
-// The property each error category is carried under in getAllErrors' output.
-// Kept as data so the shapes stay obviously parallel.
-const NAV_PROP = { art: 'ae', bare: 'bt', num: 'ne', dep: 'de' };
 
 /**
  * Every active error, in document order — what the status-bar arrows step through.
@@ -109,7 +104,7 @@ export function getAllErrors(res, mode, dis) {
       start: sp.start,
       end: sp.end,
       term: sp.term ?? null,
-      [NAV_PROP[sp.kind]]: sp.item,
+      [KIND_BY_ID[sp.kind].navProp]: sp.item,
     });
   });
   out.sort((a, b) => a.start - b.start);

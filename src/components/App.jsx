@@ -2,6 +2,7 @@ import { useState, useRef, useCallback, useEffect, useLayoutEffect, useMemo } fr
 import { T } from '../i18n.js';
 import { extractData, classify } from '../logic/extract.js';
 import { getAllErrors, errorGroup } from '../logic/errorSpans.js';
+import { ERROR_KINDS, KIND_BY_ID, kindItems } from '../logic/errorKinds.js';
 import { buildHtml, findAtPos } from '../logic/buildHtml.js';
 import { computeCrossRef } from '../logic/crossref.js';
 import { reconcileRefList } from '../logic/reconcile.js';
@@ -31,15 +32,16 @@ import { DropOverlay } from './DropOverlay.jsx';
 import { ImportBanner } from './ImportBanner.jsx';
 import { Bee } from './Bee.jsx';
 
+// The shape extractData returns, with nothing in it. The per-category arrays are
+// derived from ERROR_KINDS so a new category cannot be forgotten here — an
+// omission would surface as a crash on an empty buffer, which is the one moment
+// nobody tests by hand.
 const EMPTY_RESULT = {
   signData: {},
   termData: {},
-  artErrors: [],
-  bareTerms: [],
-  numErrors: [],
-  depErrors: [],
   noTermSigns: new Set(),
   claimGraph: null,
+  ...Object.fromEntries(ERROR_KINDS.map((k) => [k.field, []])),
 };
 
 // useLayoutEffect on the client (runs before paint, so no highlight flash); plain
@@ -140,7 +142,7 @@ export function App() {
     [debClaims, lang, mwo, listIdx]
   );
   const res = (mode === 'description' ? descResult : claimsResult) ?? EMPTY_RESULT;
-  const { signData, termData, artErrors, bareTerms, numErrors, depErrors } = res;
+  const { signData, termData } = res;
 
   const orphaned = useMemo(
     () => computeCrossRef(descResult, claimsResult),
@@ -294,52 +296,25 @@ export function App() {
     return { errSigns: err.sort(byN), okSigns: ok.sort(byN) };
   }, [signData, termData, mode, search]);
 
-  const visArt = useMemo(() => {
+  // Search + dismissal filtering for the four non-sign categories, in one pass
+  // over ERROR_KINDS. This was four hand-written memo PAIRS, each re-deriving
+  // the lowercased query and each naming its own disKey.
+  //
+  // It stays memoized for the same reason the pairs were: the lists feed Sidebar
+  // and every card under it, so recomputing them per render would hand down
+  // fresh array identities on every hover, every search keystroke and every bee
+  // frame — which is what made memoizing the card components pointless before.
+  // Cheap on their own; the identity is the point.
+  const errorLists = useMemo(() => {
     const q = search.toLowerCase();
-    return artErrors.filter(
-      (ae) =>
-        !q ||
-        ae.termStem.includes(q) ||
-        [...(termData[ae.termStem]?.rawTerms || [])].some((r) => r.includes(q))
-    );
-  }, [artErrors, termData, search]);
-  // The "active" (not dismissed) splits below are memoized rather than derived
-  // inline. They feed Sidebar and every card under it, so recomputing them per
-  // render also handed down fresh array identities on every hover, every search
-  // keystroke and every bee frame — which is what made memoizing the card
-  // components pointless before. Cheap on their own; the identity is the point.
-  const visArtActive = useMemo(
-    () => visArt.filter((ae) => !dis.has(disKey.art(ae.termStem))),
-    [visArt, dis]
-  );
-  const visBare = useMemo(() => {
-    const q = search.toLowerCase();
-    return bareTerms.filter((bt) => !q || bt.term.includes(q) || bt.termStem.includes(q));
-  }, [bareTerms, search]);
-  const visBareActive = useMemo(
-    () => visBare.filter((bt) => !dis.has(disKey.bare(bt.termStem))),
-    [visBare, dis]
-  );
-  const visNum = useMemo(() => {
-    const q = search.toLowerCase();
-    return numErrors.filter(
-      (ne) => !q || String(ne.value).includes(q) || String(ne.expected).includes(q)
-    );
-  }, [numErrors, search]);
-  const visNumActive = useMemo(
-    () => visNum.filter((ne) => !dis.has(disKey.num(ne.key))),
-    [visNum, dis]
-  );
-  const visDep = useMemo(() => {
-    const q = search.toLowerCase();
-    return depErrors.filter(
-      (de) => !q || String(de.claim).includes(q) || String(de.ref).includes(q)
-    );
-  }, [depErrors, search]);
-  const visDepActive = useMemo(
-    () => visDep.filter((de) => !dis.has(disKey.dep(de.key))),
-    [visDep, dis]
-  );
+    const out = {};
+    for (const kind of ERROR_KINDS)
+      out[kind.id] = kindItems(res, kind).filter(
+        (e) => (!q || kind.matches(e, q, termData)) && !dis.has(kind.disKey(e))
+      );
+    return out;
+  }, [res, termData, search, dis]);
+
   const errSignsActive = useMemo(
     () => errSigns.filter(([s]) => !dis.has(disKey.sign(s))),
     [errSigns, dis]
@@ -350,12 +325,7 @@ export function App() {
   );
   const disCt = dis.size;
   const totalSigns = Object.keys(signData).length;
-  const anyActive =
-    errSignsActive.length ||
-    visArtActive.length ||
-    visBareActive.length ||
-    visNumActive.length ||
-    visDepActive.length;
+  const anyActive = errSignsActive.length || ERROR_KINDS.some((k) => errorLists[k.id].length > 0);
 
   // Live mirrors of state the card callbacks below read. Keeping them in refs is
   // what lets those callbacks be genuinely stable: every one of them is passed
@@ -422,20 +392,16 @@ export function App() {
     },
     [focusCycle]
   );
-  const onFocusArt = useCallback(
-    (ae) => focusCycle('art', ae.artStart, [[ae.artStart, ae.artEnd]]),
-    [focusCycle]
-  );
-  const onFocusBare = useCallback(
-    (bt) => focusCycle('bare', bt.termStart, [[bt.termStart, bt.termEnd]]),
-    [focusCycle]
-  );
-  const onFocusNum = useCallback(
-    (ne) => focusCycle('num', ne.start, [[ne.start, ne.end]]),
-    [focusCycle]
-  );
-  const onFocusDep = useCallback(
-    (de) => focusCycle('dep', de.start, [[de.start, de.end]]),
+  // One handler for all four non-sign categories. Each has a single occurrence,
+  // so the card simply toggles; the focus key is the span start, which is the
+  // convention every card's `focused` comparison uses. (Signs keep their own
+  // handler: their key is the sign string, and they cycle through occurrences.)
+  const onFocusError = useCallback(
+    (kindId, item) => {
+      const kind = KIND_BY_ID[kindId];
+      const start = kind.start(item);
+      focusCycle(kindId, start, [[start, kind.end(item)]]);
+    },
     [focusCycle]
   );
 
@@ -540,10 +506,8 @@ export function App() {
   function disAll() {
     const k = new Set();
     Object.keys(signData).forEach((s) => k.add(disKey.sign(s)));
-    artErrors.forEach((ae) => k.add(disKey.art(ae.termStem)));
-    bareTerms.forEach((bt) => k.add(disKey.bare(bt.termStem)));
-    numErrors.forEach((ne) => k.add(disKey.num(ne.key)));
-    depErrors.forEach((de) => k.add(disKey.dep(de.key)));
+    // Every category, including ones added after this was written.
+    for (const kind of ERROR_KINDS) for (const e of kindItems(res, kind)) k.add(kind.disKey(e));
     setDis(k);
   }
   const restoreAll = useCallback(() => setDis(new Set()), [setDis]);
@@ -558,7 +522,11 @@ export function App() {
   function handleCtxMenu(e) {
     e.preventDefault();
     const pos = taRef.current?.selectionStart ?? 0;
-    const found = findAtPos(pos, signData, artErrors, bareTerms);
+    // Named directly rather than through ERROR_KINDS: the menu is genuinely
+    // per-category (a sign offers extend/reduce + dismiss, a bare term also
+    // offers writing the sign in, an article offers only dismiss), so there is
+    // no uniform behaviour here for a registry to drive.
+    const found = findAtPos(pos, signData, res.artErrors, res.bareTerms);
     if (!found) return;
     const items = [];
     // Extending or reducing a term is a property of the term, not of the sign
@@ -806,9 +774,10 @@ export function App() {
     setTimeout(() => URL.revokeObjectURL(url), 0);
   }
 
-  const chip = (count, color, label) =>
+  // Takes a key because the category chips are produced by a map now.
+  const chip = (key, count, color, label) =>
     count > 0 && (
-      <div className="s-chip" style={{ color: `var(--${color})` }}>
+      <div key={key} className="s-chip" style={{ color: `var(--${color})` }}>
         <span className="s-dot" style={{ background: `var(--${color})` }} />
         {count} {label}
       </div>
@@ -1088,11 +1057,8 @@ export function App() {
             />
           </div>
           <div className="statusbar">
-            {chip(errSignsActive.length, 'warn', t.errLbl)}
-            {chip(visArtActive.length, 'art', t.artLbl)}
-            {chip(visBareActive.length, 'bare', t.bareLbl)}
-            {chip(visNumActive.length, 'num', t.numberingLbl)}
-            {chip(visDepActive.length, 'dep', t.depLbl)}
+            {chip('sign', errSignsActive.length, 'warn', t.errLbl)}
+            {ERROR_KINDS.map((k) => chip(k.id, errorLists[k.id].length, k.color, t[k.chipLbl]))}
             {totalSigns > 0 && !anyActive && (
               <div className="s-chip" style={{ color: 'var(--ok)' }}>
                 <span className="s-dot" style={{ background: 'var(--ok)' }} />
@@ -1162,20 +1128,14 @@ export function App() {
           errSignsActive={errSignsActive}
           errSignsDismissed={errSignsDismissed}
           okSigns={okSigns}
-          visArtActive={visArtActive}
-          visBareActive={visBareActive}
-          visNumActive={visNumActive}
-          visDepActive={visDepActive}
+          errorLists={errorLists}
           focus={focus}
           dis={dis}
           disCt={disCt}
           hoverSign={hoverSign}
           onHover={setHoverSign}
           onFocusSign={onFocusSign}
-          onFocusArt={onFocusArt}
-          onFocusBare={onFocusBare}
-          onFocusNum={onFocusNum}
-          onFocusDep={onFocusDep}
+          onFocusError={onFocusError}
           onDismiss={toggleDis}
           onRestoreAll={restoreAll}
           orphaned={orphaned}

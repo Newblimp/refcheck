@@ -1,11 +1,9 @@
 import { memo } from 'react';
 import { SignCard } from './SignCard.jsx';
-import { ArtCard } from './ArtCard.jsx';
-import { BareCard } from './BareCard.jsx';
-import { NumCard } from './NumCard.jsx';
-import { DepCard } from './DepCard.jsx';
+import { ErrorCard } from './ErrorCard.jsx';
 import { ClaimStats } from './ClaimStats.jsx';
 import { Section } from './Section.jsx';
+import { ERROR_KINDS } from '../logic/errorKinds.js';
 
 // ── SIDEBAR (overview pane) ─────────────────────────────────────────────────
 // Purely presentational: App owns all state and the search/dismissal filtering;
@@ -21,20 +19,17 @@ function SidebarImpl({
   errSignsActive,
   errSignsDismissed,
   okSigns,
-  visArtActive,
-  visBareActive,
-  visNumActive,
-  visDepActive,
+  // { art: [...], bare: [...], num: [...], dep: [...] } — already search- and
+  // dismissal-filtered by App. One prop rather than one per category, so adding
+  // a category adds no plumbing here.
+  errorLists,
   focus,
   dis,
   disCt,
   hoverSign,
   onHover,
   onFocusSign,
-  onFocusArt,
-  onFocusBare,
-  onFocusNum,
-  onFocusDep,
+  onFocusError,
   onDismiss,
   onRestoreAll,
   orphaned,
@@ -44,11 +39,7 @@ function SidebarImpl({
 }) {
   const totalSigns = Object.keys(signData).length;
   const totalErrs =
-    errSignsActive.length +
-    visArtActive.length +
-    visBareActive.length +
-    visNumActive.length +
-    visDepActive.length;
+    errSignsActive.length + ERROR_KINDS.reduce((n, k) => n + errorLists[k.id].length, 0);
   // The multi-word width now comes off the term itself (see SignCard), so the
   // cards no longer need `mwo` or `lang` — one prop identity fewer that changed
   // on every override edit.
@@ -152,58 +143,31 @@ function SidebarImpl({
                 />
               ))}
             </Section>
-            <Section icon="◈" label={t.gArt} color="var(--art)" count={visArtActive.length}>
-              {visArtActive.map((ae) => (
-                <ArtCard
-                  key={ae.artStart}
-                  ae={ae}
-                  focused={focus?.type === 'art' && focus.key === ae.artStart}
-                  t={t}
-                  dis={dis}
-                  onFocus={onFocusArt}
-                  onDismiss={onDismiss}
-                />
-              ))}
-            </Section>
-            <Section icon="∅" label={t.gBare} color="var(--bare)" count={visBareActive.length}>
-              {visBareActive.map((bt) => (
-                <BareCard
-                  key={bt.termStart}
-                  bt={bt}
-                  focused={focus?.type === 'bare' && focus.key === bt.termStart}
-                  t={t}
-                  dis={dis}
-                  onFocus={onFocusBare}
-                  onDismiss={onDismiss}
-                />
-              ))}
-            </Section>
-            <Section icon="⌗" label={t.numberingLbl} color="var(--num)" count={visNumActive.length}>
-              {visNumActive.map((ne) => (
-                <NumCard
-                  key={ne.key}
-                  ne={ne}
-                  focused={focus?.type === 'num' && focus.key === ne.start}
-                  t={t}
-                  dis={dis}
-                  onFocus={onFocusNum}
-                  onDismiss={onDismiss}
-                />
-              ))}
-            </Section>
-            <Section icon="↷" label={t.gDep} color="var(--dep)" count={visDepActive.length}>
-              {visDepActive.map((de) => (
-                <DepCard
-                  key={de.key}
-                  de={de}
-                  focused={focus?.type === 'dep' && focus.key === de.start}
-                  t={t}
-                  dis={dis}
-                  onFocus={onFocusDep}
-                  onDismiss={onDismiss}
-                />
-              ))}
-            </Section>
+            {/* Article errors, missing signs, claim numbering, claim
+                dependencies — in ERROR_KINDS order, which is the order they
+                were written in by hand before. */}
+            {ERROR_KINDS.map((kind) => (
+              <Section
+                key={kind.id}
+                icon={kind.icon}
+                label={t[kind.sectionLbl]}
+                color={`var(--${kind.color})`}
+                count={errorLists[kind.id].length}
+              >
+                {errorLists[kind.id].map((item) => (
+                  <ErrorCard
+                    key={kind.cardKey(item)}
+                    kind={kind}
+                    item={item}
+                    focused={focus?.type === kind.id && focus.key === kind.start(item)}
+                    t={t}
+                    dis={dis}
+                    onFocus={onFocusError}
+                    onDismiss={onDismiss}
+                  />
+                ))}
+              </Section>
+            ))}
             <Section icon="✓" label={t.gOk} color="var(--ok)" count={okSigns.length}>
               {okSigns.map(([sign, sData]) => (
                 <SignCard

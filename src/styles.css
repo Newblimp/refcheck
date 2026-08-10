@@ -1075,37 +1075,48 @@ mark.h-hover {
   color: var(--warn);
 }
 
-/* ARTICLE CARD */
-.art-card {
+/* ERROR CARD — article, missing sign, claim numbering, claim dependency.
+   These were four rule pairs differing only in the focused border colour. The
+   card now sets --kind / --kind-bg inline from its ERROR_KINDS row, so a new
+   category needs no rule here at all: defining --<color> and --<color>-bg
+   alongside the other categories is enough. */
+.err-card {
   border-radius: 8px;
   border: 1px solid transparent;
   cursor: pointer;
   transition: all 0.12s;
   margin-bottom: 3px;
 }
-.art-card:hover {
+.err-card:hover {
   background: var(--surface2);
   border-color: var(--border);
 }
-.art-card.focused {
+.err-card.focused {
   background: var(--surface2);
-  border-color: var(--art);
+  border-color: var(--kind);
 }
-/* BARE-TERM CARD */
-.bare-card {
-  border-radius: 8px;
-  border: 1px solid transparent;
-  cursor: pointer;
-  transition: all 0.12s;
-  margin-bottom: 3px;
+/* Two-class selectors so they outrank .badge's own background/colour, and the
+   dismissed form (three classes) outranks both. */
+.err-card .badge {
+  min-width: 36px;
+  font-size: 12px;
+  background: var(--kind-bg);
+  color: var(--kind);
 }
-.bare-card:hover {
+.err-card.dis .badge {
   background: var(--surface2);
-  border-color: var(--border);
+  color: var(--text-dim);
 }
-.bare-card.focused {
-  background: var(--surface2);
-  border-color: var(--bare);
+.err-msg {
+  font-size: 12px;
+  color: var(--text-muted);
+  line-height: 1.35;
+}
+.err-sub {
+  font-size: 11px;
+  color: var(--text-dim);
+  margin-top: 2px;
+  font-family: var(--font-mono);
 }
 
 /* DISMISSED */

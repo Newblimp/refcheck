@@ -320,7 +320,7 @@ describe('App (interactive)', () => {
     expect(await sidebar(container).findByText(/nonexistent claim 3/)).toBeInTheDocument();
     const card = sidebar(container)
       .getByText(/nonexistent claim 3/)
-      .closest('.bare-card');
+      .closest('.err-card');
     fireEvent.click(card.querySelector('.dis-btn'));
     await waitFor(() =>
       expect(sidebar(container).queryByText(/nonexistent claim 3/)).not.toBeInTheDocument()

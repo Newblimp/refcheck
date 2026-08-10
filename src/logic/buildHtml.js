@@ -1,5 +1,6 @@
 import { eachErrorSpan } from './errorSpans.js';
 import { escapeMarkup } from './escape.js';
+import { ERROR_KINDS } from './errorKinds.js';
 
 // ── HTML BUILDER ────────────────────────────────────────────────────────────
 
@@ -7,16 +8,17 @@ import { escapeMarkup } from './escape.js';
 // contract with styles.css — the pure logic layer has no other link to the
 // stylesheet, so a rename there silently stops highlighting. A test asserts
 // every class here is defined in styles.css.
+//
+// The sign severities are listed here because signs are not an ERROR_KINDS row
+// (see errorKinds.js); the four error categories bring their own class along, so
+// adding a category cannot forget to add its highlight.
 export const HL = {
   warn: 'h-warn', // a sign with an inconsistency
   dis: 'h-dis', // a sign whose errors were dismissed
   ok: 'h-ok', // a consistent sign
   signTerm: 'h-wt', // the term attached to a warned sign
-  art: 'h-art',
-  bare: 'h-bare',
-  num: 'h-num',
-  dep: 'h-dep',
   focus: 'h-focus', // added to the sign the sidebar currently focuses
+  ...Object.fromEntries(ERROR_KINDS.map((k) => [k.id, k.hl])),
 };
 
 // Re-exported under its historical name; the implementation is shared with the
