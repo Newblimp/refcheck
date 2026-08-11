@@ -1,0 +1,72 @@
+{
+  // Type-checks the whole application: src/ (app + tests) and build/ (the Vite
+  // plugins and the payload budget). The service worker is checked separately by
+  // tsconfig.sw.json, because it needs the WebWorker lib in place of DOM and the
+  // two cannot coexist in one project.
+  //
+  // This replaced a jsconfig.json that ran `checkJs` over src/logic/ only. The
+  // JSDoc it was driven by is gone: the types are in the code now.
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+
+    // The app is written against the React API and compiled by preact/compat.
+    // `paths` mirrors the aliases in vite.config.ts — if the two disagree, the
+    // checker and the bundler are looking at different libraries.
+    "jsx": "react-jsx",
+    "jsxImportSource": "preact",
+    "paths": {
+      "react": ["./node_modules/preact/compat"],
+      "react/jsx-runtime": ["./node_modules/preact/jsx-runtime"],
+      "react/jsx-dev-runtime": ["./node_modules/preact/jsx-dev-runtime"],
+      "react-dom": ["./node_modules/preact/compat"],
+      "react-dom/client": ["./node_modules/preact/compat/client"],
+      "react-dom/test-utils": ["./node_modules/preact/test-utils"]
+    },
+
+    // Nothing is emitted from here: Vite/esbuild compiles the app, and the
+    // scripts under build/ run through Node's own type stripping. That is also
+    // what makes `allowImportingTsExtensions` legal, and it is why every import
+    // in this repo names a real file (`./constants.ts`) rather than a specifier
+    // that only a bundler could resolve.
+    "noEmit": true,
+    "allowImportingTsExtensions": true,
+
+    // esbuild and Node's type stripper both compile one file at a time and can
+    // never see across module boundaries, so the source must not depend on
+    // whole-program information. `erasableSyntaxOnly` additionally bans the
+    // constructs Node cannot strip (enums, namespaces, parameter properties) —
+    // without it, `npm run budget` could break on a construct tsc accepts.
+    "isolatedModules": true,
+    "verbatimModuleSyntax": true,
+    "erasableSyntaxOnly": true,
+
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true,
+    "noImplicitOverride": true,
+    "forceConsistentCasingInFileNames": true,
+
+    // MIGRATION SCAFFOLDING — remove both once no .js/.jsx remains under src/.
+    // While the migration is in flight the not-yet-converted files still have to
+    // resolve as modules, but checking them under `strict` would report the
+    // ~310 implicit-any findings that converting them is what fixes. So they
+    // resolve and do not check, and every converted file is fully strict from
+    // the moment it lands. That keeps `npm run typecheck` green at every commit
+    // rather than red for the length of the migration.
+    "allowJs": true,
+    "checkJs": false,
+
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+    "types": ["node", "vitest/globals"],
+    // @types/node otherwise drags plain .js files out of node_modules into the
+    // check (punycode, and whatever else is reachable). Nothing in there is ours.
+    "maxNodeModuleJsDepth": 0
+  },
+  "include": ["src/**/*", "build/**/*", "vite.config.ts"],
+  "exclude": ["node_modules", "dist", "src/sw.ts"]
+}

@@ -13,6 +13,20 @@ import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { gzipSync } from 'node:zlib';
 
+/** One emitted file and what it costs on the wire. */
+export interface MeasuredFile {
+  /** Bundle-relative name, always forward-slashed ("assets/index-ab12.js"). */
+  name: string;
+  /** Size in bytes after gzip. */
+  gzip: number;
+}
+
+/** The two ceilings, in bytes of gzipped transfer. */
+export interface Budgets {
+  critical: number;
+  total: number;
+}
+
 /**
  * Budgets in bytes of gzipped transfer.
  *
@@ -24,7 +38,7 @@ import { gzipSync } from 'node:zlib';
  * These are ceilings with deliberate headroom, not targets — a build that lands
  * near one is a build worth looking at.
  */
-export const BUDGETS = {
+export const BUDGETS: Budgets = {
   critical: 50 * 1024,
   total: 70 * 1024,
 };
@@ -38,18 +52,15 @@ export const BUDGETS = {
  */
 const LAZY = /^assets\/(importDoc|Bee|HelpDialog)-|\.svg$/;
 
-/**
- * Compare a measured bundle against the budgets.
- *
- * @param {{name: string, gzip: number}[]} files  every emitted file
- * @param {{critical: number, total: number}} budgets
- * @returns {{critical: number, total: number, failures: string[]}}
- */
-export function checkBudget(files, budgets) {
+/** Compare a measured bundle against the budgets. */
+export function checkBudget(
+  files: MeasuredFile[],
+  budgets: Budgets
+): { critical: number; total: number; failures: string[] } {
   const critical = files.filter((f) => !LAZY.test(f.name)).reduce((sum, f) => sum + f.gzip, 0);
   const total = files.reduce((sum, f) => sum + f.gzip, 0);
 
-  const failures = [];
+  const failures: string[] = [];
   if (critical > budgets.critical)
     failures.push(`critical path ${kb(critical)} exceeds budget ${kb(budgets.critical)}`);
   if (total > budgets.total)
@@ -57,18 +68,12 @@ export function checkBudget(files, budgets) {
   return { critical, total, failures };
 }
 
-/** @param {number} n */
-const kb = (n) => `${(n / 1024).toFixed(1)} KB`;
+const kb = (n: number) => `${(n / 1024).toFixed(1)} KB`;
 
-/**
- * Measure every file in a built directory.
- * @param {string} dir
- * @returns {{name: string, gzip: number}[]}
- */
-export function measure(dir) {
-  /** @type {{name: string, gzip: number}[]} */
-  const out = [];
-  const walk = (d) => {
+/** Measure every file in a built directory. */
+export function measure(dir: string): MeasuredFile[] {
+  const out: MeasuredFile[] = [];
+  const walk = (d: string) => {
     for (const entry of readdirSync(d)) {
       const full = join(d, entry);
       if (statSync(full).isDirectory()) {
@@ -85,8 +90,10 @@ export function measure(dir) {
   return out;
 }
 
-// CLI: `node build/budget.js [dist]`
-if (process.argv[1] && process.argv[1].endsWith('budget.js')) {
+// CLI: `node build/budget.ts [dist]` — Node strips the types itself, which is
+// why tsconfig.json sets `erasableSyntaxOnly`: a construct Node cannot strip
+// (an enum, a namespace) would type-check here and then fail to run in CI.
+if (process.argv[1] && process.argv[1].endsWith('budget.ts')) {
   const dir = process.argv[2] || 'dist';
   const files = measure(dir);
   const { critical, total, failures } = checkBudget(files, BUDGETS);

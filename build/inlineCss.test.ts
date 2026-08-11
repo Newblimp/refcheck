@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { inlineStylesheets } from './inlineCss.js';
+import { inlineStylesheets } from './inlineCss.ts';
 
 const HTML = `<!doctype html><html><head><title>x</title>
 <link rel="stylesheet" crossorigin href="/refcheck/assets/index-abc123.css">

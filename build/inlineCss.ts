@@ -15,6 +15,8 @@
 // would make the worker fetch and cache a file nothing ever requests. The two
 // plugins therefore have an ordering requirement (see swPrecachePlugin's note).
 
+import type { Plugin, ResolvedConfig, Rollup } from 'vite';
+
 /** Matches the <link rel="stylesheet"> Vite injects for the bundled CSS. */
 const LINK_RE = /<link[^>]+rel="stylesheet"[^>]*>/g;
 
@@ -24,12 +26,15 @@ const LINK_RE = /<link[^>]+rel="stylesheet"[^>]*>/g;
  * Returns the HTML unchanged when there is nothing to inline, so an HTML file
  * with no stylesheet link is not an error.
  *
- * @param {string} html      Contents of the emitted index.html
- * @param {(href: string) => string | undefined} lookup  href → CSS source, if bundled
- * @returns {{html: string, inlined: string[]}} rewritten HTML + the hrefs consumed
+ * @param html    Contents of the emitted index.html
+ * @param lookup  href → CSS source, or undefined if the bundle does not own it
+ * @returns the rewritten HTML plus the hrefs actually consumed
  */
-export function inlineStylesheets(html, lookup) {
-  const inlined = [];
+export function inlineStylesheets(
+  html: string,
+  lookup: (href: string) => string | undefined
+): { html: string; inlined: string[] } {
+  const inlined: string[] = [];
   const out = html.replace(LINK_RE, (tag) => {
     const href = /href="([^"]+)"/.exec(tag)?.[1];
     if (!href) return tag;
@@ -51,20 +56,20 @@ export function inlineStylesheets(html, lookup) {
  * removed from the bundle object itself, which is only reachable here — and
  * because it must be gone before swPrecachePlugin reads the bundle keys.
  */
-export function inlineCssPlugin() {
+export function inlineCssPlugin(): Plugin {
   let base = '/';
   return {
     name: 'refcheck-inline-css',
     apply: 'build',
     enforce: 'post',
-    configResolved(resolved) {
+    configResolved(resolved: ResolvedConfig) {
       base = resolved.base;
     },
-    generateBundle(_options, bundle) {
+    generateBundle(_options: Rollup.NormalizedOutputOptions, bundle: Rollup.OutputBundle) {
       const htmlKey = Object.keys(bundle).find((k) => k.endsWith('.html'));
       if (!htmlKey) return;
       const html = bundle[htmlKey];
-      if (html.type !== 'asset' || typeof html.source !== 'string') return;
+      if (!html || html.type !== 'asset' || typeof html.source !== 'string') return;
 
       // href in the HTML is base-prefixed ("/refcheck/assets/x.css"); the bundle
       // is keyed by the bundle-relative name ("assets/x.css").

@@ -12,16 +12,16 @@
 // asset gets a new cache name and the activate handler can evict the old one —
 // otherwise old bundles accumulate in a single never-renamed cache forever.
 
+import type { Plugin, ResolvedConfig, Rollup } from 'vite';
+
 /** Assets served without a content hash: they can change under a stable URL. */
 export const UNHASHED = ['manifest.webmanifest', 'icon.svg'];
 
 /**
  * Short, stable id for a set of filenames (FNV-1a, base36).
  * Not cryptographic — it only needs to change when the asset set changes.
- * @param {string[]} names
- * @returns {string}
  */
-export function buildId(names) {
+export function buildId(names: string[]): string {
   const joined = [...names].sort().join('\n');
   let h = 0x811c9dc5;
   for (let i = 0; i < joined.length; i++) {
@@ -39,11 +39,11 @@ export function buildId(names) {
  * latter leaves the offline navigation fallback pointing at a key that is never
  * populated.
  *
- * @param {string} base       Vite base path, e.g. "/refcheck/"
- * @param {string[]} emitted  Bundle-relative filenames, e.g. "assets/index-ab12.js"
- * @returns {string[]} absolute URLs, deduplicated, in stable order
+ * @param base     Vite base path, e.g. "/refcheck/"
+ * @param emitted  Bundle-relative filenames, e.g. "assets/index-ab12.js"
+ * @returns absolute URLs, deduplicated, in stable order
  */
-export function precacheUrls(base, emitted) {
+export function precacheUrls(base: string, emitted: string[]): string[] {
   const prefix = base.endsWith('/') ? base : base + '/';
   const urls = new Set([prefix]);
   for (const name of emitted) {
@@ -64,11 +64,12 @@ const TOKENS = ['__SW_BUILD_ID__', '__SW_BASE__', '__SW_PRECACHE__'];
  * Throws if a token is missing, so a rename in sw.js cannot silently ship a
  * worker that precaches nothing.
  *
- * @param {string} source  Contents of public/sw.js
- * @param {{base: string, emitted: string[]}} opts
- * @returns {string}
+ * @param source  The service worker source, types already stripped
  */
-export function renderServiceWorker(source, { base, emitted }) {
+export function renderServiceWorker(
+  source: string,
+  { base, emitted }: { base: string; emitted: string[] }
+): string {
   for (const token of TOKENS) {
     if (!source.includes(token))
       throw new Error(`sw.js is missing the ${token} placeholder — precaching would be skipped`);
@@ -86,15 +87,15 @@ export function renderServiceWorker(source, { base, emitted }) {
  * `writeBundle` rather than `generateBundle` because sw.js is copied verbatim
  * from public/ and so never appears in the bundle object.
  */
-export function swPrecachePlugin() {
-  let config;
+export function swPrecachePlugin(): Plugin {
+  let config: ResolvedConfig;
   return {
     name: 'refcheck-sw-precache',
     apply: 'build',
-    configResolved(resolved) {
+    configResolved(resolved: ResolvedConfig) {
       config = resolved;
     },
-    async writeBundle(options, bundle) {
+    async writeBundle(options: Rollup.NormalizedOutputOptions, bundle: Rollup.OutputBundle) {
       const { readFile, writeFile } = await import('node:fs/promises');
       const { join } = await import('node:path');
       const outDir = options.dir || join(config.root, config.build.outDir);

@@ -1,0 +1,22 @@
+{
+  // The service worker, alone, because it is the one file in the repo that does
+  // not run in a window. `lib: WebWorker` replaces DOM rather than joining it —
+  // the two declare incompatible globals (`self`, `location`, `fetch`), so a
+  // single project cannot describe both, which is the whole reason this file
+  // exists.
+  //
+  // What it buys: sw.ts is where the offline guarantee lives, and a mistake
+  // there fails silently — the site simply stops working without a network, with
+  // nothing to see in a normal test run. Real `ExtendableEvent` / `FetchEvent` /
+  // `CacheStorage` types make a whole class of that unrepresentable. Note in
+  // particular that `caches.match()` is typed `Promise<Response | undefined>`,
+  // which is exactly the hazard the navigation fallback comments describe.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "lib": ["ES2022", "WebWorker"],
+    // No node, and no vitest globals: this file ships to a browser.
+    "types": []
+  },
+  "include": ["src/sw.ts"],
+  "exclude": []
+}

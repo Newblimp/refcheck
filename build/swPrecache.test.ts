@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { precacheUrls, buildId, renderServiceWorker, UNHASHED } from './swPrecache.js';
+import { precacheUrls, buildId, renderServiceWorker, UNHASHED } from './swPrecache.ts';
 
 const EMITTED = ['index.html', 'assets/index-abc123.js', 'assets/index-def456.css'];
 

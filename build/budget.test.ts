@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { checkBudget, BUDGETS } from './budget.js';
+import { checkBudget, BUDGETS } from './budget.ts';
 
 const K = 1024;
 const files = [

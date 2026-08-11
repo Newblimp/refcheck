@@ -9,11 +9,11 @@
     "build": "vite build",
     "preview": "vite preview",
     "test": "vitest run",
-    "typecheck": "tsc -p jsconfig.json",
+    "typecheck": "tsc -p tsconfig.json && tsc -p tsconfig.sw.json",
     "test:watch": "vitest",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "budget": "node build/budget.js dist"
+    "budget": "node build/budget.ts dist"
   },
   "dependencies": {
     "fflate": "^0.8.3",

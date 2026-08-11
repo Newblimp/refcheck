@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { renderServiceWorker } from './swPrecache.js';
+import { renderServiceWorker } from './swPrecache.ts';
 
 // The install handler is where the offline guarantee is actually delivered, and
 // it is the one part of sw.js with real branching in it. Rather than assert on
