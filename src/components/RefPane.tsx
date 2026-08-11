@@ -8,8 +8,8 @@ import type { Strings } from '../i18n.ts';
 
 export interface RefPaneProps {
   t: Strings;
-  signData: Record<string, SignEntry | undefined>;
-  termData: Record<string, TermEntry | undefined>;
+  signData: Record<string, SignEntry>;
+  termData: Record<string, TermEntry>;
   refListText: string;
   onRefListChange: (value: string) => void;
   reconciled: ReconcileResult | null;

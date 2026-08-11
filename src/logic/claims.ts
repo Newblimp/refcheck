@@ -156,7 +156,7 @@ export function computeClaimGraph(text: string, claimNums: ClaimNumber[]): Claim
   const depErrors: DepError[] = [];
   /** claim num → Set of direct parent nums */
   const direct = new Map<number, Set<number>>();
-  const keyCount: Record<string, number | undefined> = {};
+  const keyCount: Record<string, number> = {};
 
   for (const c of claims) {
     const { refs, nums, allPreceding } = parseClaimRefs(text.slice(c.start, c.end), c.start);

@@ -83,7 +83,7 @@ export interface ErrorKind<T extends ErrorRecord = ErrorRecord> {
   hl: string;
   navProp: NavProp;
   /** Sidebar search predicate. */
-  matches: (e: T, q: string, termData: Record<string, TermEntry | undefined>) => boolean;
+  matches: (e: T, q: string, termData: Record<string, TermEntry>) => boolean;
   /** Glyph for the sidebar section header. */
   icon: string;
   /** CSS token base: `var(--<color>)`, `--<color>-bg`. */

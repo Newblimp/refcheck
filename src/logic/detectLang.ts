@@ -56,7 +56,7 @@ const EN_WORDS = new Set([
 const UMLAUTS = new Set([...'äöüßÄÖÜ']);
 
 /** Score text as English or German by function-word frequency. */
-export function detectLangFromText(text: string): Lang {
+export function detectLangFromText(text: string | null | undefined): Lang {
   if (!text) return 'en';
   // Characters that only occur in German carry a lot of signal on their own.
   // Counted with a loop rather than text.match(…).length, which materialised an

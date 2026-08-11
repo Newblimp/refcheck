@@ -67,7 +67,7 @@ export interface NewSection {
 const NBHYPHEN = '\u2011'; // non-breaking hyphen
 const SOFTHYPHEN = '\u00AD'; // soft hyphen (invisible — never type it literally)
 const SPLIT_RE = /([\n\t\u2011\u00AD])/;
-const AS_ELEMENT: Record<string, string | undefined> = {
+const AS_ELEMENT: Record<string, string> = {
   '\n': '<w:br/>',
   '\t': '<w:tab/>',
   [NBHYPHEN]: '<w:noBreakHyphen/>',

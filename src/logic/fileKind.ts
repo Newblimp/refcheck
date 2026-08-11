@@ -12,7 +12,7 @@ const ACCEPTED = /\.(docx|docm)$/i;
 export type FileKind = 'ok' | 'legacyDoc' | 'unsupported';
 
 /** Classify a filename before we bother reading it. */
-export function fileKind(name: string): FileKind {
+export function fileKind(name: string | null | undefined): FileKind {
   const n = String(name || '');
   if (ACCEPTED.test(n)) return 'ok';
   if (/\.doc$/i.test(n)) return 'legacyDoc'; // binary OLE — not readable in-browser

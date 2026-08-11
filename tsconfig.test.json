@@ -1,0 +1,29 @@
+{
+  // The test suite, checked under the same `strict` as everything else with one
+  // flag turned back off.
+  //
+  // `noUncheckedIndexedAccess` earns its place in production code, where an
+  // absent map entry or regex group has to be handled. In a test it inverts:
+  // `expect(res.signData['12'].count).toBe(2)` is an assertion ABOUT the fixture,
+  // and a missing '12' should fail loudly rather than be guarded into silence.
+  // Requiring a guard there would add noise to every assertion and, worse, invite
+  // `?.` chains that turn a broken fixture into a passing test.
+  //
+  // Everything that actually catches mistakes in tests still applies: unknown
+  // properties, wrong argument counts, wrong types, unused bindings.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noUncheckedIndexedAccess": false
+  },
+  // The ambient declarations (asset modules, the export-test hook) have to be
+  // named here too — this project has its own include, so it does not inherit
+  // the main one's.
+  "include": [
+    "src/**/*.test.ts",
+    "src/**/*.test.tsx",
+    "src/**/*.d.ts",
+    "src/test/**/*",
+    "src/logic/docx/fixture.ts"
+  ],
+  "exclude": []
+}

@@ -25,8 +25,12 @@ export interface CtxTermData {
  * A separator carries nothing at all.
  */
 export type CtxMenuItem =
+  // extend and reduce are listed separately, not as `a: 'extend' | 'reduce'`:
+  // `Extract<CtxMenuItem, { a: 'extend' }>` yields never for a member whose
+  // discriminant is a union, so a consumer could not name one of them.
   | { sep: true }
-  | { label: string; a: 'extend' | 'reduce'; d: CtxTermData }
+  | { label: string; a: 'extend'; d: CtxTermData }
+  | { label: string; a: 'reduce'; d: CtxTermData }
   | { label: string; a: 'toggle-dis'; d: { key: string } }
   | { label: string; a: 'insert-sign'; d: { bt: BareTerm; sign: string } }
   | { label: string; a: 'dis-all'; v: 'warn' }

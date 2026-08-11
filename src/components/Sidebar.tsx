@@ -19,8 +19,8 @@ import type { Strings } from '../i18n.ts';
 export interface SidebarProps {
   t: Strings;
   mode: Mode;
-  signData: Record<string, SignEntry | undefined>;
-  termData: Record<string, TermEntry | undefined>;
+  signData: Record<string, SignEntry>;
+  termData: Record<string, TermEntry>;
   search: string;
   onSearch: (value: string) => void;
   searchRef: Ref<HTMLInputElement>;

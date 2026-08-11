@@ -45,7 +45,7 @@ export interface ParsedRefList {
 }
 
 /** Parse reference-list text into entries. */
-export function parseRefList(text: string): ParsedRefList {
+export function parseRefList(text: string | null | undefined): ParsedRefList {
   const entries: RefListEntry[] = [];
   const lines = String(text || '').split('\n');
   lines.forEach((raw, line) => {

@@ -100,7 +100,7 @@ export type AtPos =
  */
 export function findAtPos(
   charPos: number,
-  signData: Record<string, SignEntry | undefined>,
+  signData: Record<string, SignEntry>,
   artErrors: ArtError[],
   bareTerms: BareTerm[] = []
 ): AtPos | null {

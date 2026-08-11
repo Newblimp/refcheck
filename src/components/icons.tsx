@@ -1,6 +1,6 @@
 // ── ICONS ───────────────────────────────────────────────────────────────────
 // The inline SVGs, kept together and out of the components that use them.
-// They were ~150 lines of path data sitting in the middle of App.jsx's JSX,
+// They were ~150 lines of path data sitting in the middle of App.tsx's JSX,
 // which made the actual layout hard to read.
 //
 // All of them are stroke icons on a 24×24 grid inheriting `currentColor`, so a

@@ -9,7 +9,7 @@ import type { Strings } from '../i18n.ts';
 export interface SignCardProps {
   sign: string;
   sData: SignEntry;
-  termData: Record<string, TermEntry | undefined>;
+  termData: Record<string, TermEntry>;
   mode: Mode;
   focused: boolean;
   t: Strings;

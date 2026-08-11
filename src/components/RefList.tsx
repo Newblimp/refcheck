@@ -7,8 +7,8 @@ import type { Strings } from '../i18n.ts';
 // Collapsible sidebar section showing the sign → term table for the active
 // buffer, with copy-to-clipboard (plain text) for pasting into a draft.
 export interface RefListProps {
-  signData: Record<string, SignEntry | undefined>;
-  termData: Record<string, TermEntry | undefined>;
+  signData: Record<string, SignEntry>;
+  termData: Record<string, TermEntry>;
   t: Strings;
 }
 

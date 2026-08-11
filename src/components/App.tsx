@@ -101,10 +101,10 @@ export function App() {
   // Narrow screens show exactly one pane; ignored by the desktop layout.
   const [mobilePane, setMobilePane] = useState<MobilePane>('editor');
   const [helpOpen, setHelpOpen] = useState(false);
-  const [mwo, setMwo] = usePersistentState<Record<string, number | undefined>>(
+  const [mwo, setMwo] = usePersistentState<Record<string, number>>(
     'rsc_mwo',
     {},
-    jsonCodec<Record<string, number | undefined>>()
+    jsonCodec<Record<string, number>>()
   );
   const [dis, setDis] = usePersistentState<Set<string>>('rsc_dis', new Set(), setCodec);
   const [theme, setTheme] = useTheme();

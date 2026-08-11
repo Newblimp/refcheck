@@ -41,7 +41,7 @@ export interface SignPosition {
 /** Everything known about one reference sign. */
 export interface SignEntry {
   /** termStem → occurrence count. */
-  terms: Record<string, number | undefined>;
+  terms: Record<string, number>;
   /** One entry per occurrence. */
   positions: SignPosition[];
   /** Total occurrences. */
@@ -53,7 +53,7 @@ export interface SignEntry {
 /** Everything known about one term. */
 export interface TermEntry {
   /** sign → occurrence count. */
-  signs: Record<string, number | undefined>;
+  signs: Record<string, number>;
   /** Raw spellings seen for this stem. */
   rawTerms: Set<string>;
 }
@@ -112,8 +112,8 @@ export interface NumError {
 
 /** Everything one pass over a buffer produces. */
 export interface ExtractResult {
-  signData: Record<string, SignEntry | undefined>;
-  termData: Record<string, TermEntry | undefined>;
+  signData: Record<string, SignEntry>;
+  termData: Record<string, TermEntry>;
   artErrors: ArtError[];
   bareTerms: BareTerm[];
   numErrors: NumError[];
@@ -238,13 +238,13 @@ function findBareTerms({
 }: {
   toks: Token[];
   text: string;
-  termData: Record<string, TermEntry | undefined>;
-  signData: Record<string, SignEntry | undefined>;
+  termData: Record<string, TermEntry>;
+  signData: Record<string, SignEntry>;
   lang: Lang;
   isClaims: boolean;
 }): BareTerm[] {
   // Index: stem of the term's last word → [termStem, …], longest term first.
-  const baseToTerms: Record<string, string[] | undefined> = {};
+  const baseToTerms: Record<string, string[]> = {};
   for (const ts of Object.keys(termData)) {
     const parts = ts.split(' ');
     const base = parts[parts.length - 1] ?? '';
@@ -326,7 +326,7 @@ function findBareTerms({
  * adjacent ranges as covering a span that neither one contains.)
  */
 function buildKnownRangeIndex(
-  signData: Record<string, SignEntry | undefined>
+  signData: Record<string, SignEntry>
 ): (tStart: number, tEnd: number) => boolean {
   const ranges: [start: number, end: number][] = [];
   for (const sData of Object.values(signData))
@@ -362,7 +362,7 @@ function buildKnownRangeIndex(
  */
 function computeNumberingErrors(claimNums: ClaimNumber[]): NumError[] {
   const numErrors: NumError[] = [];
-  const keyCount: Record<number, number | undefined> = {};
+  const keyCount: Record<number, number> = {};
   let expected = 1;
   for (const cn of claimNums) {
     if (cn.value !== expected) {
@@ -405,9 +405,9 @@ function computeArticleErrors({
   claimAt,
   lang,
 }: {
-  artByTerm: Record<string, ArtOccurrence[] | undefined>;
-  termPositions: Record<string, number[] | undefined>;
-  termFirstPos: Record<string, number | undefined>;
+  artByTerm: Record<string, ArtOccurrence[]>;
+  termPositions: Record<string, number[]>;
+  termFirstPos: Record<string, number>;
   claimGraph: ClaimGraph | null;
   claimAt: (pos: number) => ClaimSpan | null;
   lang: Lang;
@@ -541,20 +541,25 @@ function findSignGroups(text: string): (start: number, end: number) => boolean {
  */
 export function extractData(
   text: string,
-  lang: Lang,
-  mwo: Record<string, number | undefined> = {},
+  // Defaulted rather than required. It always was optional in practice — the
+  // language only ever reaches `stem`, where anything other than 'de' means
+  // English — so a call omitting it worked by accident. English is also the
+  // app's own default (rsc_lang), so this states the existing behaviour instead
+  // of leaving it to be inferred from a comparison three modules away.
+  lang: Lang = 'en',
+  mwo: Record<string, number> = {},
   autoMW = true,
   isClaims = false,
   listIdx: ListTermIndex | null = null
 ): ExtractResult {
   const toks = tokenize(text);
   const ordStems = autoMW ? detectOrdStems(toks, lang, text, isClaims) : new Set<string>();
-  const signData: Record<string, SignEntry | undefined> = {};
-  const termData: Record<string, TermEntry | undefined> = {};
-  const artByTerm: Record<string, ArtOccurrence[] | undefined> = {};
-  const termFirstPos: Record<string, number | undefined> = {};
+  const signData: Record<string, SignEntry> = {};
+  const termData: Record<string, TermEntry> = {};
+  const artByTerm: Record<string, ArtOccurrence[]> = {};
+  const termFirstPos: Record<string, number> = {};
   /** termStem → [termStart, …] (every sign-attached occurrence) */
-  const termPositions: Record<string, number[] | undefined> = {};
+  const termPositions: Record<string, number[]> = {};
   const claimNums: ClaimNumber[] = [];
   const noTermSigns = new Set<string>();
 
@@ -769,7 +774,7 @@ export function extractData(
  */
 export function classify(
   sData: SignEntry,
-  termData: Record<string, TermEntry | undefined>,
+  termData: Record<string, TermEntry>,
   mode: Mode
 ): Severity {
   if (mode === 'claims' && sData.count > sData.inPC) return 'warn';

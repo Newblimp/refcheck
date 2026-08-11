@@ -16,10 +16,10 @@ export interface RefListRow {
 // Pick the dominant term for a sign: the term stem with the highest occurrence
 // count, tie-broken by earliest appearance, resolved to a human-readable raw
 // term (matching how SignCard displays the first raw term).
-function dominantTerm(sData: SignEntry, termData: Record<string, TermEntry | undefined>): string {
+function dominantTerm(sData: SignEntry, termData: Record<string, TermEntry>): string {
   const stems = Object.keys(sData.terms);
   if (stems.length === 0) return '';
-  const firstPos: Record<string, number | undefined> = {};
+  const firstPos: Record<string, number> = {};
   for (const p of sData.positions) {
     const seen = firstPos[p.termStem];
     if (seen === undefined || p.termStart < seen) firstPos[p.termStem] = p.termStart;
@@ -35,8 +35,8 @@ function dominantTerm(sData: SignEntry, termData: Record<string, TermEntry | und
 
 /** Rows sorted numerically by sign. */
 export function buildRefList(
-  signData: Record<string, SignEntry | undefined>,
-  termData: Record<string, TermEntry | undefined>
+  signData: Record<string, SignEntry>,
+  termData: Record<string, TermEntry>
 ): RefListRow[] {
   const rows: RefListRow[] = [];
   for (const [sign, sData] of Object.entries(signData)) {

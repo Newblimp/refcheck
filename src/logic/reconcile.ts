@@ -63,7 +63,7 @@ export interface ReconcileResult {
  * @returns null when there is nothing to compare
  */
 export function reconcileRefList(
-  listText: string,
+  listText: string | null | undefined,
   result: ExtractResult | null | undefined,
   lang: Lang
 ): ReconcileResult | null {

@@ -23,6 +23,10 @@
       "react/jsx-dev-runtime": ["./node_modules/preact/jsx-dev-runtime"],
       "react-dom": ["./node_modules/preact/compat"],
       "react-dom/client": ["./node_modules/preact/compat/client"],
+      // preact/compat/server ships no declarations of its own — it re-exports
+      // preact-render-to-string, which is what Vite's alias resolves to at
+      // runtime as well, so this points the checker at the same module.
+      "react-dom/server": ["./node_modules/preact-render-to-string/dist/index.d.ts"],
       "react-dom/test-utils": ["./node_modules/preact/test-utils"]
     },
 
@@ -57,16 +61,6 @@
     "noImplicitOverride": true,
     "forceConsistentCasingInFileNames": true,
 
-    // MIGRATION SCAFFOLDING — remove both once no .js/.jsx remains under src/.
-    // While the migration is in flight the not-yet-converted files still have to
-    // resolve as modules, but checking them under `strict` would report the
-    // ~310 implicit-any findings that converting them is what fixes. So they
-    // resolve and do not check, and every converted file is fully strict from
-    // the moment it lands. That keeps `npm run typecheck` green at every commit
-    // rather than red for the length of the migration.
-    "allowJs": true,
-    "checkJs": false,
-
     "skipLibCheck": true,
     "resolveJsonModule": true,
     "types": ["node", "vitest/globals"],
@@ -75,5 +69,5 @@
     "maxNodeModuleJsDepth": 0
   },
   "include": ["src/**/*", "build/**/*", "vite.config.ts"],
-  "exclude": ["node_modules", "dist", "src/sw.ts"]
+  "exclude": ["node_modules", "dist", "src/sw.ts", "src/**/*.test.ts", "src/**/*.test.tsx"]
 }

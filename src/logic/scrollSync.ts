@@ -28,11 +28,11 @@
  *   bottom, 0 in the normal case).
  */
 export function backdropScroll(
-  scrollTop: number,
-  scrollHeight: number,
-  clientHeight: number
+  scrollTop: number | undefined,
+  scrollHeight: number | undefined,
+  clientHeight: number | undefined
 ): { top: number; shift: number } {
-  const st = Number.isFinite(scrollTop) ? scrollTop : 0;
+  const st = Number.isFinite(scrollTop) ? (scrollTop as number) : 0;
   const max = Math.max(0, (scrollHeight || 0) - (clientHeight || 0));
   const top = Math.min(Math.max(st, 0), max);
   return { top, shift: st - top };

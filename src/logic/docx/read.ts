@@ -67,7 +67,7 @@ export interface PatentDoc {
 /** Why a file could not be read as a Word document. */
 export type DocxErrorCode = 'notZip' | 'noDocument' | 'spliceOverlap';
 
-const ENTITIES: Record<string, string | undefined> = {
+const ENTITIES: Record<string, string> = {
   amp: '&',
   lt: '<',
   gt: '>',

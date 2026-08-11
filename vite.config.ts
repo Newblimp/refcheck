@@ -62,11 +62,8 @@ export default defineConfig({
     // Pure-logic tests run fast under node; only interactive component tests
     // (*.ui.test.jsx) need a DOM, so jsdom is scoped to them.
     environment: 'node',
-    // MIGRATION SCAFFOLDING — narrow to {ts,tsx} once no .js/.jsx test remains.
-    // A glob that stops matching a file does not fail; it silently stops running
-    // it, so this stays permissive until the last test file is converted.
-    include: ['{src,build}/**/*.test.{js,jsx,ts,tsx}'],
-    environmentMatchGlobs: [['src/**/*.ui.test.{jsx,tsx}', 'jsdom']],
+    include: ['{src,build}/**/*.test.{ts,tsx}'],
+    environmentMatchGlobs: [['src/**/*.ui.test.tsx', 'jsdom']],
     setupFiles: ['src/test/setup.ts'],
     globals: true,
   },
