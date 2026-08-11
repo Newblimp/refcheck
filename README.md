@@ -31,9 +31,9 @@ offline app.
 
 ## Development
 
-The app is a Preact + Vite project, written against the React API (`preact/compat`;
-components import from `react` and the alias lives in `vite.config.js`). Source lives in
-`src/`; the production site is built
+The app is a Preact + Vite project in **TypeScript**, written against the React API
+(`preact/compat`; components import from `react` and the alias lives in `vite.config.ts`).
+Source lives in `src/`; the production site is built
 to `dist/` and published to GitHub Pages automatically by
 `.github/workflows/deploy.yml` on every push to `main`.
 
@@ -41,7 +41,7 @@ to `dist/` and published to GitHub Pages automatically by
 npm install        # install dependencies (first time only)
 npm run dev        # start the dev server with hot reload
 npm test           # run the unit tests (Vitest)
-npm run typecheck  # type-check src/logic/ from its JSDoc (see jsconfig.json)
+npm run typecheck  # tsc over src/, build/ and the service worker (see tsconfig*.json)
 npm run format     # prettier --write . (CI checks this before the tests)
 npm run build      # produce the production bundle in dist/
 npm run budget     # check the payload budget against dist/ (CI runs it after the build)
@@ -55,21 +55,22 @@ CI runs `format:check`, `typecheck` and the tests on every push and pull request
 
 ## Project layout
 
-| Path                          | Purpose                                                                                                                          |
-| ----------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
-| `index.html`                  | Vite entry (HTML shell, sets the initial theme)                                                                                  |
-| `public/sw.js`                | Service worker — caches the app shell for offline use                                                                            |
-| `public/manifest.webmanifest` | PWA manifest (installable / Add to Home Screen)                                                                                  |
-| `src/main.jsx`                | Mounts the app, registers the service worker                                                                                     |
-| `src/styles.css`              | All styles (CSS custom properties for theming). No web fonts — `--font-ui`/`--font-mono` are system stacks                       |
-| `build/`                      | Build plugins: service-worker precache list, CSS inlining, payload budget                                                        |
-| `src/i18n.js`                 | English/German UI strings                                                                                                        |
-| `src/logic/`                  | Pure, framework-free logic (tokenizer, stemming, extraction, claim graph, `.docx` read/write, reference list) — covered by tests |
-| `src/logic/errorKinds.js`     | The table of error categories — the one place that knows a category exists                                                       |
-| `src/hooks/`                  | Hooks (state persistence, hotkeys, file drop, editor sync, `.docx` I/O)                                                          |
-| `src/components/`             | Components (`App`, `TopBar`, `StatusBar`, `Sidebar`, `SignCard`, `ErrorCard`, `RefList`, `CtxMenu`)                              |
-| `src/**/*.test.js(x)`         | Vitest unit tests (logic in `node`, `*.ui.test.jsx` in `jsdom`)                                                                  |
-| `jsconfig.json`               | `checkJs` settings for `npm run typecheck`                                                                                       |
-| `docs/architecture-review.md` | Architecture review: what is load-bearing, and what was restructured                                                             |
+| Path                           | Purpose                                                                                                                          |
+| ------------------------------ | -------------------------------------------------------------------------------------------------------------------------------- |
+| `index.html`                   | Vite entry (HTML shell, sets the initial theme)                                                                                  |
+| `src/sw.ts`                    | Service worker — caches the app shell for offline use (type-stripped to `dist/sw.js`, never bundled)                             |
+| `public/manifest.webmanifest`  | PWA manifest (installable / Add to Home Screen)                                                                                  |
+| `src/main.tsx`                 | Mounts the app, registers the service worker                                                                                     |
+| `src/styles.css`               | All styles (CSS custom properties for theming). No web fonts — `--font-ui`/`--font-mono` are system stacks                       |
+| `build/`                       | Build plugins: service-worker precache list, CSS inlining, payload budget                                                        |
+| `src/i18n.ts`                  | English/German UI strings                                                                                                        |
+| `src/logic/`                   | Pure, framework-free logic (tokenizer, stemming, extraction, claim graph, `.docx` read/write, reference list) — covered by tests |
+| `src/logic/errorKinds.ts`      | The table of error categories — the one place that knows a category exists                                                       |
+| `src/hooks/`                   | Hooks (state persistence, hotkeys, file drop, editor sync, `.docx` I/O)                                                          |
+| `src/components/`              | Components (`App`, `TopBar`, `StatusBar`, `Sidebar`, `SignCard`, `ErrorCard`, `RefList`, `CtxMenu`)                              |
+| `src/**/*.test.ts(x)`          | Vitest unit tests (logic in `node`, `*.ui.test.tsx` in `jsdom`)                                                                  |
+| `tsconfig*.json`               | The three TypeScript projects `npm run typecheck` runs                                                                           |
+| `docs/architecture-review.md`  | Architecture review: what is load-bearing, and what was restructured                                                             |
+| `docs/typescript-migration.md` | What the TypeScript migration changed, and what the compiler found                                                               |
 
 See [`CLAUDE.md`](./CLAUDE.md) for a deeper architecture overview.

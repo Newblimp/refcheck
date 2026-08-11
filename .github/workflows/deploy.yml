@@ -36,9 +36,9 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run format:check
-      # checkJs over src/logic/ — see jsconfig.json. It caught five typedefs
-      # that had drifted from what their function actually returned, so it runs
-      # here rather than being something you remember to do.
+      # tsc over src/, build/ and the service worker (three projects — see
+      # tsconfig*.json). The app is TypeScript throughout, so this is the gate on
+      # every shape in it, not a nice-to-have.
       - run: npm run typecheck
       - run: npm test
       - run: npm run build
