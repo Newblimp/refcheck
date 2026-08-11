@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
-import { backdropScroll } from './scrollSync.js';
+import { backdropScroll } from './scrollSync.ts';
 
 // A 1000px-tall document in a 400px-tall box: scrollable range is 0…600.
 const doc = (scrollTop) => backdropScroll(scrollTop, 1000, 400);

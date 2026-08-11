@@ -1,4 +1,4 @@
-import { disKey } from './constants.js';
+import { disKey } from './constants.ts';
 
 // ── ERROR KINDS ──────────────────────────────────────────────────────────────
 //

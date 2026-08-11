@@ -5,7 +5,7 @@ const HTML = `<!doctype html><html><head><title>x</title>
 <link rel="stylesheet" crossorigin href="/refcheck/assets/index-abc123.css">
 </head><body><div id="root"></div></body></html>`;
 
-const lookup = (href) =>
+const lookup = (href: string): string | undefined =>
   href === '/refcheck/assets/index-abc123.css' ? 'body{color:red}' : undefined;
 
 describe('inlineStylesheets', () => {

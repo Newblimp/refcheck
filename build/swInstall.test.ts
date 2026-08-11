@@ -14,58 +14,83 @@ const SRC = readFileSync(
   'utf8'
 );
 
+/** The subset of Response the worker touches: it only ever re-puts what it got. */
+interface FakeResponse {
+  ok: boolean;
+  status: number;
+  url: string;
+}
+
 class FakeCache {
-  constructor() {
-    this.map = new Map();
-  }
-  async put(url, res) {
+  map = new Map<string, FakeResponse>();
+  async put(url: string, res: FakeResponse) {
     this.map.set(String(url), res);
   }
-  async match(url) {
+  async match(url: string): Promise<FakeResponse | undefined> {
     return this.map.get(String(url));
   }
 }
 
 class FakeCacheStorage {
-  constructor() {
-    this.stores = new Map();
-  }
-  async open(name) {
-    if (!this.stores.has(name)) this.stores.set(name, new FakeCache());
-    return this.stores.get(name);
+  stores = new Map<string, FakeCache>();
+  async open(name: string): Promise<FakeCache> {
+    let store = this.stores.get(name);
+    if (!store) {
+      store = new FakeCache();
+      this.stores.set(name, store);
+    }
+    return store;
   }
   /** No cache name: searches every cache in the origin, as the real one does. */
-  async match(url) {
+  async match(url: string): Promise<FakeResponse | undefined> {
     for (const c of this.stores.values()) {
       const hit = await c.match(url);
       if (hit) return hit;
     }
     return undefined;
   }
-  async keys() {
+  async keys(): Promise<string[]> {
     return [...this.stores.keys()];
   }
-  async delete(name) {
+  async delete(name: string): Promise<boolean> {
     return this.stores.delete(name);
   }
+}
+
+/** The `self` the worker sees — only what its install/activate/fetch handlers use. */
+interface FakeSelf {
+  addEventListener: (type: string, fn: (event: FakeEvent) => void) => void;
+  skipWaiting: () => void;
+  clients: { claim: () => void };
+  location: { origin: string };
+}
+
+interface FakeEvent {
+  waitUntil: (p: Promise<unknown>) => void;
 }
 
 /**
  * Evaluate the rendered worker and run its install handler to completion.
  * Returns the URLs it went to the network for.
  */
-async function install(emitted, caches, { failOn = null } = {}) {
+async function install(
+  emitted: string[],
+  caches: FakeCacheStorage,
+  { failOn = null }: { failOn?: string | null } = {}
+): Promise<string[]> {
   const src = renderServiceWorker(SRC, { base: '/refcheck/', emitted });
-  const fetched = [];
-  const fetch = async (url) => {
+  const fetched: string[] = [];
+  const fetch = async (url: string): Promise<FakeResponse> => {
     fetched.push(url);
     const ok = url !== failOn;
     return { ok, status: ok ? 200 : 404, url };
   };
 
-  const handlers = {};
-  const self = {
-    addEventListener: (type, fn) => (handlers[type] = fn),
+  const handlers: Record<string, ((event: FakeEvent) => void) | undefined> = {};
+  const self: FakeSelf = {
+    addEventListener: (type, fn) => {
+      handlers[type] = fn;
+    },
     skipWaiting: () => {},
     clients: { claim: () => {} },
     location: { origin: 'https://example.test' },
@@ -73,8 +98,8 @@ async function install(emitted, caches, { failOn = null } = {}) {
 
   new Function('self', 'caches', 'fetch', src)(self, caches, fetch);
 
-  let waited;
-  handlers.install({ waitUntil: (p) => (waited = p) });
+  let waited: Promise<unknown> | undefined;
+  handlers.install?.({ waitUntil: (p) => (waited = p) });
   await waited;
   return fetched;
 }
@@ -94,7 +119,7 @@ describe('service worker install', () => {
     expect(fetched).toContain('/refcheck/manifest.webmanifest');
 
     const [cache] = [...caches.stores.values()];
-    expect(cache.map.has('/refcheck/assets/vendor-AAA.js')).toBe(true);
+    expect(cache?.map.has('/refcheck/assets/vendor-AAA.js')).toBe(true);
   });
 
   it('carries an unchanged hashed chunk over from the previous build', async () => {
@@ -112,7 +137,7 @@ describe('service worker install', () => {
     // Carried over, not merely skipped: the new cache must actually hold it, or
     // the app is broken offline on the new build.
     const newest = [...caches.stores.values()].at(-1);
-    expect(newest.map.has('/refcheck/assets/vendor-AAA.js')).toBe(true);
+    expect(newest?.map.has('/refcheck/assets/vendor-AAA.js')).toBe(true);
   });
 
   it('always refetches the URLs whose bytes can change under a stable URL', async () => {

@@ -1,4 +1,4 @@
-import { SIGN_RE, ROMAN_RE } from './constants.js';
+import { SIGN_RE, ROMAN_RE } from './constants.ts';
 
 // ── TOKENIZER ──────────────────────────────────────────────────────────────
 // Splits text into word/number tokens, recording each token's character span.
@@ -15,11 +15,23 @@ const TOKEN_RE = new RegExp(
   'g'
 );
 
-export function tokenize(text) {
+/** One word or number, with the character span it occupies in the source text. */
+export interface Token {
+  word: string;
+  /** Inclusive start offset. */
+  start: number;
+  /** Exclusive end offset. */
+  end: number;
+}
+
+export function tokenize(text: string): Token[] {
   TOKEN_RE.lastIndex = 0;
-  const toks = [];
-  let m;
-  while ((m = TOKEN_RE.exec(text)) !== null)
-    toks.push({ word: m[1], start: m.index, end: m.index + m[1].length });
+  const toks: Token[] = [];
+  let m: RegExpExecArray | null;
+  while ((m = TOKEN_RE.exec(text)) !== null) {
+    // Group 1 is the whole alternation and cannot be absent when exec matched.
+    const word = m[1] ?? '';
+    toks.push({ word, start: m.index, end: m.index + word.length });
+  }
   return toks;
 }

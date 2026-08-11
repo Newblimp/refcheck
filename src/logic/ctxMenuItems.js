@@ -1,5 +1,5 @@
-import { disKey } from './constants.js';
-import { stem } from './stem.js';
+import { disKey } from './constants.ts';
+import { stem } from './stem.ts';
 
 // ── EDITOR CONTEXT MENU ──────────────────────────────────────────────────────
 // Turns "what sits at the caret" (findAtPos) into the menu to show for it.

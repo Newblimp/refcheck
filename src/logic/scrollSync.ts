@@ -20,14 +20,18 @@
  * first place; this covers the engines that report an out-of-range scrollTop
  * anyway — iOS Safari does — so the two layers stay locked either way.)
  *
- * @param {number} scrollTop     The textarea's reported scroll offset.
- * @param {number} scrollHeight  The textarea's full content height.
- * @param {number} clientHeight  The textarea's visible height.
- * @returns {{top: number, shift: number}} `top` to assign to the backdrop's
- *   scrollTop, `shift` the overscrolled remainder in px (negative past the
- *   top, positive past the bottom, 0 in the normal case).
+ * @param scrollTop     The textarea's reported scroll offset.
+ * @param scrollHeight  The textarea's full content height.
+ * @param clientHeight  The textarea's visible height.
+ * @returns `top` to assign to the backdrop's scrollTop, and `shift`, the
+ *   overscrolled remainder in px (negative past the top, positive past the
+ *   bottom, 0 in the normal case).
  */
-export function backdropScroll(scrollTop, scrollHeight, clientHeight) {
+export function backdropScroll(
+  scrollTop: number,
+  scrollHeight: number,
+  clientHeight: number
+): { top: number; shift: number } {
   const st = Number.isFinite(scrollTop) ? scrollTop : 0;
   const max = Math.max(0, (scrollHeight || 0) - (clientHeight || 0));
   const top = Math.min(Math.max(st, 0), max);

@@ -8,7 +8,7 @@ import { writeDocx, createDocx } from './docx/write.js';
 import { verifyExport } from './docx/verify.js';
 import { splitPatentDoc, refListWritable } from './docSplit.js';
 import { detectLang } from './detectLang.js';
-import { fileKind } from './fileKind.js';
+import { fileKind } from './fileKind.ts';
 
 // Re-exported so this module stays the single seam callers reason about, even
 // though the implementation lives elsewhere to keep it out of the lazy chunk.

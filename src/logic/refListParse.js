@@ -1,4 +1,4 @@
-import { isSignToken, compareSigns } from './constants.js';
+import { isSignToken, compareSigns } from './constants.ts';
 
 // ── REFERENCE-LIST PARSING ───────────────────────────────────────────────────
 // Reads a drafter's "List of Reference Signs" / "Bezugszeichenliste" into

@@ -1,4 +1,4 @@
-import { CONNECTOR_ALT, RANGE_DASHES } from './constants.js';
+import { CONNECTOR_ALT, RANGE_DASHES } from './constants.ts';
 
 // ── CLAIM STRUCTURE ──────────────────────────────────────────────────────────
 // Segments the claims buffer into individual claims, parses each claim's

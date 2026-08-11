@@ -9,9 +9,9 @@ import {
   disKey,
   CONNECTOR_ALT,
   RANGE_DASHES,
-} from './constants.js';
-import { stem } from './stem.js';
-import { tokenize } from './tokenize.js';
+} from './constants.ts';
+import { stem } from './stem.ts';
+import { tokenize } from './tokenize.ts';
 import { computeClaimGraph } from './claims.js';
 import { listExtra } from './listTerms.js';
 

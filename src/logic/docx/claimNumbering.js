@@ -16,7 +16,7 @@
 // Everything here is a pure function of a paragraph plus a line of text; nothing
 // touches the zip or the buffer.
 
-import { CLAIM_NUM_PREFIX_RE, startsWithClaimNumber, stripClaimNumber } from '../constants.js';
+import { CLAIM_NUM_PREFIX_RE, startsWithClaimNumber, stripClaimNumber } from '../constants.ts';
 
 /** `<w:numPr>…</w:numPr>`, self-closing or not — removing it un-lists a paragraph. */
 export const NUMPR_RE = /<w:numPr\b(?:[^>]*\/>|[^>]*>[\s\S]*?<\/w:numPr>)/g;

@@ -1,3 +1,5 @@
+import type { Lang } from './constants.ts';
+
 // ── STEMMING ── Porter (EN) + Snowball (DE) ────────────────────────────────
 //
 // Everything constant lives at module scope. These helpers and suffix tables
@@ -6,9 +8,10 @@
 // on cache misses, and not for the DE character sets.
 
 const EN_VOWEL_RE = /[aeiou]/;
-const isv = (s, i) => (s[i] === 'y' ? i > 0 && !isv(s, i - 1) : EN_VOWEL_RE.test(s[i]));
+const isv = (s: string, i: number): boolean =>
+  s[i] === 'y' ? i > 0 && !isv(s, i - 1) : EN_VOWEL_RE.test(s[i] ?? '');
 // Porter's measure: the number of vowel→consonant transitions.
-const mg = (s) => {
+const mg = (s: string): number => {
   let n = 0,
     v = false;
   for (let i = 0; i < s.length; i++) {
@@ -21,20 +24,22 @@ const mg = (s) => {
   }
   return n;
 };
-const hv = (s) => {
+const hv = (s: string): boolean => {
   for (let i = 0; i < s.length; i++) if (isv(s, i)) return true;
   return false;
 };
-const dbl = (s) => {
+const dbl = (s: string): boolean => {
   const n = s.length;
   return n >= 2 && s[n - 1] === s[n - 2] && !isv(s, n - 1);
 };
-const cvc = (s) => {
+const cvc = (s: string): boolean => {
   const n = s.length;
-  return n >= 3 && !isv(s, n - 1) && !'wxy'.includes(s[n - 1]) && isv(s, n - 2) && !isv(s, n - 3);
+  return (
+    n >= 3 && !isv(s, n - 1) && !'wxy'.includes(s[n - 1] ?? '') && isv(s, n - 2) && !isv(s, n - 3)
+  );
 };
 
-const EN_STEP2 = [
+const EN_STEP2: [string, string][] = [
   ['ational', 'ate'],
   ['tional', 'tion'],
   ['enci', 'ence'],
@@ -56,7 +61,7 @@ const EN_STEP2 = [
   ['iviti', 'ive'],
   ['biliti', 'ble'],
 ];
-const EN_STEP3 = [
+const EN_STEP3: [string, string][] = [
   ['icate', 'ic'],
   ['ative', ''],
   ['alize', 'al'],
@@ -65,7 +70,7 @@ const EN_STEP3 = [
   ['ful', ''],
   ['ness', ''],
 ];
-const EN_STEP4 = [
+const EN_STEP4: string[] = [
   'ement',
   'ment',
   'ance',
@@ -86,7 +91,7 @@ const EN_STEP4 = [
   'ou',
 ];
 
-export function stemEn(w) {
+export function stemEn(w: string): string {
   w = w.toLowerCase();
   if (w.length <= 2) return w;
   // 1a
@@ -108,7 +113,7 @@ export function stemEn(w) {
     if (w.endsWith('at')) w += 'e';
     else if (w.endsWith('bl')) w += 'e';
     else if (w.endsWith('iz')) w += 'e';
-    else if (dbl(w) && !'lsz'.includes(w[w.length - 1])) w = w.slice(0, -1);
+    else if (dbl(w) && !'lsz'.includes(w[w.length - 1] ?? '')) w = w.slice(0, -1);
     else if (mg(w) === 1 && cvc(w)) w += 'e';
   }
   // 1c
@@ -160,29 +165,29 @@ export function stemEn(w) {
 }
 
 const DE_VOWEL_RE = /[aeiouyäöü]/;
-const deIsv = (c) => DE_VOWEL_RE.test(c);
+const deIsv = (c: string | undefined) => DE_VOWEL_RE.test(c ?? '');
 // Valid s-ending / st-ending predecessors (Snowball German).
 const DE_VS = new Set([...'bdfghklmnrt']);
 const DE_VST = new Set([...'bdfghklmnt']);
-const DE_STEP1 = ['ern', 'em', 'er', 'en', 'es', 'e'];
-const DE_STEP2 = ['est', 'en', 'er'];
+const DE_STEP1: string[] = ['ern', 'em', 'er', 'en', 'es', 'e'];
+const DE_STEP2: string[] = ['est', 'en', 'er'];
 const DE_ESZETT_RE = /ß/g;
 const DE_A_RE = /ä/g,
   DE_O_RE = /ö/g,
   DE_U_RE = /ü/g;
 
-function deR1p(s) {
+function deR1p(s: string): number {
   for (let i = 1; i < s.length; i++) if (deIsv(s[i - 1]) && !deIsv(s[i])) return Math.max(3, i + 1);
   return s.length;
 }
 
-export function stemDe(w) {
+export function stemDe(w: string): string {
   w = w.toLowerCase().replace(DE_ESZETT_RE, 'ss');
   if (w.length <= 2) return w;
   const p1 = deR1p(w),
     p2 = p1 + deR1p(w.slice(p1));
-  const ir1 = (n) => n >= p1,
-    ir2 = (n) => n >= p2;
+  const ir1 = (n: number) => n >= p1,
+    ir2 = (n: number) => n >= p2;
   // Step 1 – noun inflections
   let found = false;
   for (const s of DE_STEP1) {
@@ -195,7 +200,7 @@ export function stemDe(w) {
   }
   if (!found) {
     const p = w.length - 1;
-    if (w.endsWith('s') && ir1(p) && p > 0 && DE_VS.has(w[p - 1])) w = w.slice(0, p);
+    if (w.endsWith('s') && ir1(p) && p > 0 && DE_VS.has(w[p - 1] ?? '')) w = w.slice(0, p);
   }
   // Step 2 – verb inflections
   found = false;
@@ -209,7 +214,7 @@ export function stemDe(w) {
   }
   if (!found) {
     const p = w.length - 2;
-    if (w.endsWith('st') && ir1(p) && p > 0 && DE_VST.has(w[p - 1])) w = w.slice(0, p);
+    if (w.endsWith('st') && ir1(p) && p > 0 && DE_VST.has(w[p - 1] ?? '')) w = w.slice(0, p);
   }
   // Step 3 – derivational suffixes in R2
   const wl = w.length;
@@ -248,9 +253,9 @@ const CACHE_MAX = 50000;
 // One cache per language, keyed on the raw word. A single shared cache needed a
 // "de:"/"en:" prefix concatenated onto every lookup — one string allocation per
 // call, and stem() is called roughly three times per token.
-const cacheEn = new Map();
-const cacheDe = new Map();
-export function stem(w, l) {
+const cacheEn = new Map<string, string>();
+const cacheDe = new Map<string, string>();
+export function stem(w: string, l: Lang): string {
   const de = l === 'de';
   const cache = de ? cacheDe : cacheEn;
   let s = cache.get(w);

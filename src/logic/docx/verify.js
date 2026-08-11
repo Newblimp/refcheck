@@ -22,9 +22,9 @@
 
 import { readDocx } from './read.js';
 import { splitPatentDoc } from '../docSplit.js';
-import { trimBlankEdges } from '../blankEdges.js';
+import { trimBlankEdges } from '../blankEdges.ts';
 import { stripInvalidXmlChars } from './xmlText.js';
-import { stripClaimNumber } from '../constants.js';
+import { stripClaimNumber } from '../constants.ts';
 
 /** The comparable line array for one side of the comparison. */
 function lines(text, { dropClaimNumbers = false } = {}) {

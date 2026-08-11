@@ -44,6 +44,13 @@
     "erasableSyntaxOnly": true,
 
     "strict": true,
+    // The flag that pays for itself in this codebase specifically. Almost
+    // everything here is a lookup into a sign→data map or a regex capture group,
+    // and both are exactly the "looks total, isn't" case: `signData[sign]` and
+    // `m[1]` are typed as present without it. Measured before converting
+    // anything, it cost 48 sites across the logic layer — several of which were
+    // real latent faults rather than noise (see docs/typescript-migration.md).
+    "noUncheckedIndexedAccess": true,
     "noUnusedLocals": true,
     "noUnusedParameters": true,
     "noFallthroughCasesInSwitch": true,

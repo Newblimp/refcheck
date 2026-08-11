@@ -21,7 +21,7 @@
 // line break Word inserted on its own. Newlines are already expressed
 // structurally (see runsFor), never as literal characters.
 
-import { escapeMarkup } from '../escape.js';
+import { escapeMarkup } from '../escape.ts';
 
 // Invalid in XML 1.0 character data, in the BMP. \t \n are kept (runsFor turns
 // them into <w:tab/> / <w:br/> before they reach here, but keeping them makes

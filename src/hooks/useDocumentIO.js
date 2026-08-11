@@ -1,5 +1,5 @@
 import { useCallback, useRef, useState } from 'react';
-import { fileKind } from '../logic/fileKind.js';
+import { fileKind } from '../logic/fileKind.ts';
 import { useFileDrop } from './useFileDrop.js';
 
 // ── useDocumentIO ────────────────────────────────────────────────────────────

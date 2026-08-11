@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { backdropScroll } from '../logic/scrollSync.js';
+import { backdropScroll } from '../logic/scrollSync.ts';
 
 // ── useEditorSync ────────────────────────────────────────────────────────────
 // Everything imperative about the two-layer editor: keeping the highlight

@@ -1,5 +1,5 @@
 import { eachErrorSpan } from './errorSpans.js';
-import { escapeMarkup } from './escape.js';
+import { escapeMarkup } from './escape.ts';
 import { ERROR_KINDS } from './errorKinds.js';
 
 // ── HTML BUILDER ────────────────────────────────────────────────────────────

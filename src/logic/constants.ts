@@ -1,3 +1,20 @@
+import type { Token } from './tokenize.ts';
+
+// ── SHARED VOCABULARY ────────────────────────────────────────────────────────
+// The handful of string unions the whole app agrees on. They were plain strings
+// before, compared against literals in two dozen places — so a typo'd 'claim'
+// (for 'claims') silently selected the description branch everywhere.
+
+/** UI and checking language. */
+export type Lang = 'en' | 'de';
+
+/** Which buffer is being checked; claims mode adds the parenthesis and
+ *  claim-structure rules and switches article checking to antecedent basis. */
+export type Mode = 'description' | 'claims';
+
+/** Definite vs indefinite, the distinction the article check turns on. */
+export type ArticleType = 'def' | 'indef';
+
 // ── CONSTANTS ──────────────────────────────────────────────────────────────
 // Words that, when they precede a number, should NOT be treated as the term for
 // that reference sign (articles, prepositions, cross-reference words, etc.).
@@ -246,13 +263,14 @@ export const DE_ORD = new Set([
   'anderer',
 ]);
 
-export const isArt = (w, l) => (l === 'de' ? DE_ART : EN_ART).has(w.toLowerCase());
-export const isOrd = (w, l) => (l === 'de' ? DE_ORD : EN_ORD).has(w.toLowerCase());
+export const isArt = (w: string, l: Lang) => (l === 'de' ? DE_ART : EN_ART).has(w.toLowerCase());
+export const isOrd = (w: string, l: Lang) => (l === 'de' ? DE_ORD : EN_ORD).has(w.toLowerCase());
 // Indefinite articles, EN + DE. A module-level Set: artType runs once per
 // article occurrence, and the array literal was rebuilt on every call.
 const INDEF_ARTS = new Set(['a', 'an', 'ein', 'eine', 'einer', 'eines', 'einem', 'einen']);
-export const artType = (w) => (INDEF_ARTS.has(w.toLowerCase()) ? 'indef' : 'def');
-export const likelySign = (s) => {
+export const artType = (w: string): ArticleType =>
+  INDEF_ARTS.has(w.toLowerCase()) ? 'indef' : 'def';
+export const likelySign = (s: string) => {
   const n = parseInt(s, 10);
   return n >= 1 && n <= 99999;
 };
@@ -289,16 +307,19 @@ export const ROMAN_RE_ANCHORED = new RegExp('^(?:' + ROMAN_RE + ')$');
 
 // A token is a sign if it is an Arabic sign (right shape AND numeric value in
 // range) OR a Roman-numeral step/substep.
-export const isSignToken = (s) =>
+export const isSignToken = (s: string) =>
   (SIGN_RE_ANCHORED.test(s) && likelySign(s)) || ROMAN_RE_ANCHORED.test(s);
 
-// Value of a Roman-numeral string (e.g. "XIV" → 14). Assumes a valid numeral.
-const ROMAN_VAL = { I: 1, V: 5, X: 10, L: 50, C: 100, D: 500, M: 1000 };
-export function romanToInt(r) {
+// Value of a Roman-numeral string (e.g. "XIV" → 14). Assumes a valid numeral —
+// every caller passes a [IVXLCDM]+ capture group. The `?? 0` is what that
+// assumption looks like once it is written down: an unknown character
+// contributes nothing instead of poisoning the sum with NaN.
+const ROMAN_VAL: Record<string, number> = { I: 1, V: 5, X: 10, L: 50, C: 100, D: 500, M: 1000 };
+export function romanToInt(r: string): number {
   let n = 0;
   for (let i = 0; i < r.length; i++) {
-    const cur = ROMAN_VAL[r[i]],
-      nxt = ROMAN_VAL[r[i + 1]];
+    const cur = ROMAN_VAL[r[i] ?? ''] ?? 0,
+      nxt = ROMAN_VAL[r[i + 1] ?? ''] ?? 0;
     n += nxt && cur < nxt ? -cur : cur;
   }
   return n;
@@ -306,16 +327,19 @@ export function romanToInt(r) {
 // Numeric value of a sign for ordering. Arabic → its integer (parseInt ignores a
 // trailing letter/prime). Roman "II" → 2; a Roman substep "II.3" → 2 + 3/1000 so
 // substeps cluster right after their parent step and before the next one.
-export function signVal(s) {
+export function signVal(s: string): number {
   const m = /^([IVXLCDM]+)(?:\.(\d+))?$/.exec(s);
-  if (m) return romanToInt(m[1]) + (m[2] ? parseInt(m[2], 10) / 1000 : 0);
+  if (m) {
+    const [, roman = '', sub] = m;
+    return romanToInt(roman) + (sub ? parseInt(sub, 10) / 1000 : 0);
+  }
   return parseInt(s, 10);
 }
 // Order signs: all Arabic signs first (by value, then suffix: 10 < 10' < 10a < 12),
 // then all Roman steps grouped at the end (I < I.1 < II) — Arabic and Roman are
 // never interleaved. Plain `+a-+b` yields NaN for primed/lettered/Roman signs,
 // so always sort through this.
-export const compareSigns = (a, b) => {
+export const compareSigns = (a: string, b: string): number => {
   const ra = ROMAN_RE_ANCHORED.test(a),
     rb = ROMAN_RE_ANCHORED.test(b);
   if (ra !== rb) return ra ? 1 : -1;
@@ -327,11 +351,11 @@ export const compareSigns = (a, b) => {
 // dismissed error. Shared by App, getAllErrors, buildHtml and the sidebar
 // cards — never assemble these strings by hand.
 export const disKey = {
-  sign: (sign) => 's:' + sign, // id: the sign itself
-  art: (termStem) => 'a:' + termStem, // id: the term stem
-  bare: (termStem) => 'b:' + termStem, // id: the term stem
-  num: (key) => 'n:' + key, // id: numError.key (value#ordinal — edit-stable)
-  dep: (key) => 'd:' + key, // id: depError.key (claim>ref#ordinal)
+  sign: (sign: string) => 's:' + sign, // id: the sign itself
+  art: (termStem: string) => 'a:' + termStem, // id: the term stem
+  bare: (termStem: string) => 'b:' + termStem, // id: the term stem
+  num: (key: string) => 'n:' + key, // id: numError.key (value#ordinal — edit-stable)
+  dep: (key: string) => 'd:' + key, // id: depError.key (claim>ref#ordinal)
 };
 
 // The same rule as isClaimNumber, applied to a whole line rather than a token:
@@ -347,14 +371,14 @@ export const disKey = {
 export const CLAIM_NUM_PREFIX_RE = /^\s*\d{1,4}\s*[.)]\s*/;
 
 /** Does this line open with a claim number? */
-export const startsWithClaimNumber = (line) => CLAIM_NUM_PREFIX_RE.test(String(line));
+export const startsWithClaimNumber = (line: string) => CLAIM_NUM_PREFIX_RE.test(String(line));
 
 /** The line without its leading claim number (unchanged if it has none). */
-export const stripClaimNumber = (line) => String(line).replace(CLAIM_NUM_PREFIX_RE, '');
+export const stripClaimNumber = (line: string) => String(line).replace(CLAIM_NUM_PREFIX_RE, '');
 
 // A numeric token that starts a line and is followed by '.' or ')' → claim number.
 // Claim numbers are Arabic; a line-leading Roman step (e.g. "I.") is not one.
-export function isClaimNumber(text, tok) {
+export function isClaimNumber(text: string, tok: Token): boolean {
   if (!/^\d/.test(tok.word)) return false;
   const after = text[tok.end];
   if (after !== '.' && after !== ')') return false;

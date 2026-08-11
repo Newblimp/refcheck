@@ -1,5 +1,5 @@
 import { classify } from './extract.js';
-import { disKey } from './constants.js';
+import { disKey } from './constants.ts';
 import { ERROR_KINDS, KIND_BY_ID, kindItems } from './errorKinds.js';
 
 // ── ERROR SPANS ─────────────────────────────────────────────────────────────

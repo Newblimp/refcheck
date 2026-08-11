@@ -8,12 +8,11 @@
 
 const ACCEPTED = /\.(docx|docm)$/i;
 
-/**
- * Classify a filename before we bother reading it.
- * @param {string} name
- * @returns {'ok'|'legacyDoc'|'unsupported'}
- */
-export function fileKind(name) {
+/** What kind of file the user handed us, judged by name alone. */
+export type FileKind = 'ok' | 'legacyDoc' | 'unsupported';
+
+/** Classify a filename before we bother reading it. */
+export function fileKind(name: string): FileKind {
   const n = String(name || '');
   if (ACCEPTED.test(n)) return 'ok';
   if (/\.doc$/i.test(n)) return 'legacyDoc'; // binary OLE — not readable in-browser

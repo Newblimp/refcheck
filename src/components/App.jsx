@@ -8,7 +8,7 @@ import { computeCrossRef } from '../logic/crossref.js';
 import { reconcileRefList } from '../logic/reconcile.js';
 import { listTermIndex, appliedListTerms } from '../logic/listTerms.js';
 import { claimStats } from '../logic/claimStats.js';
-import { compareSigns, disKey } from '../logic/constants.js';
+import { compareSigns, disKey } from '../logic/constants.ts';
 import { ctxMenuItems } from '../logic/ctxMenuItems.js';
 import { useDebounced } from '../hooks/useDebounced.js';
 import { usePersistentState, jsonCodec, setCodec, oneOf } from '../hooks/usePersistentState.js';

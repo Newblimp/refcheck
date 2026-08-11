@@ -86,8 +86,9 @@ const PRECACHE = __SW_PRECACHE__;`;
 
   it('emits the precache list as valid parseable JSON', () => {
     const out = renderServiceWorker(SRC, { base: '/refcheck/', emitted: EMITTED });
-    const json = out.match(/const PRECACHE = (\[.*\]);/)[1];
-    expect(JSON.parse(json)).toEqual(precacheUrls('/refcheck/', EMITTED));
+    const json = out.match(/const PRECACHE = (\[.*\]);/)?.[1];
+    expect(json).toBeDefined();
+    expect(JSON.parse(json ?? 'null')).toEqual(precacheUrls('/refcheck/', EMITTED));
   });
 
   it('throws if a placeholder is missing rather than shipping an empty precache', () => {

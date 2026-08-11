@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { stem, stemEn, stemDe } from './stem.js';
+import { stem, stemEn, stemDe } from './stem.ts';
 
 describe('stemEn', () => {
   it('collapses singular and plural to the same stem', () => {

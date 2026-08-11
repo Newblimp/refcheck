@@ -18,7 +18,7 @@
 // corrections ("12" → "14", fixing an article) touch a handful of paragraphs.
 
 import { unzipSync, zipSync, strToU8, strFromU8 } from 'fflate';
-import { blankEdges } from '../blankEdges.js';
+import { blankEdges } from '../blankEdges.ts';
 import { DocxError } from './read.js';
 import { alignLines } from './lineDiff.js';
 import { xmlText } from './xmlText.js';

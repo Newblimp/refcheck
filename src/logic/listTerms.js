@@ -1,5 +1,5 @@
-import { stem } from './stem.js';
-import { tokenize } from './tokenize.js';
+import { stem } from './stem.ts';
+import { tokenize } from './tokenize.ts';
 import { parseRefList } from './refListParse.js';
 
 // ── MULTI-WORD TERMS TAKEN FROM THE REFERENCE LIST ──────────────────────────

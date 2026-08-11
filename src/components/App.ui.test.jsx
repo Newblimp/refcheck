@@ -152,8 +152,8 @@ describe('App (interactive)', () => {
     typeInto(editor().value.replace('Gehäuse 12 besteht', 'Gehäuse 14 besteht'));
 
     fireEvent.click(screen.getByText('.docx exportieren'));
-    await waitFor(() => expect(URL.lastBlob).toBeTruthy());
-    const out = new Uint8Array(await URL.lastBlob.arrayBuffer());
+    await waitFor(() => expect(globalThis.__lastExportedBlob).toBeTruthy());
+    const out = new Uint8Array(await globalThis.__lastExportedBlob.arrayBuffer());
     expect(splitPatentDoc(readDocx(out)).description).toContain('Gehäuse 14 besteht');
     // A verified export says nothing; the banner still shows the import result.
     expect(screen.queryByText(/erneuten Einlesen|reading it back/)).toBeNull();

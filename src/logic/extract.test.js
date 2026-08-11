@@ -1,9 +1,9 @@
 import { describe, it, expect } from 'vitest';
 import { extractData, classify, detectOrdStems } from './extract.js';
 import { getAllErrors } from './errorSpans.js';
-import { tokenize } from './tokenize.js';
-import { stem } from './stem.js';
-import { compareSigns } from './constants.js';
+import { tokenize } from './tokenize.ts';
+import { stem } from './stem.ts';
+import { compareSigns } from './constants.ts';
 import { listTermIndex } from './listTerms.js';
 
 // Raw terms recorded for a given sign (across all its term stems).

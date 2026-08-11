@@ -1,7 +1,7 @@
 // Test helper: build real .docx bytes in memory, so no binary fixture has to be
 // committed. Shared by read/write/import tests.
 import { zipSync, strToU8 } from 'fflate';
-import { escapeMarkup } from '../escape.js';
+import { escapeMarkup } from '../escape.ts';
 
 /** One `<w:p>`. opts: {style, num, ilvl, numId, bold, italic, raw} */
 export function para(text, opts = {}) {

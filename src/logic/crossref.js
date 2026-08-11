@@ -1,4 +1,4 @@
-import { compareSigns } from './constants.js';
+import { compareSigns } from './constants.ts';
 
 // ── CROSS-REFERENCE ─────────────────────────────────────────────────────────
 // Compares the extraction results of the Description and Claims buffers and

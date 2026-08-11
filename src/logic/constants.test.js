@@ -10,8 +10,8 @@ import {
   compareSigns,
   romanToInt,
   signVal,
-} from './constants.js';
-import { tokenize } from './tokenize.js';
+} from './constants.ts';
+import { tokenize } from './tokenize.ts';
 
 describe('likelySign', () => {
   it('accepts 1–99999', () => {

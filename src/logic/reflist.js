@@ -1,4 +1,4 @@
-import { compareSigns } from './constants.js';
+import { compareSigns } from './constants.ts';
 
 // ── REFERENCE NUMERAL LIST ───────────────────────────────────────────────────
 // Turns the extraction result into a sorted sign → term table suitable for a

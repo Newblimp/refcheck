@@ -5,5 +5,5 @@
 //
 // This lived as three character-identical copies (buildHtml, docx/write,
 // docx/fixture) before being pulled together here.
-export const escapeMarkup = (s) =>
+export const escapeMarkup = (s: string): string =>
   String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');

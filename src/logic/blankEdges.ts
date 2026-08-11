@@ -9,19 +9,18 @@
  * comment; changing one without the other silently corrupts round-trip export,
  * because the diff would line up against text the user never saw.
  *
- * @param {string[]} lines
- * @returns {{head: number, tail: number}} counts of blank lines at each edge
+ * @returns counts of blank lines at each edge
  */
-export function blankEdges(lines) {
+export function blankEdges(lines: string[]): { head: number; tail: number } {
   let head = 0;
-  while (head < lines.length && !lines[head].trim()) head++;
+  while (head < lines.length && !lines[head]?.trim()) head++;
   let tail = 0;
-  while (tail < lines.length - head && !lines[lines.length - 1 - tail].trim()) tail++;
+  while (tail < lines.length - head && !lines[lines.length - 1 - tail]?.trim()) tail++;
   return { head, tail };
 }
 
 /** The lines with blank edges removed. */
-export function trimBlankEdges(lines) {
+export function trimBlankEdges(lines: string[]): string[] {
   const { head, tail } = blankEdges(lines);
   return lines.slice(head, lines.length - tail);
 }

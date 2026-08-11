@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { extractData } from './extract.js';
 import { eachErrorSpan, getAllErrors, errorGroup } from './errorSpans.js';
 import { HL } from './buildHtml.js';
-import { disKey } from './constants.js';
+import { disKey } from './constants.ts';
 
 const collect = (res, mode, dis = new Set()) => {
   const out = [];

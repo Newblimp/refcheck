@@ -1,6 +1,6 @@
 import { memo } from 'react';
 import { classify } from '../logic/extract.js';
-import { disKey } from '../logic/constants.js';
+import { disKey } from '../logic/constants.ts';
 import { activatable } from './cardProps.js';
 
 // ── SIGN CARD ───────────────────────────────────────────────────────────────

@@ -1,5 +1,5 @@
-import { compareSigns } from './constants.js';
-import { stem } from './stem.js';
+import { compareSigns } from './constants.ts';
+import { stem } from './stem.ts';
 import { buildRefList } from './reflist.js';
 import { parseRefList } from './refListParse.js';
 

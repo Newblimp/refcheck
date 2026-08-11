@@ -1,3 +1,5 @@
+import type { Lang } from './constants.ts';
+
 // ── BEE TRIGGER ──────────────────────────────────────────────────────────────
 // Six lines, in a module of their own, for a loading reason: useBee runs this on
 // every settled keystroke and so must be eager, while the flight model it used
@@ -16,10 +18,8 @@
  * active language. Word boundaries keep compounds out — "beetle" and
  * "Bienenstock" are not the user asking for a bee.
  *
- * @param {string} text
- * @param {'en'|'de'} [lang]
  */
-export function countBees(text, lang) {
+export function countBees(text: string, lang?: Lang): number {
   if (!text) return 0;
   const s = String(text);
   let n = (s.match(/\bbees?\b/gi) || []).length;

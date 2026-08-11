@@ -6,8 +6,8 @@
 // The German word list is reused from constants.js rather than duplicated — one
 // place to extend when another language is added.
 
-import { DE_ART, EXCL } from './constants.js';
-import { tokenize } from './tokenize.js';
+import { DE_ART, EXCL } from './constants.ts';
+import { tokenize } from './tokenize.ts';
 
 // Unambiguously German function words drawn from the existing German half of
 // EXCL, minus the ones that are also English words ("in", "an", "am", "die"…

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { tokenize } from './tokenize.js';
+import { tokenize } from './tokenize.ts';
 
 describe('tokenize', () => {
   it('splits words and numbers with character spans', () => {
