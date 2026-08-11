@@ -5,54 +5,31 @@
   margin: 0;
   padding: 0;
 }
-/* Self-hosted (no external CDN request, so the app works fully offline).
-   Relative url()s so Vite's asset pipeline hashes/copies them and rewrites
-   the path under the configured `base` for us. */
-@font-face {
-  font-family: 'Space Grotesk';
-  font-style: normal;
-  font-weight: 400;
-  font-display: swap;
-  src: url('./fonts/space-grotesk-400.woff2') format('woff2');
-}
-@font-face {
-  font-family: 'Space Grotesk';
-  font-style: normal;
-  font-weight: 500;
-  font-display: swap;
-  src: url('./fonts/space-grotesk-500.woff2') format('woff2');
-}
-@font-face {
-  font-family: 'Space Grotesk';
-  font-style: normal;
-  font-weight: 600;
-  font-display: swap;
-  src: url('./fonts/space-grotesk-600.woff2') format('woff2');
-}
-@font-face {
-  font-family: 'Space Grotesk';
-  font-style: normal;
-  font-weight: 700;
-  font-display: swap;
-  src: url('./fonts/space-grotesk-700.woff2') format('woff2');
-}
-@font-face {
-  font-family: 'JetBrains Mono';
-  font-style: normal;
-  font-weight: 400;
-  font-display: swap;
-  src: url('./fonts/jetbrains-mono-400.woff2') format('woff2');
-}
-@font-face {
-  font-family: 'JetBrains Mono';
-  font-style: normal;
-  font-weight: 500;
-  font-display: swap;
-  src: url('./fonts/jetbrains-mono-500.woff2') format('woff2');
-}
+/* No web fonts. Six self-hosted .woff2 files (Space Grotesk ×4, JetBrains Mono
+   ×2) used to be 95.8 KB — 54% of everything the app had to fetch before it
+   could paint, more than React and the application code put together. They are
+   gone; both faces are now whatever the reader's own system supplies, which
+   costs nothing to download and cannot cause a swap reflow.
+
+   The two stacks are NOT interchangeable. --font-mono backs the editor, where
+   the textarea and the highlight backdrop are two separately laid-out layers
+   that must agree character for character: a proportional face there desyncs
+   the highlights from the text under them. --font-ui backs everything else and
+   is deliberately proportional, so nothing that was proportional becomes
+   monospace by inheriting the wrong variable.
+
+   Each stack is ordered most-native-first and ends in the generic keyword, so
+   every platform lands on the face it draws UI/code with rather than on a
+   browser default. Weights are synthesized from the one system family, which is
+   why the four separate Space Grotesk weight files are not replaced by
+   anything. */
 :root {
-  --font-ui: 'Space Grotesk', sans-serif;
-  --font-mono: 'JetBrains Mono', monospace;
+  --font-ui:
+    system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial,
+    'Noto Sans', sans-serif;
+  --font-mono:
+    ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono', 'Courier New',
+    monospace;
 }
 /* DARK THEME — Gruvbox Dark */
 :root[data-theme='dark'] {

@@ -7,10 +7,46 @@ import { useEffect, useReducer, useRef } from 'react';
 // cost one wasted render per keystroke on every small document). The latest
 // value is kept in a ref even while delay is 0, so crossing the size threshold
 // into debounced mode never exposes a stale value.
-export function useDebounced(value, delay) {
+//
+// `initial` opts the FIRST render out of that pass-through, and exists for the
+// boot path specifically. A restored session starts with its buffers already
+// full, so the very first render extracted them synchronously — measured at
+// ~77 ms per buffer on a 112 KB document, twice over, before anything at all was
+// painted. With `initial` the first render sees that placeholder instead, the
+// shell and the textarea (which reads the raw value, not this one) paint
+// immediately, and the real value is handed over from an effect — i.e. after
+// paint rather than before it.
+//
+// It is not the debounce timeout: waiting the full delay to show a restored
+// document would trade one stall for another. The handover happens on the first
+// effect, one frame later.
+//
+// Deferral applies only when `delay > 0` at mount, which is the caller's own
+// "this document is big enough to be slow" test. A small document extracts in
+// single-digit milliseconds, and deferring there would cost a frame of missing
+// highlights to save nothing.
+//
+/**
+ * @template T
+ * @param {T} value
+ * @param {number} delay      ms of quiet before `value` is adopted; <= 0 passes through
+ * @param {T} [initial]       what the first render returns instead of `value`
+ * @returns {T}
+ */
+export function useDebounced(value, delay, initial) {
   const [, force] = useReducer((c) => c + 1, 0);
-  const ref = useRef(value);
+  const deferring = useRef(initial !== undefined && delay > 0);
+  const ref = useRef(deferring.current ? /** @type {T} */ (initial) : value);
+
   useEffect(() => {
+    if (deferring.current) {
+      // First effect after a deferred mount: the browser has painted, so the
+      // real value can be adopted now without the debounce wait.
+      deferring.current = false;
+      ref.current = value;
+      force();
+      return;
+    }
     if (delay <= 0) return;
     const id = setTimeout(() => {
       ref.current = value;
@@ -18,6 +54,7 @@ export function useDebounced(value, delay) {
     }, delay);
     return () => clearTimeout(id);
   }, [value, delay]);
-  if (delay <= 0) ref.current = value;
+
+  if (!deferring.current && delay <= 0) ref.current = value;
   return ref.current;
 }

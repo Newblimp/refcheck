@@ -25,7 +25,7 @@ import { DropOverlay } from './DropOverlay.jsx';
 import { ImportBanner } from './ImportBanner.jsx';
 import { TopBar } from './TopBar.jsx';
 import { StatusBar } from './StatusBar.jsx';
-import { Bee } from './Bee.jsx';
+import { LazyBee } from './LazyBee.jsx';
 
 // The shape extractData returns, with nothing in it. The per-category arrays are
 // derived from ERROR_KINDS so a new category cannot be forgotten here — an
@@ -96,8 +96,15 @@ export function App() {
 
   // Debounce the expensive extraction on large documents; the textarea value
   // stays immediate so typing is never blocked.
-  const debDesc = useDebounced(descText, descText.length > 5000 ? 200 : 0);
-  const debClaims = useDebounced(claimsText, claimsText.length > 5000 ? 200 : 0);
+  //
+  // The third argument defers the FIRST extraction of a restored buffer past
+  // first paint. Both buffers come back from localStorage already full, and
+  // extracting them ran synchronously inside the very first render — so a
+  // returning user waited out both before seeing anything. The editor still
+  // shows its text immediately (the textarea reads the raw buffer); only the
+  // highlights and the sidebar arrive a frame later.
+  const debDesc = useDebounced(descText, descText.length > 5000 ? 200 : 0, '');
+  const debClaims = useDebounced(claimsText, claimsText.length > 5000 ? 200 : 0, '');
   const debText = mode === 'description' ? debDesc : debClaims;
 
   // Multi-word terms read out of the drafter's own reference list, applied to
@@ -105,7 +112,7 @@ export function App() {
   // Debounced on the same rule as the buffers: editing the list box re-runs
   // extraction, so on a large document it must not do so per keystroke.
   const bigDoc = descText.length + claimsText.length > 5000;
-  const debRefList = useDebounced(refListText, bigDoc ? 200 : 0);
+  const debRefList = useDebounced(refListText, bigDoc ? 200 : 0, '');
   const rawListIdx = useMemo(() => listTermIndex(debRefList, lang), [debRefList, lang]);
   // Hold the identity stable while the parsed content is unchanged: most edits
   // in that box (a typo in a term, a re-ordered line, a sign whose entry has no
@@ -498,7 +505,7 @@ export function App() {
       {ctx && <CtxMenu menu={ctx} onClose={() => setCtx(null)} onAction={handleCtxAction} />}
       <DropOverlay visible={dragging} t={t} />
       {bees.map((id) => (
-        <Bee key={id} t={t} onDone={() => beeDone(id)} />
+        <LazyBee key={id} t={t} onDone={() => beeDone(id)} />
       ))}
 
       <TopBar
