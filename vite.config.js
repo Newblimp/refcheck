@@ -3,10 +3,13 @@ import preact from '@preact/preset-vite';
 import { swPrecachePlugin } from './build/swPrecache.js';
 import { inlineCssPlugin } from './build/inlineCss.js';
 
-// GitHub Pages serves a project site at https://<user>.github.io/refcheck/,
-// so assets must be referenced under the /refcheck/ base path.
+// Defaults to a root-domain deploy (Cloudflare Workers/Pages, or any host that
+// serves the app at "/"). GitHub Pages serves a project site instead, at
+// https://<user>.github.io/refcheck/, so assets there must be referenced under
+// the /refcheck/ base path — .github/workflows/deploy.yml sets VITE_BASE for
+// that build specifically, rather than this file guessing which host it is on.
 export default defineConfig({
-  base: '/refcheck/',
+  base: process.env.VITE_BASE || '/',
   // inlineCssPlugin folds the stylesheet into index.html (and removes the CSS
   // asset) so the static shell paints from the first response; swPrecachePlugin
   // then injects the resulting asset list into dist/sw.js so the app shell is

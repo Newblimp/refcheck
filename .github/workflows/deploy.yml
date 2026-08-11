@@ -22,6 +22,12 @@ jobs:
   # Run the test suite (and a build) on every push and pull request.
   test:
     runs-on: ubuntu-latest
+    # vite.config.js defaults to a root-domain base; GitHub Pages serves this
+    # repo as a project site under /refcheck/, so only THIS workflow's builds
+    # need to override it. A host that deploys from the default branch as-is
+    # (Cloudflare, etc.) gets the root-relative default with no config needed.
+    env:
+      VITE_BASE: /refcheck/
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5
@@ -56,6 +62,8 @@ jobs:
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
+    env:
+      VITE_BASE: /refcheck/
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5
