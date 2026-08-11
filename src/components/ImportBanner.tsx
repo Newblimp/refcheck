@@ -1,17 +1,33 @@
+import type { IOReport } from '../hooks/useDocumentIO.ts';
+import type { ExportDiffSummary, Strings } from '../i18n.ts';
+
 // Result line shown after an import.
 //
 // The import fills both buffers without a confirm step, so this is what makes a
 // wrong guess visible and reversible: it states what was detected, warns when a
 // heading was missing or claim numbers had to be reconstructed, and offers a
 // one-step undo back to the previous buffers.
-export function ImportBanner({ report, t, onUndo, onDismiss }) {
+export interface ImportBannerProps {
+  report: IOReport | null;
+  t: Strings;
+  /** Omitted when there is nothing to undo. */
+  onUndo?: (() => void) | null;
+  onDismiss: () => void;
+}
+
+export function ImportBanner({ report, t, onUndo, onDismiss }: ImportBannerProps) {
   if (!report) return null;
   const { kind, descChars, claimsChars, lang, warnings = [], messageKey } = report;
 
   // Messages are stored as keys and resolved here, so they always render in the
   // language that is active now — including the one the import itself just set.
-  const str = (key, arg) => {
-    const v = t[key];
+  //
+  // The cast is narrow and unavoidable: `t[key]` is a union of every string and
+  // every formatter in the table, and this banner's contract is that a key it
+  // stores is either a plain string or a formatter of one argument. Nothing
+  // short of a cast can say "this particular key's formatter takes this arg".
+  const str = (key: keyof Strings, arg?: number | ExportDiffSummary): string => {
+    const v = t[key] as string | ((a?: number | ExportDiffSummary) => string);
     return typeof v === 'function' ? v(arg) : v;
   };
 
@@ -30,9 +46,9 @@ export function ImportBanner({ report, t, onUndo, onDismiss }) {
             <span className="imp-sep">·</span>
             <span className="imp-lang">{lang?.toUpperCase()}</span>
             <span className="imp-sep">·</span>
-            <span>{t.impDesc(descChars)}</span>
+            <span>{t.impDesc(descChars ?? 0)}</span>
             <span className="imp-sep">·</span>
-            <span>{t.impClaims(claimsChars)}</span>
+            <span>{t.impClaims(claimsChars ?? 0)}</span>
           </>
         )}
       </span>

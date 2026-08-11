@@ -1,3 +1,5 @@
+import type { JSX } from 'preact';
+
 // Shared accessibility wiring for the sidebar's error cards.
 //
 // Clicking a card to jump to its occurrence in the text is the app's primary
@@ -8,7 +10,12 @@
 //
 // So they get the button *role* explicitly, plus the keyboard behaviour a real
 // button would have had for free.
-export function activatable(onActivate) {
+export function activatable(onActivate: (e: Event) => void): {
+  role: 'button';
+  tabIndex: number;
+  onClick: JSX.MouseEventHandler<HTMLElement>;
+  onKeyDown: JSX.KeyboardEventHandler<HTMLElement>;
+} {
   return {
     role: 'button',
     tabIndex: 0,

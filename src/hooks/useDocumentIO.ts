@@ -155,9 +155,11 @@ export function useDocumentIO({ t, lang, buffers, apply }: DocumentIOOpts) {
   const dragging = useFileDrop(handleFile);
 
   const pickFile = useCallback(
-    (e: { target: HTMLInputElement }) => {
-      const file = e.target.files?.[0];
-      e.target.value = ''; // re-selecting the same file must fire change again
+    (e: Event) => {
+      const input = e.target;
+      if (!(input instanceof HTMLInputElement)) return;
+      const file = input.files?.[0];
+      input.value = ''; // re-selecting the same file must fire change again
       if (file) void handleFile(file);
     },
     [handleFile]

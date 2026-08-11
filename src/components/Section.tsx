@@ -1,4 +1,18 @@
 import { useState } from 'react';
+import type { ComponentChildren } from 'preact';
+
+export interface SectionProps {
+  /** Glyph shown before the label. */
+  icon: string;
+  label: string;
+  /** CSS colour for the header text. */
+  color?: string;
+  count: number;
+  children?: ComponentChildren;
+  /** Stay visible at count 0 — for the sections that host an input. */
+  alwaysShow?: boolean;
+  defaultOpen?: boolean;
+}
 
 // A collapsible card-list section, styled like RefList's own header. Hides
 // itself when count is 0 rather than being conditionally mounted by the
@@ -15,7 +29,7 @@ export function Section({
   children,
   alwaysShow = false,
   defaultOpen = true,
-}) {
+}: SectionProps) {
   const [open, setOpen] = useState(defaultOpen);
   // Most sections hide themselves at zero; the two that host an input the user
   // types into (the reference-list check, the claim-set panel) must stay

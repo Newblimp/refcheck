@@ -1,5 +1,10 @@
 import { memo } from 'react';
-import { LogoIcon, SunIcon, MonitorIcon, MoonIcon } from './icons.jsx';
+import { LogoIcon, SunIcon, MonitorIcon, MoonIcon } from './icons.tsx';
+import type { JSX, Ref } from 'preact';
+import type { Lang, Mode } from '../logic/constants.ts';
+import type { Theme } from '../hooks/useTheme.ts';
+import type { ImportResult } from '../logic/importDoc.ts';
+import type { PlainStringKey, Strings } from '../i18n.ts';
 
 // ── TOP BAR ─────────────────────────────────────────────────────────────────
 // Logo, the .docx file actions, and the three preference toggles (theme, mode,
@@ -13,11 +18,32 @@ import { LogoIcon, SunIcon, MonitorIcon, MoonIcon } from './icons.jsx';
 // is the same reasoning ERROR_KINDS applies to the error categories: three
 // copies of one button differing in an icon and a label is a place to get one
 // of them wrong.
-const THEMES = [
+const THEMES: { id: Theme; Icon: () => JSX.Element; lbl: PlainStringKey }[] = [
   { id: 'light', Icon: SunIcon, lbl: 'themeLight' },
   { id: 'system', Icon: MonitorIcon, lbl: 'themeSystem' },
   { id: 'dark', Icon: MoonIcon, lbl: 'themeDark' },
 ];
+
+export interface TopBarProps {
+  t: Strings;
+  lang: Lang;
+  onLang: (lang: Lang) => void;
+  mode: Mode;
+  onMode: (mode: Mode) => void;
+  theme: Theme;
+  onTheme: (theme: Theme) => void;
+  /** Whether each buffer has content — drives the mode buttons' dot indicator. */
+  hasDesc: boolean;
+  hasClaims: boolean;
+  /** Non-null once a .docx has been imported, which makes export a round trip. */
+  imported: ImportResult | null;
+  fileRef: Ref<HTMLInputElement>;
+  onPickFile: JSX.GenericEventHandler<HTMLInputElement>;
+  onImportClick: () => void;
+  onExport: () => void;
+  onHelp: () => void;
+  onHelpHover: () => void;
+}
 
 function TopBarImpl({
   t,
@@ -36,7 +62,7 @@ function TopBarImpl({
   onExport,
   onHelp,
   onHelpHover,
-}) {
+}: TopBarProps) {
   return (
     <div className="topbar">
       <div className="logo">

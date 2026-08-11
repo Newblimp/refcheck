@@ -1,7 +1,7 @@
 import { disKey } from './constants.ts';
 import type { DepError } from './claims.ts';
 import type { ArtError, BareTerm, ExtractResult, NumError, TermEntry } from './extract.ts';
-import type { Strings } from '../i18n.ts';
+import type { PlainStringKey, Strings } from '../i18n.ts';
 
 // ── ERROR KINDS ──────────────────────────────────────────────────────────────
 //
@@ -88,10 +88,10 @@ export interface ErrorKind<T extends ErrorRecord = ErrorRecord> {
   icon: string;
   /** CSS token base: `var(--<color>)`, `--<color>-bg`. */
   color: string;
-  /** i18n key for the section header. */
-  sectionLbl: keyof Strings;
+  /** i18n key for the section header — must name a plain string, not a formatter. */
+  sectionLbl: PlainStringKey;
   /** i18n key for the status-bar chip. */
-  chipLbl: keyof Strings;
+  chipLbl: PlainStringKey;
   /** Card badge content. */
   badge: (e: T) => string;
   /** Card's second line, if any. */
@@ -236,6 +236,16 @@ export const KIND_BY_ID = Object.fromEntries(ERROR_KINDS.map((k) => [k.id, k])) 
   ErrorKindId,
   ErrorKind<ErrorRecord>
 >;
+
+/**
+ * Which card the sidebar currently focuses, and the editor highlights.
+ *
+ * `key` is deliberately NOT uniform: the sign string for a sign, a character
+ * offset for every other kind. focusCycle, anchorIdx and each card's `focused`
+ * comparison all depend on that asymmetry, so it is spelled out here rather
+ * than flattened to `string | number` — which would let the two be confused.
+ */
+export type Focus = { type: 'sign'; key: string } | { type: ErrorKindId; key: number };
 
 /** The records of one kind in an extraction result (never undefined). */
 export function kindItems<T extends ErrorRecord>(

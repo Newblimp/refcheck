@@ -1,9 +1,13 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
-import { App } from './components/App.jsx';
+import { App } from './components/App.tsx';
 import './styles.css';
 
-createRoot(document.getElementById('root')).render(
+const root = document.getElementById('root');
+// index.html always carries it; failing loudly beats rendering into nothing.
+if (!root) throw new Error('#root is missing from index.html');
+
+createRoot(root).render(
   <StrictMode>
     <App />
   </StrictMode>

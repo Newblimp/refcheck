@@ -1,4 +1,5 @@
 import { useState, useRef, useCallback, useEffect, useMemo } from 'react';
+import type { JSX } from 'preact';
 import { T } from '../i18n.ts';
 import { extractData, classify } from '../logic/extract.ts';
 import { getAllErrors, errorGroup } from '../logic/errorSpans.ts';
@@ -17,15 +18,33 @@ import { useBee } from '../hooks/useBee.ts';
 import { useHotkeys } from '../hooks/useHotkeys.ts';
 import { useEditorSync } from '../hooks/useEditorSync.ts';
 import { useDocumentIO } from '../hooks/useDocumentIO.ts';
-import { CtxMenu } from './CtxMenu.jsx';
-import { Sidebar } from './Sidebar.jsx';
-import { RefPane } from './RefPane.jsx';
-import { LazyHelpDialog, preloadHelpDialog } from './LazyHelpDialog.jsx';
-import { DropOverlay } from './DropOverlay.jsx';
-import { ImportBanner } from './ImportBanner.jsx';
-import { TopBar } from './TopBar.jsx';
-import { StatusBar } from './StatusBar.jsx';
-import { LazyBee } from './LazyBee.jsx';
+import { CtxMenu } from './CtxMenu.tsx';
+import { Sidebar } from './Sidebar.tsx';
+import { RefPane } from './RefPane.tsx';
+import { LazyHelpDialog, preloadHelpDialog } from './LazyHelpDialog.tsx';
+import { DropOverlay } from './DropOverlay.tsx';
+import { ImportBanner } from './ImportBanner.tsx';
+import { TopBar } from './TopBar.tsx';
+import { StatusBar } from './StatusBar.tsx';
+import { LazyBee } from './LazyBee.tsx';
+import type { ErrorKindId, ErrorRecord, Focus } from '../logic/errorKinds.ts';
+import type { CtxAction, CtxActionData, CtxMenu as CtxMenuData } from '../logic/ctxMenuItems.ts';
+import type { BareTerm, ExtractResult, SignEntry } from '../logic/extract.ts';
+import type { ErrorEntry } from '../logic/errorSpans.ts';
+import type { Lang, Mode } from '../logic/constants.ts';
+import type { IOBuffers } from '../hooks/useDocumentIO.ts';
+
+/** Which single pane a narrow screen is showing. */
+type MobilePane = 'ref' | 'editor' | 'signs';
+
+/** Which side panes are open. Persisted, so it round-trips through JSON. */
+interface Panes {
+  left: boolean;
+  right: boolean;
+}
+
+/** The context menu, plus where the right-click happened. */
+type OpenCtxMenu = CtxMenuData & { x: number; y: number };
 
 // The shape extractData returns, with nothing in it. The per-category arrays are
 // derived from ERROR_KINDS so a new category cannot be forgotten here — an
@@ -34,10 +53,10 @@ import { LazyBee } from './LazyBee.jsx';
 const EMPTY_RESULT = {
   signData: {},
   termData: {},
-  noTermSigns: new Set(),
+  noTermSigns: new Set<string>(),
   claimGraph: null,
   ...Object.fromEntries(ERROR_KINDS.map((k) => [k.field, []])),
-};
+} as ExtractResult;
 
 // How long the text buffers wait before being written to localStorage. Long
 // enough that a burst of typing produces one write, short enough that a refresh
@@ -74,24 +93,32 @@ export function App() {
   // Which side panes are open. Persisted because it is a working preference,
   // not transient state — a drafter who folds the reference pane away wants it
   // to stay away.
-  const [panes, setPanes] = usePersistentState('rsc_panes', { left: true, right: true }, jsonCodec());
+  const [panes, setPanes] = usePersistentState<Panes>(
+    'rsc_panes',
+    { left: true, right: true },
+    jsonCodec<Panes>()
+  );
   // Narrow screens show exactly one pane; ignored by the desktop layout.
-  const [mobilePane, setMobilePane] = useState('editor');
+  const [mobilePane, setMobilePane] = useState<MobilePane>('editor');
   const [helpOpen, setHelpOpen] = useState(false);
-  const [mwo, setMwo] = usePersistentState('rsc_mwo', {}, jsonCodec());
-  const [dis, setDis] = usePersistentState('rsc_dis', new Set(), setCodec);
+  const [mwo, setMwo] = usePersistentState<Record<string, number | undefined>>(
+    'rsc_mwo',
+    {},
+    jsonCodec<Record<string, number | undefined>>()
+  );
+  const [dis, setDis] = usePersistentState<Set<string>>('rsc_dis', new Set(), setCodec);
   const [theme, setTheme] = useTheme();
   // Transient UI state
   const text = mode === 'description' ? descText : claimsText;
   // Currently highlighted error card: {type: 'sign'|'art'|'bare'|'num'|'dep', key}
   // (key = sign string for signs, char position for everything else).
-  const [focus, setFocus] = useState(null);
+  const [focus, setFocus] = useState<Focus | null>(null);
   const [search, setSearch] = useState('');
   const [navIdx, setNavIdx] = useState(0);
-  const [ctx, setCtx] = useState(null);
+  const [ctx, setCtx] = useState<OpenCtxMenu | null>(null);
   // Occurrence cursor for click-to-cycle on the sidebar error cards: which
   // occurrence of the currently-focused error the next click should advance from.
-  const focusOcc = useRef({ id: null, idx: 0 });
+  const focusOcc = useRef<{ id: string | null; idx: number }>({ id: null, idx: 0 });
   const t = T[lang];
 
   // Debounce the expensive extraction on large documents; the textarea value
@@ -187,19 +214,20 @@ export function App() {
 
   // ── Search-filtered card lists (also drive the status-bar chips) ──
   const { errSigns, okSigns } = useMemo(() => {
-    const q = search.toLowerCase(),
-      err = [],
-      ok = [];
+    const q = search.toLowerCase();
+    const err: [string, SignEntry][] = [];
+    const ok: [string, SignEntry][] = [];
     for (const [sign, sData] of Object.entries(signData)) {
+      if (!sData) continue;
       if (q && !sign.toLowerCase().includes(q)) {
         const termMatch = Object.keys(sData.terms).some((ts) =>
-          [...(termData[ts]?.rawTerms || [])].some((r) => r.includes(q))
+          [...(termData[ts]?.rawTerms ?? [])].some((r) => r.includes(q))
         );
         if (!termMatch) continue;
       }
       (classify(sData, termData, mode) === 'warn' ? err : ok).push([sign, sData]);
     }
-    const byN = ([a], [b]) => compareSigns(a, b);
+    const byN = ([a]: [string, SignEntry], [b]: [string, SignEntry]) => compareSigns(a, b);
     return { errSigns: err.sort(byN), okSigns: ok.sort(byN) };
   }, [signData, termData, mode, search]);
 
@@ -214,7 +242,7 @@ export function App() {
   // Cheap on their own; the identity is the point.
   const errorLists = useMemo(() => {
     const q = search.toLowerCase();
-    const out = {};
+    const out = {} as Record<ErrorKindId, ErrorRecord[]>;
     for (const kind of ERROR_KINDS)
       out[kind.id] = kindItems(res, kind).filter(
         (e) => (!q || kind.matches(e, q, termData)) && !dis.has(kind.disKey(e))
@@ -232,7 +260,8 @@ export function App() {
   );
   const disCt = dis.size;
   const totalSigns = Object.keys(signData).length;
-  const anyActive = errSignsActive.length || ERROR_KINDS.some((k) => errorLists[k.id].length > 0);
+  const anyActive =
+    errSignsActive.length > 0 || ERROR_KINDS.some((k) => errorLists[k.id].length > 0);
 
   // Live mirrors of state the card callbacks below read. Keeping them in refs is
   // what lets those callbacks be genuinely stable: every one of them is passed
@@ -251,7 +280,7 @@ export function App() {
   // single-occurrence card (article/bare/numbering/dependency) simply toggles,
   // exactly as before, while a multi-occurrence sign cycles through its marks.
   const focusCycle = useCallback(
-    (type, key, occs) => {
+    (type: Focus['type'], key: Focus['key'], occs: [number, number][]) => {
       if (!occs.length) return;
       const id = type + ':' + key;
       const cur = focusOcc.current;
@@ -265,16 +294,21 @@ export function App() {
         setFocus(null);
         return;
       }
+      const occ = occs[idx];
+      if (!occ) return;
       focusOcc.current = { id, idx };
-      setFocus({ type, key });
-      scrollTo(occs[idx][0], occs[idx][1]);
+      // `key` is a sign string for 'sign' and a char offset otherwise — the
+      // asymmetry Focus spells out. The pairing holds by construction at both
+      // call sites below, which is what the cast asserts.
+      setFocus({ type, key } as Focus);
+      scrollTo(occ[0], occ[1]);
     },
     [scrollTo]
   );
   const onFocusSign = useCallback(
-    (sign) => {
-      const occs = (signDataRef.current[sign]?.positions || [])
-        .map((p) => [p.signStart, p.signEnd])
+    (sign: string) => {
+      const occs: [number, number][] = (signDataRef.current[sign]?.positions ?? [])
+        .map((p): [number, number] => [p.signStart, p.signEnd])
         .sort((a, b) => a[0] - b[0]);
       focusCycle('sign', sign, occs);
     },
@@ -285,7 +319,7 @@ export function App() {
   // convention every card's `focused` comparison uses. (Signs keep their own
   // handler: their key is the sign string, and they cycle through occurrences.)
   const onFocusError = useCallback(
-    (kindId, item) => {
+    (kindId: ErrorKindId, item: ErrorRecord) => {
       const kind = KIND_BY_ID[kindId];
       const start = kind.start(item);
       focusCycle(kindId, start, [[start, kind.end(item)]]);
@@ -293,16 +327,16 @@ export function App() {
     [focusCycle]
   );
 
-  function goToError(idx) {
+  function goToError(idx: number) {
     const e = allErrors[idx];
     if (!e) return;
     setNavIdx(idx);
     scrollTo(e.start, e.end);
-    setFocus({ type: e.type, key: e.type === 'sign' ? e.sign : e.start });
+    setFocus(e.type === 'sign' ? { type: 'sign', key: e.sign } : { type: e.type, key: e.start });
     focusOcc.current = { id: null, idx: 0 }; // arrows drive their own cursor; restart card-cycling
   }
 
-  function navigate(dir) {
+  function navigate(dir: number) {
     if (!allErrors.length) return;
     goToError((navIdx + dir + allErrors.length) % allErrors.length);
   }
@@ -313,9 +347,9 @@ export function App() {
   function anchorIdx() {
     const f = focusRef.current;
     if (!f) return navIdx;
-    const matches = (e) =>
-      e.type === f.type && (e.type === 'sign' ? e.sign === f.key : e.start === f.key);
-    if (matches(allErrors[navIdx] || {})) return navIdx;
+    const matches = (e: ErrorEntry | undefined) =>
+      !!e && e.type === f.type && (e.type === 'sign' ? e.sign === f.key : e.start === f.key);
+    if (matches(allErrors[navIdx])) return navIdx;
     const i = allErrors.findIndex(matches);
     return i >= 0 ? i : navIdx;
   }
@@ -324,7 +358,7 @@ export function App() {
   // else — stepping through every faulty "banana" without wading through the
   // "kiwi" errors between them. Errors with no term (claim numbering,
   // dependencies) step within their own category; see errorGroup.
-  function navigateTerm(dir) {
+  function navigateTerm(dir: number) {
     const n = allErrors.length;
     if (!n) return;
     const from = anchorIdx();
@@ -348,7 +382,7 @@ export function App() {
     [descText, claimsText, refListText]
   );
   const applyDoc = useCallback(
-    (next) => {
+    (next: IOBuffers & { lang: Lang }) => {
       setDescText(next.description);
       setClaimsText(next.claims);
       setRefListText(next.refList);
@@ -385,7 +419,7 @@ export function App() {
   // "?" arrives as Shift+ß on a German layout and Shift+/ on a US one; both
   // report e.key === '?', so one binding covers both — with the shift-less
   // spelling accepted too, since some layouts get there without it.
-  const searchRef = useRef(null);
+  const searchRef = useRef<HTMLInputElement | null>(null);
   const toggleMode = useCallback(
     () => setMode((m) => (m === 'description' ? 'claims' : 'description')),
     [setMode]
@@ -413,17 +447,18 @@ export function App() {
   });
 
   const toggleDis = useCallback(
-    (key) => {
+    (key: string) => {
       setDis((d) => {
         const n = new Set(d);
-        n.has(key) ? n.delete(key) : n.add(key);
+        if (n.has(key)) n.delete(key);
+        else n.add(key);
         return n;
       });
     },
     [setDis]
   );
   function disAll() {
-    const k = new Set();
+    const k = new Set<string>();
     Object.keys(signData).forEach((s) => k.add(disKey.sign(s)));
     // Every category, including ones added after this was written.
     for (const kind of ERROR_KINDS) for (const e of kindItems(res, kind)) k.add(kind.disKey(e));
@@ -431,7 +466,7 @@ export function App() {
   }
   const restoreAll = useCallback(() => setDis(new Set()), [setDis]);
 
-  function handleCtxMenu(e) {
+  function handleCtxMenu(e: JSX.TargetedMouseEvent<HTMLTextAreaElement>) {
     e.preventDefault();
     const pos = taRef.current?.selectionStart ?? 0;
     // findAtPos names artErrors/bareTerms directly rather than going through
@@ -450,7 +485,7 @@ export function App() {
    * Write a bare term's reference sign into the text, right after the term.
    * Claims mode brackets it, because a bare sign there is an error of its own.
    */
-  function insertSign(bt, sign) {
+  function insertSign(bt: BareTerm, sign: string) {
     // The spans come from the (debounced) extraction, so the buffer may have
     // moved on. Check the term is still where it was said to be rather than
     // splicing a sign into the middle of some other word.
@@ -465,16 +500,17 @@ export function App() {
     setCaretAfterCommit(bt.termEnd + ins.length);
   }
 
-  function handleCtxAction(a, d) {
+  function handleCtxAction(a: CtxAction, d: CtxActionData) {
     // Both write an ABSOLUTE width (extra words beyond the base noun) measured
     // from what is on screen, so the override lands where the drafter expects
     // whatever widened the term in the first place. Reduce stores an explicit 0
     // rather than deleting the key — deleting it would just hand the term back
     // to the reference list, and the reduction would appear not to work.
-    if (a === 'extend') setMwo((m) => ({ ...m, [d.bs]: d.cur }));
-    else if (a === 'reduce') setMwo((m) => ({ ...m, [d.bs]: Math.max(0, d.cur - 2) }));
-    else if (a === 'insert-sign') insertSign(d.bt, d.sign);
-    else if (a === 'toggle-dis') toggleDis(d.key);
+    if (a === 'extend' && d && 'bs' in d) setMwo((m) => ({ ...m, [d.bs]: d.cur }));
+    else if (a === 'reduce' && d && 'bs' in d)
+      setMwo((m) => ({ ...m, [d.bs]: Math.max(0, d.cur - 2) }));
+    else if (a === 'insert-sign' && d && 'bt' in d) insertSign(d.bt, d.sign);
+    else if (a === 'toggle-dis' && d && 'key' in d) toggleDis(d.key);
     else if (a === 'dis-all') disAll();
     else if (a === 'restore-all') restoreAll();
   }
@@ -490,7 +526,7 @@ export function App() {
   }
 
   const switchMode = useCallback(
-    (m) => {
+    (m: Mode) => {
       setMode(m);
       setFocus(null);
     },
@@ -554,11 +590,13 @@ export function App() {
       {/* Mobile shows one pane at a time — three columns do not fit a phone,
           and stacking them buries the reference list under a long scroll. */}
       <div className="pane-tabs" role="tablist" aria-label={t.paneTabsLbl}>
-        {[
-          ['ref', t.refPaneLbl],
-          ['editor', t.editorLbl],
-          ['signs', t.ovLbl],
-        ].map(([id, label]) => (
+        {(
+          [
+            ['ref', t.refPaneLbl],
+            ['editor', t.editorLbl],
+            ['signs', t.ovLbl],
+          ] as [MobilePane, string][]
+        ).map(([id, label]) => (
           <button
             key={id}
             role="tab"
@@ -627,14 +665,14 @@ export function App() {
               value={text}
               placeholder={mode === 'description' ? t.placeholder_desc : t.placeholder_claims}
               onChange={(e) => {
-                mode === 'description'
-                  ? setDescText(e.target.value)
-                  : setClaimsText(e.target.value);
+                const next = e.currentTarget.value;
+                if (mode === 'description') setDescText(next);
+                else setClaimsText(next);
                 setFocus(null);
               }}
               onScroll={syncScroll}
               onContextMenu={handleCtxMenu}
-              spellCheck={false}
+              spellcheck={false}
               autoCorrect="off"
               autoCapitalize="off"
             />

@@ -1,17 +1,25 @@
 import { useState, useMemo } from 'react';
 import { buildRefList, toPlainText } from '../logic/reflist.ts';
+import type { SignEntry, TermEntry } from '../logic/extract.ts';
+import type { Strings } from '../i18n.ts';
 
 // ── REFERENCE NUMERAL LIST ───────────────────────────────────────────────────
 // Collapsible sidebar section showing the sign → term table for the active
 // buffer, with copy-to-clipboard (plain text) for pasting into a draft.
-export function RefList({ signData, termData, t }) {
+export interface RefListProps {
+  signData: Record<string, SignEntry | undefined>;
+  termData: Record<string, TermEntry | undefined>;
+  t: Strings;
+}
+
+export function RefList({ signData, termData, t }: RefListProps) {
   const [open, setOpen] = useState(false);
   const [copied, setCopied] = useState(false);
   const rows = useMemo(() => buildRefList(signData, termData), [signData, termData]);
   if (rows.length === 0) return null;
 
   const canCopy = typeof navigator !== 'undefined' && navigator.clipboard;
-  function copy(e) {
+  function copy(e: Event) {
     e.stopPropagation();
     if (!canCopy) return;
     navigator.clipboard

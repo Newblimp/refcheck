@@ -74,3 +74,8 @@ const de: HelpStrings = {
 };
 
 export const HELP: Record<Lang, HelpStrings> = { en, de };
+
+/** The help keys whose value is a plain string — `helpGuide` is an array. */
+export type PlainHelpKey = {
+  [K in keyof HelpStrings]: HelpStrings[K] extends string ? K : never;
+}[keyof HelpStrings];

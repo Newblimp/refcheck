@@ -316,3 +316,15 @@ const de: Strings = {
 };
 
 export const T: Record<Lang, Strings> = { en, de };
+
+/**
+ * The keys whose value is a plain string rather than a formatter.
+ *
+ * Anywhere a key is stored to be rendered directly — a section header, a
+ * status-bar chip, a button label — this is the type to use. `keyof Strings`
+ * would also admit `artFD`, whose value is a function, and the mistake would
+ * surface as "[object Function]" in the UI rather than as an error.
+ */
+export type PlainStringKey = {
+  [K in keyof Strings]: Strings[K] extends string ? K : never;
+}[keyof Strings];

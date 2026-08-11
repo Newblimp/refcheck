@@ -1,6 +1,10 @@
 import { memo } from 'react';
 import { ERROR_KINDS } from '../logic/errorKinds.ts';
-import { ChevronLeftIcon, ChevronRightIcon } from './icons.jsx';
+import { ChevronLeftIcon, ChevronRightIcon } from './icons.tsx';
+import type { JSX } from 'preact';
+import type { ErrorKindId, ErrorRecord } from '../logic/errorKinds.ts';
+import type { Mode } from '../logic/constants.ts';
+import type { Strings } from '../i18n.ts';
 
 // ── STATUS BAR ──────────────────────────────────────────────────────────────
 // The counts under the editor, the prev/next error stepper, the restore-all
@@ -9,13 +13,37 @@ import { ChevronLeftIcon, ChevronRightIcon } from './icons.jsx';
 // One chip per error category, produced from ERROR_KINDS — so a new category
 // appears here for free.
 
-const Chip = ({ count, color, label, style }) =>
+interface ChipProps {
+  count: number;
+  /** CSS token base: `var(--<color>)`. */
+  color: string;
+  label: string;
+  style?: JSX.CSSProperties;
+}
+
+const Chip = ({ count, color, label, style }: ChipProps) =>
   count > 0 && (
     <div className="s-chip" style={{ color: `var(--${color})`, ...style }}>
       <span className="s-dot" style={{ background: `var(--${color})` }} />
       {count} {label}
     </div>
   );
+
+export interface StatusBarProps {
+  t: Strings;
+  mode: Mode;
+  hasText: boolean;
+  signErrCount: number;
+  /** Active (non-dismissed) records per category id. */
+  errorLists: Record<ErrorKindId, ErrorRecord[]>;
+  totalSigns: number;
+  anyActive: boolean;
+  errorCount: number;
+  navIdx: number;
+  onNavigate: (delta: number) => void;
+  disCt: number;
+  onRestoreAll: () => void;
+}
 
 function StatusBarImpl({
   t,
@@ -30,7 +58,7 @@ function StatusBarImpl({
   onNavigate,
   disCt,
   onRestoreAll,
-}) {
+}: StatusBarProps) {
   return (
     <div className="statusbar">
       <Chip count={signErrCount} color="warn" label={t.errLbl} />

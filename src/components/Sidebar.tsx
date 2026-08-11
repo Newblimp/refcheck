@@ -1,14 +1,51 @@
 import { memo } from 'react';
-import { SignCard } from './SignCard.jsx';
-import { ErrorCard } from './ErrorCard.jsx';
-import { ClaimStats } from './ClaimStats.jsx';
-import { Section } from './Section.jsx';
-import { EmptyDocIcon } from './icons.jsx';
+import { SignCard } from './SignCard.tsx';
+import { ErrorCard } from './ErrorCard.tsx';
+import { ClaimStats } from './ClaimStats.tsx';
+import { Section } from './Section.tsx';
+import { EmptyDocIcon } from './icons.tsx';
 import { ERROR_KINDS } from '../logic/errorKinds.ts';
+import type { ErrorKindId, ErrorRecord, Focus } from '../logic/errorKinds.ts';
+import type { Mode } from '../logic/constants.ts';
+import type { SignEntry, TermEntry } from '../logic/extract.ts';
+import type { CrossRef } from '../logic/crossref.ts';
+import type { ClaimStats as ClaimStatsData } from '../logic/claimStats.ts';
+import type { Ref } from 'preact';
+import type { Strings } from '../i18n.ts';
 
 // ── SIDEBAR (overview pane) ─────────────────────────────────────────────────
 // Purely presentational: App owns all state and the search/dismissal filtering;
 // this renders the stats, the search box and the card sections.
+export interface SidebarProps {
+  t: Strings;
+  mode: Mode;
+  signData: Record<string, SignEntry | undefined>;
+  termData: Record<string, TermEntry | undefined>;
+  search: string;
+  onSearch: (value: string) => void;
+  searchRef: Ref<HTMLInputElement>;
+  /** [sign, data] pairs, already search-filtered by App. */
+  errSignsActive: [string, SignEntry][];
+  errSignsDismissed: [string, SignEntry][];
+  okSigns: [string, SignEntry][];
+  /** Per category id, already search- and dismissal-filtered by App. */
+  errorLists: Record<ErrorKindId, ErrorRecord[]>;
+  focus: Focus | null;
+  dis: Set<string>;
+  disCt: number;
+  hoverSign: string | null;
+  onHover: (sign: string | null) => void;
+  onFocusSign: (sign: string) => void;
+  onFocusError: (id: ErrorKindId, item: ErrorRecord) => void;
+  onDismiss: (key: string) => void;
+  onRestoreAll: () => void;
+  /** Description ↔ Claims comparison; null when there is nothing to report. */
+  orphaned: CrossRef | null;
+  claimSetStats: ClaimStatsData | null;
+  collapsed: boolean;
+  onToggleCollapse: () => void;
+}
+
 function SidebarImpl({
   t,
   mode,
@@ -37,7 +74,7 @@ function SidebarImpl({
   claimSetStats,
   collapsed,
   onToggleCollapse,
-}) {
+}: SidebarProps) {
   const totalSigns = Object.keys(signData).length;
   const totalErrs =
     errSignsActive.length + ERROR_KINDS.reduce((n, k) => n + errorLists[k.id].length, 0);
@@ -105,7 +142,7 @@ function SidebarImpl({
             placeholder={t.searchPh}
             aria-label={t.searchPh}
             value={search}
-            onChange={(e) => onSearch(e.target.value)}
+            onChange={(e) => onSearch(e.currentTarget.value)}
           />
         </div>
       )}

@@ -1,7 +1,24 @@
 import { memo } from 'react';
 import { classify } from '../logic/extract.ts';
 import { disKey } from '../logic/constants.ts';
-import { activatable } from './cardProps.js';
+import { activatable } from './cardProps.ts';
+import type { Mode } from '../logic/constants.ts';
+import type { SignEntry, TermEntry } from '../logic/extract.ts';
+import type { Strings } from '../i18n.ts';
+
+export interface SignCardProps {
+  sign: string;
+  sData: SignEntry;
+  termData: Record<string, TermEntry | undefined>;
+  mode: Mode;
+  focused: boolean;
+  t: Strings;
+  dis: Set<string>;
+  onFocus: (sign: string) => void;
+  onDismiss: (key: string) => void;
+  hoverSign: string | null;
+  onHover?: (sign: string | null) => void;
+}
 
 // ── SIGN CARD ───────────────────────────────────────────────────────────────
 function SignCardImpl({
@@ -16,12 +33,12 @@ function SignCardImpl({
   onDismiss,
   hoverSign,
   onHover,
-}) {
+}: SignCardProps) {
   const isDis = dis.has(disKey.sign(sign));
   const sev = isDis ? 'dim' : classify(sData, termData, mode);
   const terms = Object.keys(sData.terms);
 
-  const notes = [];
+  const notes: string[] = [];
   if (!isDis) {
     if (mode === 'claims') {
       const bad = sData.count - sData.inPC;

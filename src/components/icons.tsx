@@ -10,13 +10,15 @@
 // They are plain functions rather than memo'd components: an SVG element tree
 // with no props is as cheap as the memo bookkeeping would be.
 
+// `as const` so strokeLinecap/strokeLinejoin keep their literal types — the SVG
+// attribute types are unions of literals, not plain strings.
 const stroke = {
   fill: 'none',
   stroke: 'currentColor',
   strokeWidth: 2,
   strokeLinecap: 'round',
   strokeLinejoin: 'round',
-};
+} as const;
 
 /** The document mark in the top-left, drawn in the accent colour. */
 export const LogoIcon = () => (

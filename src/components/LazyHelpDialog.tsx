@@ -1,4 +1,8 @@
 import { useEffect, useState } from 'react';
+import type { FunctionComponent } from 'preact';
+import type { HelpDialogProps } from './HelpDialog.tsx';
+
+type Loaded = FunctionComponent<HelpDialogProps> | null;
 
 // The help screen is opened by an explicit click on the `?` button (or Ctrl+?),
 // and most sessions never open it — but the dialog and its strings in both
@@ -18,17 +22,17 @@ import { useEffect, useState } from 'react';
 // the precache either way.
 
 /** The resolved component once the chunk has landed, so reopening is sync. */
-let loaded = null;
+let loaded: Loaded = null;
 /** The in-flight import, so a hover followed by a click makes one request. */
-let pending = null;
+let pending: Promise<NonNullable<Loaded>> | null = null;
 
 /** Start the fetch without rendering anything (hover/focus on the opener). */
 export function preloadHelpDialog() {
-  pending ??= import('./HelpDialog.jsx').then((m) => (loaded = m.HelpDialog));
+  pending ??= import('./HelpDialog.tsx').then((m) => (loaded = m.HelpDialog));
   return pending;
 }
 
-export function LazyHelpDialog(props) {
+export function LazyHelpDialog(props: HelpDialogProps) {
   // The thunk is required: a component IS a function, and useState would call a
   // bare one as a lazy initializer, with no props.
   const [Comp, setComp] = useState(() => loaded);

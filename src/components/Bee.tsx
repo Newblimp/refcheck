@@ -1,6 +1,13 @@
 import { useEffect, useRef, useState } from 'react';
 import { spawnBee, stepBee, beeGone } from '../logic/beeFlight.ts';
 import beeUrl from '../assets/bee.svg';
+import type { Strings } from '../i18n.ts';
+
+export interface BeeProps {
+  t: Strings;
+  /** Called once the bee has left the screen, so App can drop it from the list. */
+  onDone: () => void;
+}
 
 // The bee itself. Position is written straight to the DOM node each frame rather
 // than held in state — a 60fps setState would re-render the whole app, and the
@@ -9,9 +16,9 @@ import beeUrl from '../assets/bee.svg';
 // The element is pointer-events:none so it can never swallow a click or disturb
 // the editor's elementFromPoint hover hit-testing. Hover is therefore detected
 // geometrically: we track the pointer and compare it to the bee's own position.
-export function Bee({ t, onDone }) {
-  const wrapRef = useRef(null);
-  const imgRef = useRef(null);
+export function Bee({ t, onDone }: BeeProps) {
+  const wrapRef = useRef<HTMLDivElement | null>(null);
+  const imgRef = useRef<HTMLImageElement | null>(null);
   const [near, setNear] = useState(false);
   const nearRef = useRef(false);
   // The flight must survive App re-renders. onDone is a fresh closure on every
@@ -29,7 +36,7 @@ export function Bee({ t, onDone }) {
 
     const bee = spawnBee(w(), h());
     const mouse = { x: -9999, y: -9999 };
-    const onMove = (e) => {
+    const onMove = (e: MouseEvent) => {
       mouse.x = e.clientX;
       mouse.y = e.clientY;
     };
@@ -39,7 +46,7 @@ export function Bee({ t, onDone }) {
     let last = performance.now();
     let stopped = false;
 
-    const frame = (now) => {
+    const frame = (now: number) => {
       if (stopped) return;
       // Clamp dt so a backgrounded tab does not teleport the bee on return.
       const dt = Math.min(0.05, (now - last) / 1000);
@@ -84,7 +91,7 @@ export function Bee({ t, onDone }) {
         alt=""
         width="34"
         height="34"
-        draggable="false"
+        draggable={false}
       />
     </div>
   );

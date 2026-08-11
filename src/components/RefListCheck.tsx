@@ -1,3 +1,6 @@
+import type { ReconcileResult } from '../logic/reconcile.ts';
+import type { Strings } from '../i18n.ts';
+
 import { memo } from 'react';
 
 // ── REFERENCE-LIST CHECK ────────────────────────────────────────────────────
@@ -12,19 +15,28 @@ import { memo } from 'react';
 // finding, so it borrows the claim-set panel's ⓘ rather than a warning.
 const MW_SHOWN = 6;
 
-function RefListCheckImpl({ value, onChange, result, multiWord, t }) {
+export interface RefListCheckProps {
+  value: string;
+  onChange: (value: string) => void;
+  result: ReconcileResult | null;
+  /** Multi-word terms the list contributed to the extraction. */
+  multiWord: string[];
+  t: Strings;
+}
+
+function RefListCheckImpl({ value, onChange, result, multiWord, t }: RefListCheckProps) {
   return (
     <div className="rlc-body">
       <textarea
         className="rlc-in"
         value={value}
-        onChange={(e) => onChange(e.target.value)}
+        onChange={(e) => onChange(e.currentTarget.value)}
         placeholder={t.reconcilePh}
         aria-label={t.reconcileLbl}
         rows={4}
-        spellCheck={false}
+        spellcheck={false}
       />
-      {multiWord?.length > 0 && (
+      {multiWord.length > 0 && (
         <div className="cs-note" title={t.mwAppliedHint}>
           <span className="cs-note-icon" aria-hidden="true">
             ⓘ

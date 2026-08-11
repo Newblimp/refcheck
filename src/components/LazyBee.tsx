@@ -1,4 +1,8 @@
 import { useEffect, useState } from 'react';
+import type { FunctionComponent } from 'preact';
+import type { BeeProps } from './Bee.tsx';
+
+type Loaded = FunctionComponent<BeeProps> | null;
 
 // The bee is an easter egg most users never trigger, but Bee.jsx, the flight
 // model and the sprite URL all shipped on the critical path regardless. This
@@ -15,11 +19,11 @@ import { useEffect, useState } from 'react';
 // deferring anything safe here: lazily loaded must still mean offline-available.
 
 /** The resolved component once the chunk has landed, so later bees are sync. */
-let loaded = null;
+let loaded: Loaded = null;
 /** The in-flight import, so summoning three bees at once makes one request. */
-let pending = null;
+let pending: Promise<NonNullable<Loaded>> | null = null;
 
-export function LazyBee(props) {
+export function LazyBee(props: BeeProps) {
   // Both of these MUST wrap the component in a thunk. A component IS a function,
   // and React reads a bare function as "lazy initializer" in useState and as
   // "updater" in the setter — either way it calls it, with no props, and the
@@ -29,7 +33,7 @@ export function LazyBee(props) {
   useEffect(() => {
     if (Comp) return;
     let alive = true;
-    pending ??= import('./Bee.jsx').then((m) => (loaded = m.Bee));
+    pending ??= import('./Bee.tsx').then((m) => (loaded = m.Bee));
     pending.then((C) => alive && setComp(() => C));
     return () => {
       alive = false;

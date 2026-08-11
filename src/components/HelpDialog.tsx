@@ -1,5 +1,12 @@
 import { useEffect, useRef } from 'react';
 import { HELP } from '../helpText.ts';
+import type { PlainHelpKey } from '../helpText.ts';
+import type { Lang } from '../logic/constants.ts';
+
+export interface HelpDialogProps {
+  lang: Lang;
+  onClose: () => void;
+}
 
 // ── HELP ────────────────────────────────────────────────────────────────────
 // A short usage guide and the keyboard shortcuts. Until this existed the only
@@ -13,14 +20,15 @@ import { HELP } from '../helpText.ts';
 // The modifier key, written the way the user's machine writes it. Ctrl is
 // "Strg" in German, and a Mac shows ⌘ — useHotkeys treats Ctrl and Meta alike,
 // so both really do work; only the label differs.
-const modLabel = (lang) => {
+const modLabel = (lang: Lang): string => {
   const mac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform || '');
   return mac ? '⌘' : lang === 'de' ? 'Strg' : 'Ctrl';
 };
 
 // One row per binding. Keys are i18n keys so EN and DE share the combos —
 // only the descriptions are translated.
-export const BINDINGS = [
+/** `desc` names a help string, so a renamed or mistyped key breaks the build. */
+export const BINDINGS: { keys: string[]; desc: PlainHelpKey }[] = [
   { keys: ['mod', '↓'], desc: 'keyNextErr' },
   { keys: ['mod', '↑'], desc: 'keyPrevErr' },
   { keys: ['mod', 'Shift', '↓'], desc: 'keyNextTerm' },
@@ -35,17 +43,17 @@ export const BINDINGS = [
   { keys: ['Esc'], desc: 'keyEsc' },
 ];
 
-export function HelpDialog({ lang, onClose }) {
+export function HelpDialog({ lang, onClose }: HelpDialogProps) {
   const t = HELP[lang] || HELP.en;
-  const boxRef = useRef(null);
-  const closeRef = useRef(null);
-  const returnFocusRef = useRef(null);
+  const boxRef = useRef<HTMLDivElement | null>(null);
+  const closeRef = useRef<HTMLButtonElement | null>(null);
+  const returnFocusRef = useRef<Element | null>(null);
 
   useEffect(() => {
     returnFocusRef.current = document.activeElement;
     closeRef.current?.focus();
 
-    const onKey = (e) => {
+    const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         // Stop App's own Escape binding from also firing.
         e.stopPropagation();
@@ -57,10 +65,10 @@ export function HelpDialog({ lang, onClose }) {
       // Keep Tab inside the dialog. Nothing else in the app traps focus, but a
       // modal that lets focus wander behind it is worse than no modal: the
       // editor is still there, and typing would go into it unseen.
-      const items = [...(boxRef.current?.querySelectorAll('button') || [])];
-      if (!items.length) return;
+      const items = [...(boxRef.current?.querySelectorAll('button') ?? [])];
       const first = items[0];
       const last = items[items.length - 1];
+      if (!first || !last) return;
       if (e.shiftKey && document.activeElement === first) {
         e.preventDefault();
         last.focus();
@@ -72,7 +80,7 @@ export function HelpDialog({ lang, onClose }) {
     document.addEventListener('keydown', onKey, true);
     return () => {
       document.removeEventListener('keydown', onKey, true);
-      returnFocusRef.current?.focus?.();
+      if (returnFocusRef.current instanceof HTMLElement) returnFocusRef.current.focus();
     };
   }, [onClose]);
 

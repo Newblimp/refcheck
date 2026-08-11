@@ -1,7 +1,21 @@
 import { memo } from 'react';
-import { RefList } from './RefList.jsx';
-import { RefListCheck } from './RefListCheck.jsx';
-import { Section } from './Section.jsx';
+import { RefList } from './RefList.tsx';
+import { RefListCheck } from './RefListCheck.tsx';
+import { Section } from './Section.tsx';
+import type { SignEntry, TermEntry } from '../logic/extract.ts';
+import type { ReconcileResult } from '../logic/reconcile.ts';
+import type { Strings } from '../i18n.ts';
+
+export interface RefPaneProps {
+  t: Strings;
+  signData: Record<string, SignEntry | undefined>;
+  termData: Record<string, TermEntry | undefined>;
+  refListText: string;
+  onRefListChange: (value: string) => void;
+  reconciled: ReconcileResult | null;
+  /** Multi-word terms the list contributed to the extraction, for the ⓘ note. */
+  multiWord: string[];
+}
 
 // ── REFERENCE PANE (left column) ────────────────────────────────────────────
 // Everything about the reference-sign list, kept together and away from the
@@ -21,7 +35,7 @@ function RefPaneImpl({
   onRefListChange,
   reconciled,
   multiWord,
-}) {
+}: RefPaneProps) {
   const findings = reconciled
     ? reconciled.termMismatch.length +
       reconciled.duplicates.length +

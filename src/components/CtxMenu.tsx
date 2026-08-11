@@ -1,19 +1,28 @@
 import { useEffect, useRef } from 'react';
+import type { CtxAction, CtxActionData, CtxMenu as CtxMenuData } from '../logic/ctxMenuItems.ts';
+
+export interface CtxMenuProps {
+  /** The menu to show, plus where the right-click happened. */
+  menu: CtxMenuData & { x: number; y: number };
+  onClose: () => void;
+  onAction: (action: CtxAction, data: CtxActionData) => void;
+}
 
 // ── CONTEXT MENU ────────────────────────────────────────────────────────────
-export function CtxMenu({ menu, onClose, onAction }) {
-  const ref = useRef(null);
-  const firstItemRef = useRef(null);
+export function CtxMenu({ menu, onClose, onAction }: CtxMenuProps) {
+  const ref = useRef<HTMLDivElement | null>(null);
+  const firstItemRef = useRef<HTMLButtonElement | null>(null);
   // Where focus was before the menu opened, so it can be handed back on close
   // rather than dumped on <body>.
-  const returnFocusRef = useRef(null);
+  const returnFocusRef = useRef<Element | null>(null);
 
   useEffect(() => {
     returnFocusRef.current = document.activeElement;
-    const onDown = (e) => {
-      if (ref.current && !ref.current.contains(e.target)) onClose();
+    const onDown = (e: MouseEvent) => {
+      const target = e.target;
+      if (ref.current && target instanceof Node && !ref.current.contains(target)) onClose();
     };
-    const onKey = (e) => {
+    const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         e.stopPropagation();
         onClose();
@@ -22,11 +31,11 @@ export function CtxMenu({ menu, onClose, onAction }) {
       if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
       // Roving focus through the enabled items.
       e.preventDefault();
-      const items = [...(ref.current?.querySelectorAll('button.ctx-item') || [])];
+      const items = [...(ref.current?.querySelectorAll<HTMLElement>('button.ctx-item') ?? [])];
       if (!items.length) return;
-      const at = items.indexOf(document.activeElement);
+      const at = items.indexOf(document.activeElement as HTMLElement);
       const next = e.key === 'ArrowDown' ? at + 1 : at - 1;
-      items[(next + items.length) % items.length].focus();
+      items[(next + items.length) % items.length]?.focus();
     };
 
     // The click that opened the menu is still propagating, so the outside-click
@@ -41,7 +50,7 @@ export function CtxMenu({ menu, onClose, onAction }) {
       clearTimeout(armId);
       document.removeEventListener('mousedown', onDown);
       document.removeEventListener('keydown', onKey);
-      returnFocusRef.current?.focus?.();
+      if (returnFocusRef.current instanceof HTMLElement) returnFocusRef.current.focus();
     };
   }, [onClose]);
 
@@ -52,7 +61,7 @@ export function CtxMenu({ menu, onClose, onAction }) {
     <div className="ctx" ref={ref} style={{ left: x, top: y }} role="menu" aria-label={menu.label}>
       {menu.label && <div className="ctx-lbl">{menu.label}</div>}
       {menu.items.map((it, i) => {
-        if (it.sep) return <div key={i} className="ctx-sep" role="separator" />;
+        if ('sep' in it) return <div key={i} className="ctx-sep" role="separator" />;
         const isFirst = !firstAssigned;
         firstAssigned = true;
         return (
@@ -60,9 +69,11 @@ export function CtxMenu({ menu, onClose, onAction }) {
             key={i}
             ref={isFirst ? firstItemRef : undefined}
             role="menuitem"
-            className={`ctx-item ${it.v || ''}`}
+            className={`ctx-item ${'v' in it ? it.v : ''}`}
             onClick={() => {
-              onAction(it.a, it.d);
+              // `d` is present only on the actions that carry a payload, which
+              // is exactly what the CtxMenuItem union says.
+              onAction(it.a, 'd' in it ? it.d : undefined);
               onClose();
             }}
           >

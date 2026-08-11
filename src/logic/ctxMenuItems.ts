@@ -32,6 +32,10 @@ export type CtxMenuItem =
   | { label: string; a: 'dis-all'; v: 'warn' }
   | { label: string; a: 'restore-all' };
 
+/** The payload an action carries, if any. App's dispatcher narrows on the action. */
+export type CtxActionData =
+  CtxTermData | { key: string } | { bt: BareTerm; sign: string } | undefined;
+
 export interface CtxMenu {
   label: string;
   items: CtxMenuItem[];
