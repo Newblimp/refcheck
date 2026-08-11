@@ -123,35 +123,40 @@ function TopBarImpl({
           {hasClaims && <span className="buf-dot" />}
         </button>
       </div>
-      <div className="lang-toggle" role="group" aria-label="Language">
+      {/* Grouped so the language toggle and the help button move as one unit
+          when the bar wraps — split across two lines, the pairing that reads
+          as one control looked broken rather than merely narrow. */}
+      <div className="lang-help">
+        <div className="lang-toggle" role="group" aria-label="Language">
+          <button
+            className={lang === 'en' ? 'active' : ''}
+            aria-pressed={lang === 'en'}
+            onClick={() => onLang('en')}
+          >
+            EN
+          </button>
+          <button
+            className={lang === 'de' ? 'active' : ''}
+            aria-pressed={lang === 'de'}
+            onClick={() => onLang('de')}
+          >
+            DE
+          </button>
+        </div>
+        {/* The dialog is a lazy chunk (LazyHelpDialog); starting its fetch on
+            hover or keyboard focus means the click almost always lands on an
+            import that has already resolved. */}
         <button
-          className={lang === 'en' ? 'active' : ''}
-          aria-pressed={lang === 'en'}
-          onClick={() => onLang('en')}
+          className="help-btn"
+          onClick={onHelp}
+          onMouseEnter={onHelpHover}
+          onFocus={onHelpHover}
+          title={t.helpBtn}
+          aria-label={t.helpBtn}
         >
-          EN
-        </button>
-        <button
-          className={lang === 'de' ? 'active' : ''}
-          aria-pressed={lang === 'de'}
-          onClick={() => onLang('de')}
-        >
-          DE
+          ?
         </button>
       </div>
-      {/* The dialog is a lazy chunk (LazyHelpDialog); starting its fetch on
-          hover or keyboard focus means the click almost always lands on an
-          import that has already resolved. */}
-      <button
-        className="help-btn"
-        onClick={onHelp}
-        onMouseEnter={onHelpHover}
-        onFocus={onHelpHover}
-        title={t.helpBtn}
-        aria-label={t.helpBtn}
-      >
-        ?
-      </button>
     </div>
   );
 }
