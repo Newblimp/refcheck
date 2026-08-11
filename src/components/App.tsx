@@ -218,7 +218,6 @@ export function App() {
     const err: [string, SignEntry][] = [];
     const ok: [string, SignEntry][] = [];
     for (const [sign, sData] of Object.entries(signData)) {
-      if (!sData) continue;
       if (q && !sign.toLowerCase().includes(q)) {
         const termMatch = Object.keys(sData.terms).some((ts) =>
           [...(termData[ts]?.rawTerms ?? [])].some((r) => r.includes(q))

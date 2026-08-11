@@ -330,7 +330,7 @@ function buildKnownRangeIndex(
 ): (tStart: number, tEnd: number) => boolean {
   const ranges: [start: number, end: number][] = [];
   for (const sData of Object.values(signData))
-    for (const p of sData?.positions ?? []) ranges.push([p.termStart, p.termEnd]);
+    for (const p of sData.positions) ranges.push([p.termStart, p.termEnd]);
   ranges.sort((a, b) => a[0] - b[0]);
   const rangeStarts: number[] = [];
   const maxEndUpTo: number[] = [];
@@ -414,7 +414,6 @@ function computeArticleErrors({
 }): ArtError[] {
   const artErrors: ArtError[] = [];
   for (const [ts, occs] of Object.entries(artByTerm)) {
-    if (!occs) continue;
     occs.sort((a, b) => a.artStart - b.artStart);
     if (claimGraph) {
       const positions = termPositions[ts] || [];

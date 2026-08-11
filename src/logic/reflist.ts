@@ -40,7 +40,6 @@ export function buildRefList(
 ): RefListRow[] {
   const rows: RefListRow[] = [];
   for (const [sign, sData] of Object.entries(signData)) {
-    if (!sData) continue;
     rows.push({ sign, term: dominantTerm(sData, termData), count: sData.count });
   }
   return rows.sort((a, b) => compareSigns(a.sign, b.sign));

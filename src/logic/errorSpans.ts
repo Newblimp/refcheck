@@ -122,7 +122,6 @@ export function eachErrorSpan(
   const { signData, termData } = res;
 
   for (const [sign, sData] of Object.entries(signData)) {
-    if (!sData) continue;
     const sev: SpanSeverity = dis.has(disKey.sign(sign)) ? 'dis' : classify(sData, termData, mode);
     for (const p of sData.positions) {
       visit({ kind: 'sign', start: p.signStart, end: p.signEnd, sign, sev, term: p.termStem });

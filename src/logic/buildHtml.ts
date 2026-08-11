@@ -107,7 +107,7 @@ export function findAtPos(
   for (const ae of artErrors)
     if (charPos >= ae.artStart && charPos <= ae.artEnd) return { type: 'art', ae };
   for (const [sign, sData] of Object.entries(signData))
-    for (const p of sData?.positions ?? [])
+    for (const p of sData.positions)
       if (charPos >= p.termStart && charPos <= p.signEnd) return { type: 'sign', sign, pos: p };
   for (const bt of bareTerms)
     if (charPos >= bt.termStart && charPos <= bt.termEnd) return { type: 'bare', bt };
