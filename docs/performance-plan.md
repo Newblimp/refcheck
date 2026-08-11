@@ -1,534 +1,261 @@
-# RefSign Checker — load & interaction performance plan
+# RefSign Checker — performance record
 
-_What makes os8088.com feel instant, which of those techniques apply here, and what else the
-measurements turned up. Offline capability is a hard constraint throughout: nothing in this plan
-weakens the guarantee that the tool works after one visit with the network off._
+_For whoever picks up performance work here next. It is a record of what was measured, what
+shipped, and — mostly — **what was tried and rejected**, so the same experiments are not run a
+third time. Every number below was measured on this tree; none are estimates unless labelled as
+such._
 
-> **Status: Phases 1, 2 and 4 are implemented.** Critical path **176.6 KB → 42.6 KB** across
-> **9 requests → 3**, and a restored two-buffer session shows its document in **227 ms instead of
-> 4199 ms**. Two steps did not survive contact with a browser and were dropped rather than shipped
-> on the strength of the reasoning below — see **§ What the measurements overturned**. Phase 3 is
-> untouched. The analysis is kept as written, including the parts that turned out to be wrong.
->
-> **Phase 4** is the follow-up to a Lighthouse run against the deployed site, which scores
-> **performance 100** — so it is deliberately a small phase: one main-thread defect, ~2 KB off the
-> critical chunk, and two contrast bugs the palette guard was structurally unable to see.
-
-## Verdict
-
-The tool's **compute** is already fast — the quadratic scans are gone and extraction sits well
-inside the debounce. The two things that are slow are the two things nobody has measured yet:
-
-1. **What it ships.** 177 KB on the wire before the app can paint, of which **54% is fonts** —
-   more than React and the entire application put together. Every byte of it is avoidable or
-   shrinkable.
-2. **What it builds on boot.** A restored 112 KB document costs **77 ms of synchronous work per
-   buffer** before first paint, and produces a backdrop of **11,704 `<mark>` elements** that is
-   rebuilt on every settled keystroke.
-
-Phase 1 below is a day of low-risk work that takes the critical path from **177 KB / 9 requests**
-to roughly **87 KB / 3 requests**, and moves first paint from "after 227 KB of JavaScript parses"
-to "on the first HTML response". Phase 2 and 3 are bigger bets, gated on measurement.
-
-## What os8088.com actually does
-
-The site's own [colophon](https://os8088.com/colophon/) is explicit about its method. Six
-techniques, and one principle underneath them.
-
-| Technique                                                                                             | The point                                             |
-| ----------------------------------------------------------------------------------------------------- | ----------------------------------------------------- |
-| Static HTML — the content is in the response                                                          | First paint is one round trip, not a JS boot          |
-| **Body prose is not a web font at all** — "whatever monospace face your own system supplies"          | The largest reading surface costs **zero** downloads  |
-| The one web font is cut to `unicode-range: U+0020-007E`                                               | Ships ~95 glyphs instead of a few hundred             |
-| The logo is **generated inline SVG** — the build reads the kernel's 11×11 bitmap and emits rectangles | No image request, sharp at any size                   |
-| Screenshots are 16-colour indexed PNGs plus a nearest-neighbour 2× copy                               | Palette matched to the content, not a generic encoder |
-| The 2.4 MB v86 emulator **loads only when you ask for it**; the floppy images are 16 KB on the wire   | Heavy things are opt-in and compress                  |
-
-There is also a layout discipline worth stealing: a single unit `--u` (one OS pixel = 2 CSS px),
-with **every metric an integer multiple of it**. No sub-pixel geometry, so nothing reflows into a
-slightly different position — cumulative layout shift by construction rather than by measurement.
-
-The principle: **ship nothing you have not proven you need, and let the first paint happen
-without JavaScript.**
-
-> Note on sourcing: `os8088.com` is blocked by this session's egress proxy, so the site could not
-> be fetched or profiled directly. The techniques above are quoted from its colophon via search
-> snippets. Everything about **this** repo below is measured on this tree.
-
-## Where refcheck stands (measured, `npm run build`, this tree)
-
-**Critical path — what must arrive before the app can render:**
-
-| Asset                                                                   | Wire bytes   | Share |
-| ----------------------------------------------------------------------- | ------------ | ----- |
-| `index.html`                                                            | 0.59 KB gz   | 0.3%  |
-| `index-*.css`                                                           | 4.98 KB gz   | 2.8%  |
-| `index-*.js` — React + DOM                                              | 45.23 KB gz  | 25.6% |
-| `index-*.js` — app code                                                 | 30.42 KB gz  | 17.2% |
-| **Fonts × 6** (woff2)                                                   | **95.82 KB** | 54.2% |
-| **Total**                                                               | **176.6 KB** |       |
-| — plus 9 requests, 6 of them fonts discovered only after the CSS parses |              |       |
-
-Precached by the service worker immediately after load: `importDoc` chunk 12.75 KB gz, `bee.svg`
-2.03 KB gz. Total first-visit footprint ≈ **191 KB**.
-
-**Boot work**, measured on a 112,559-character description (900 sentences, 184 signs):
-
-| Step           | Time        | Output                              |
-| -------------- | ----------- | ----------------------------------- |
-| `extractData`  | 48.7 ms     | 184 signs, 904 article errors       |
-| `buildHtml`    | 23.1 ms     | **500 KB of HTML, 11,704 `<mark>`** |
-| `getAllErrors` | 4.9 ms      | 6,304 errors                        |
-| **Total**      | **76.7 ms** | per buffer, on a fast machine       |
-
-`useDebounced` passes its **initial** value through synchronously (`if (delay <= 0) ref.current = value`,
-and the effect has not run yet on mount), so a restored session with both buffers populated pays
-this **twice before first paint** — ~150 ms here, realistically 400–600 ms on a mid-range laptop,
-on top of parsing 227 KB of JavaScript. The sidebar then mounts **1,088 cards**.
-
-Three facts frame everything below:
-
-- **Fonts outweigh all the JavaScript.** 95.82 KB of font versus 75.65 KB gz of JS.
-- **React is 62% of the bundle** and 26% of the critical path. The app's own code is 30 KB gz.
-- **Nothing paints until JS runs.** `<div id="root"></div>` is the whole body.
+**The hard constraint, above every optimisation in this file: the tool must work after one visit
+with the network off.** Nothing here weakens that, and the rule that keeps it true is in
+§ Rules that must hold.
 
 ---
 
-## Phase 1 — first paint (direct ports of os8088's method)
+## Where things stand
 
-Low risk, no architectural change, roughly a day. Ordered by payoff.
+A Lighthouse 13.4.1 run against the deployed site (`nicos-refcheck.pages.dev`, desktop) scores
+**performance 100**:
 
-### 1.1 Cut fonts from 96 KB to ~6 KB
+| Metric                  | Value                              |
+| ----------------------- | ---------------------------------- |
+| FCP / LCP               | 386 ms observed (318 ms simulated) |
+| Total blocking time     | 0 ms                               |
+| Cumulative layout shift | 0                                  |
+| Requests before render  | 3                                  |
+| Total transfer          | 45 KiB                             |
+| Web fonts / stylesheets | 0 / 0 (both inlined or removed)    |
+| Server response         | ~2 ms (Cloudflare edge)            |
 
-This is the single largest win available and it is a near-exact port of what os8088 does.
+Every opportunity audit is empty: no render-blocking resources, no unused CSS, no legacy or
+duplicated JavaScript, no image or font work, no redirects, no preconnect candidates.
 
-**(a) The editor becomes a system monospace — `−43 KB`.**
-`--font-mono` is `'JetBrains Mono', monospace` and drives `.backdrop`/`.editor-ta`, the largest
-text surface in the app. This is precisely os8088's "body prose is not a web font at all". Replace
-with a real system stack:
+Locally, `npm run build && npm run budget`:
 
-```css
---font-mono: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace;
-```
+| Payload               | Now         | Budget |
+| --------------------- | ----------- | ------ |
+| Critical path (gz)    | **40.6 KB** | 50 KB  |
+| Whole precached shell | **58.8 KB** | 70 KB  |
 
-Both JetBrains Mono files (43.0 KB) stop shipping entirely.
+**The load axis is finished.** The remaining work in this file is interaction on large documents
+(§ Open), not loading. Treat any new "make it load faster" idea as needing to beat a 100/100 page,
+and check § Settled first.
 
-_Alignment check:_ the backdrop and the textarea must remain metrically identical, or the
-highlight spans drift. They already share `var(--font-mono)`, so they stay locked to each other on
-any machine — the invariant is "same font on both layers", not "same font on every machine". The
-trailing-newline sentinel and `backdropScroll` are unaffected. Worth one manual pass on
-Windows/macOS/Linux anyway, since line-height rounding differs per face.
+### What is guarded automatically
 
-**(b) Space Grotesk: four weights → one — `−39 KB`.**
-Weight usage across `styles.css` is 400 ×2, 500 ×7, **600 ×13**, 700 ×3. Four separate files for
-that is not earning its keep. Either ship the **variable** cut of Space Grotesk (one file covering
-400–700) or keep **600 only** and let 500/700 synthesize. Recommended: 600 alone first, measure
-whether anything looks wrong, add 700 back only if it does.
-
-**(c) Subset what remains — a further `~60%`.**
-The UI strings are English and German: ASCII, `äöüßÄÖÜ`, and a handful of typographic marks.
-
-```
-pyftsubset space-grotesk-600.ttf --flavor=woff2 \
-  --unicodes=U+0020-007E,U+00A0-00FF,U+2010-2027,U+20AC \
-  --layout-features='' --output-file=space-grotesk-600.subset.woff2
-```
-
-13.3 KB → roughly 5 KB. Declare the range in the `@font-face` too, so a stray glyph falls back
-rather than rendering as tofu.
-
-**(d) Give the fallbacks a real system stack.** `--font-ui` currently falls back to bare
-`sans-serif`. During the swap frame — and permanently for anyone the font fails for — that is
-whatever the browser default is. Use `system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif`.
-
-**Net: 95.82 KB → ~5 KB, and 6 font requests → 1.**
-
-### 1.2 Inline the CSS — `−1 request from the critical path`
-
-4.98 KB gz is small enough to inline into `index.html`, removing a render-blocking round trip and
-letting the shell paint from the single HTML response. A ~15-line Vite plugin in `build/`
-(alongside `swPrecache.js`) at `transformIndexHtml`, or `vite-plugin-singlefile`-style manual
-inlining. One fewer precache entry for the service worker as a side effect.
-
-### 1.3 Paint a static shell before React
-
-Today the body is empty until 227 KB of JS parses, executes, and React commits its first tree.
-refcheck cannot pre-render the user's _document_ — but it can pre-render the _frame_, which is
-what the eye actually registers as "the app is here".
-
-Put the real chrome into `index.html` inside `#root`: the top bar, the three-column grid, the
-editor box, the two pane headers — static markup at the exact geometry React will produce, styled
-by the now-inlined CSS. `createRoot(...).render()` replaces the container's children on first
-commit, so **no hydration machinery is needed** and no React code changes at all.
-
-Combined with 1.2, first paint becomes "as soon as the HTML arrives" — the os8088 property. It
-also closes the current gap between the inline theme script (which runs immediately) and mount.
-
-### 1.4 Preload the surviving font
-
-```html
-<link
-  rel="preload"
-  as="font"
-  type="font/woff2"
-  href="/refcheck/assets/space-grotesk-600-*.woff2"
-  crossorigin
-/>
-```
-
-Fonts are currently discovered only after the CSS parses. The href is content-hashed, so this has
-to be emitted by the same build plugin that inlines the CSS — it already has the manifest.
-
-### 1.5 Defer the bee
-
-`Bee.jsx` and `bee.svg` (2.03 KB gz) ship on the critical path for an easter egg most users never
-see. `useBee` already gates it behind a rare draw or typing "bee", so the sprite and component can
-load on first spawn via a dynamic `import()` — exactly the pattern `importDoc` already uses (a
-plain dynamic import, no `React.lazy`/`Suspense` anywhere in this app). **Keep both in the
-precache list**, same reasoning as the `.docx` chunk: offline-first means the deferred thing must
-still be there with the network off.
-
-This is the small-scale version of os8088's "the 2.4 MB emulator loads only when you ask for it".
-
-### 1.6 Split the vendor chunk
-
-React and app code are one 227 KB file today, so **every deploy re-downloads all of it** even when
-only app code changed. `manualChunks: { vendor: ['react', 'react-dom'] }` splits it 140.78 / 85.88.
-Measured, not assumed — that split is where the "React is 62%" figure comes from.
-
-Note the interaction with the service worker: the cache is keyed on `BUILD_ID`, so a new deploy
-opens a fresh cache and re-fetches everything regardless. To actually collect this win, `install`
-should try `caches.match` against the _old_ cache before fetching each precache URL — unchanged
-hashed assets then copy across instead of re-downloading. That is a ~10-line change to `install`
-and it needs its own test in `swPrecache.test.js`.
-
-### 1.7 A payload budget in CI
-
-`perf.test.js` guards extraction _time_ and nothing guards _bytes_ — which is where the site the
-user admires wins. Add a build-output assertion: fail if initial JS gz > N, total critical-path
-bytes > M. Without this, Phase 1 erodes.
-
-**Phase 1 result: 176.6 KB → ~87 KB critical path, 9 requests → 3, first paint from the HTML.**
+| Guard                                 | Catches                                                                 |
+| ------------------------------------- | ----------------------------------------------------------------------- |
+| `npm run budget` (CI)                 | Bytes creeping back onto the critical path or into the shell            |
+| `src/logic/perf.test.js`              | Superlinear extraction, via a **ratio** test that survives slow runners |
+| `src/logic/palette.test.js`           | Contrast, opacity-composited text, literal colours in the stylesheet    |
+| `build/swInstall.test.js`             | The shipped service worker's install, against a fake CacheStore         |
+| `src/hooks/useEditorSync.ui.test.jsx` | Geometry reads at mount (the forced-reflow regression)                  |
 
 ---
 
-## Phase 2 — the JavaScript (measure, then decide)
+## Rules that must hold
 
-### 2.1 Preact via `preact/compat` — potentially `−40 KB gz`
-
-React + ReactDOM is 45.23 KB gz. `preact/compat` is ~5 KB gz. That is a bigger saving than the
-entire CSS and app-specific JS combined, from a **single alias in `vite.config.js`**:
-
-```js
-resolve: { alias: { react: 'preact/compat', 'react-dom': 'preact/compat' } }
-```
-
-The API surface here is unusually favourable. A sweep of `src/components`, `src/hooks` and
-`main.jsx` finds only `useState`/`useEffect`/`useLayoutEffect`/`useRef`/`useMemo`/`useCallback`/
-`useReducer`, `createRoot` and `StrictMode` — **no portals, no `Suspense`, no `React.lazy`, no
-`flushSync`, no `useSyncExternalStore`, no concurrent features**. All of it is `preact/compat`
-territory.
-
-**The gate is the test suite, and it is a good one.** 668 tests, including `App.ui.test.jsx` under
-jsdom with `@testing-library/react` and `user-event`. Alias it, run `npm test`, and read the
-result:
-
-- All green → ship it; the alias is one line to revert.
-- `App.ui.test.jsx` fails → do not fight it. Revert and take the Phase 1 wins.
-
-Watch specifically for: `dangerouslySetInnerHTML` on the 500 KB backdrop, event delegation
-differences around the editor's `elementFromPoint` hover hit-testing, and `useLayoutEffect`
-ordering in `useEditorSync` (the scroll re-mirror in `useIsoLayoutEffect(..., [html])` is timing
--sensitive by design). **None of the logic layer is affected** — that seam is exactly what makes
-this experiment cheap.
-
-### 2.2 Stop extracting both buffers synchronously on mount
-
-Measured above: ~150 ms of blocking work before first paint on a restored two-buffer session,
-before React has rendered anything.
-
-The fix is small and lives in one place. Give `useDebounced` an `initial` option so the first
-render sees `''` and the restored text arrives via the first effect — the shell paints
-immediately and results fill in one frame later. Better still, prioritise: extract the **active**
-mode's buffer eagerly and the **inactive** one in a `requestIdleCallback`, since the inactive
-buffer only feeds the cross-reference section.
-
-Both are compatible with the static shell in 1.3: the shell paints, React mounts over it, and the
-document's highlights arrive a frame after that instead of gating everything.
+1. **Anything lazily loaded stays in the precache.** `build/swPrecache.js` derives the list from
+   the emitted bundle, so this is automatic — but it is the reason deferral is safe here at all.
+2. **A new lazy chunk must also be added to `LAZY` in `build/budget.js`.** Forget it and the win
+   is reported as a _loss_: the bytes leave the entry chunk and are counted against the critical
+   path again under their own name, plus the new chunk's overhead.
+3. **Both editor layers read `var(--font-mono)`.** The invariant is "same font on both layers",
+   not "same font on every machine" — the textarea and the highlight backdrop are laid out
+   separately and must agree character for character.
+4. **Colours go through tokens.** `palette.test.js` rejects a literal `color:` outright, because a
+   non-token is outside the contrast matrix by construction. It also rejects dimming text with a
+   partial `opacity`, which composites text _and_ its surface against what is behind them.
+5. **Performance work has never needed to touch `logic/` or the `.docx` pipeline.** Every change
+   in this file was independently revertible and stayed out of both.
 
 ---
 
-## Phase 3 — interaction on large documents (design work)
+## Settled — do not redo these
 
-### 3.1 The backdrop is the real interaction cost
+Each row was built or computed, not merely considered. The evidence is the point.
 
-**11,704 `<mark>` elements and 500 KB of HTML** for a 112 KB document, re-parsed by the browser on
-every settled keystroke. This is what the known-limitations list means by "no virtualization", and
-it is the dominant cost of typing in a real patent application.
+### Prerendering / a static app shell
 
-**(a) Window the backdrop — recommended first.** Emit marks only for the visible slice plus a
-margin; emit everything outside it as plain escaped text. The character stream is unchanged, so
-the alignment invariant (`strip-marks ≡ esc(text)`, already asserted in `buildHtml.test.js`)
-holds exactly. Re-slice on scroll — `useEditorSync` and `backdropScroll` already instrument
-scroll properly, including the elastic-overscroll case, so the plumbing exists.
+Built exactly as it should be — top bar plus three-column frame at the app's real geometry,
+verified pixel-identical to the mounted app, zero layout shift — then A/B'd in Chromium:
 
-Guard it in `perf.test.js` with an assertion that mark count is bounded by viewport size rather
-than document length — a pure-logic property of `buildHtml`, testable in node with no DOM.
+| First contentful paint | empty `#root` | static shell |
+| ---------------------- | ------------- | ------------ |
+| Fast 3G, 4× CPU        | 228 ms        | **244 ms**   |
+| Slow 3G, 4× CPU        | 544 ms        | **568 ms**   |
 
-**(b) CSS Custom Highlight API — a spike, not a commitment.** `CSS.highlights` paints ranges with
-**zero DOM**. It would delete the backdrop layer outright and with it the scroll mirroring, the
-trailing-newline sentinel, and the `overscroll-behavior` workaround — a large simplification of
-some of the fiddliest code in the app. Support is Chrome/Edge 105+, Safari 17.2+, Firefox 140+,
-so a fallback path is required, which means carrying both implementations. Worth a timeboxed
-spike; do (a) first regardless, since (a) is strictly smaller and works everywhere.
+**Consistently ~20 ms slower.** The shell adds DOM to parse and lay out _before_ the paint it was
+supposed to bring forward, and the window it aimed at had already closed: with the CSS inlined and
+the bundle at ~37 KB gzipped, the modulepreloaded chunks arrive and execute in the same frame the
+shell would have painted in.
 
-### 3.2 Bound the sidebar
+The general lesson is the durable part: **a static shell is a fix for a slow bundle.** Fix the
+bundle and it has nothing left to do. `index.html` carries a comment saying not to add one back
+without re-running that measurement — it also costs a standing obligation to keep the markup in
+sync with `TopBar.jsx` and `App.jsx`.
 
-1,088 cards mount for that same document. The cards are already `React.memo`'d, so the cost is
-mount, not update — a per-section cap (say 200) with a "show all N" affordance is cheap and
-removes most of it. Virtualization is the heavier alternative and probably unnecessary.
+Note this also answers the LCP question below, since the shell was pixel-identical: the same
+element is largest, and it painted later.
 
-### 3.3 Steal the integer-unit layout discipline
+### Removing the editor's placeholder to improve LCP
 
-os8088 derives every metric from one unit. `styles.css` is not far off this already, but a pass
-that pins the editor's `line-height` and the card metrics to integer pixel values would remove
-sub-pixel reflow between the two editor layers — the place where a fractional line-height is most
+LCP's breakdown reads "element render delay: ~400 ms" against the textarea's placeholder, which
+reads like the placeholder is at fault. It is not, twice over:
+
+- The LCP **audit scores 1** (317.5 ms; "good" is under 2500 ms) and the breakdown panel is
+  `informative` with its own `metricSavings: {LCP: 0}`. Lighthouse is saying there is nothing to
+  take.
+- "Element render delay" is TTFB → LCP paint minus resource load. The LCP element is **text**, so
+  there is no resource to load and _everything_ lands in that bucket by definition. It describes a
+  client-rendered app, not a slow element.
+
+Measured anyway, 15 runs per variant at 4× CPU throttle, current build measured twice as a control:
+
+| Build               | LCP        | LCP element                                                   |
+| ------------------- | ---------- | ------------------------------------------------------------- |
+| current             | **268 ms** | the placeholder (77,672 px²)                                  |
+| placeholder removed | **264 ms** | `<p>` "No reference signs detected / Paste your patent text…" |
+| current (control)   | **268 ms** | the placeholder                                               |
+
+4 ms at 4× throttle, i.e. noise. LCP picks the largest element that _paints_, and everything here
+paints in one commit when Preact mounts — so removing the placeholder relabels LCP onto the
+next-largest element (with some irony, the sidebar's _other_ "paste your text" hint) at the same
+instant, while costing the example line that teaches the sign/term concept.
+
+### Extraction in a Web Worker
+
+Post-optimisation extraction sits inside the 200 ms debounce, and the boot case is handled by the
+deferral (§ History). A worker adds a serialization boundary around the whole `ExtractResult` for
+no measured gain.
+
+### Restructuring the service-worker install into blocking/non-blocking phases
+
+Attractive-looking, but opportunistic caching was already a real bug here: the app became
+offline-capable on the _second_ visit, not the first. The install does not block first paint
+anyway — it registers on `load`. Shrink the payload instead, which fixes install cost as a side
+effect and cannot regress the offline guarantee.
+
+### Moving hosting for cache headers
+
+The service worker already serves every hashed asset cache-first with no revalidation, which is
+what `immutable` would buy. No gain, real migration cost.
+
+### preconnect / dns-prefetch
+
+There are no third-party origins — no web fonts, the bee sprite is vendored, no analytics.
+Lighthouse's own report says "no additional origins are good candidates".
+
+### Splitting `i18n.js` by language
+
+It is the largest module in the eager chunk (16.1 KB, 19% of it) and half is the language the
+reader will never see. But the strings are needed by the first render, so the only way to stop
+shipping them is a dynamic import: ~2 KB gzipped traded for a round trip _before paint_ on a page
+whose entire JS payload is 37 KB. A straight loss. (The strings **inside the help dialog** were a
+different case and did move — they are behind a click. See § History.)
+
+### `network-dependency-tree-insight` scoring 0
+
+A false alarm. Its own reported LCP saving is 0 ms and it lists no preconnect candidates; it fires
+on the mere existence of a document → JS chain.
+
+---
+
+## Open
+
+Ranked by size of the number, largest first.
+
+### 1. The backdrop on large documents — 2785 ms
+
+A 112 KB document produces **11,704 `<mark>` elements and 500 KB of HTML**, re-parsed by the
+browser on every settled keystroke. After the boot deferral the editor shows the document in
+227 ms, but the highlights still take **2785 ms** to complete. This is the largest single number
+left in the app and the substance of "no virtualization" in the known-limitations list.
+
+**Window the backdrop** — emit marks only for the visible slice plus a margin, everything outside
+it as plain escaped text. The character stream is unchanged, so the alignment invariant
+(`strip-marks ≡ esc(text)`, already asserted in `buildHtml.test.js`) holds exactly. `useEditorSync`
+and `backdropScroll` already instrument scroll properly, elastic overscroll included. Guard it in
+`perf.test.js` by asserting mark count is bounded by viewport size rather than document length — a
+pure-logic property of `buildHtml`, testable in node with no DOM.
+
+**CSS Custom Highlight API** is the bigger prize and a spike, not a commitment: `CSS.highlights`
+paints ranges with **zero DOM**, deleting the backdrop layer, the scroll mirroring, the
+trailing-newline sentinel and the `overscroll-behavior` workaround in one go. Support is
+Chrome/Edge 105+, Safari 17.2+, Firefox 140+, so a fallback means carrying both implementations.
+Do the windowing first regardless — strictly smaller, works everywhere.
+
+### 2. The sidebar on large documents — 1,088 cards
+
+Cards are already `React.memo`'d, so the cost is mount, not update. A per-section cap (say 200)
+with a "show all N" affordance is cheap and removes most of it. Virtualization is the heavier
+alternative and probably unnecessary.
+
+### 3. Deferring the analysis layer — ~6 KB gz, gated
+
+`extract`, `stem`, `claims`, `crossref`, `reconcile` and the rest are ~21 KB raw of the eager
+chunk and first paint needs none of it (boot extraction is already deferred past paint). But
+splitting them into another _statically imported_ chunk moves the same bytes across two parallel
+requests and wins nothing — the byte win requires a **dynamic** import, which makes extraction
+async and turns App's `useMemo` results into state. A real restructuring of the data flow for
+~6 KB gzipped. **Gate it on a throttled measurement, not on the byte count.**
+
+### 4. Integer-unit layout discipline
+
+Pinning the editor's `line-height` and the card metrics to integer pixel values would remove
+sub-pixel reflow between the two editor layers — the place a fractional line-height is most
 visible, because two independently-laid-out layers must agree line for line.
 
 ---
 
-## Phase 4 — the Lighthouse follow-up (desktop PSI run against the Cloudflare Pages deploy)
+## How to measure
 
-A Lighthouse 13.4.1 run against `nicos-refcheck.pages.dev` scores **performance 100**, and that is
-itself the finding: the load axis is finished. FCP = LCP = **386 ms observed**, TBT **0 ms**,
-CLS **0**, **3 requests**, **45 KiB** total, zero fonts, zero stylesheets, TTFB ~2 ms. Every
-opportunity audit is empty — no render-blocking resources, no unused CSS, no legacy or duplicated
-JavaScript, no image or font work, no redirects, no preconnect candidates.
+Everything in this file was produced with a small Playwright harness; rebuilding it each time is
+the main avoidable cost of working here. The recipe:
 
-What the trace still shows, in the order it happens:
+1. Build the variants you are comparing into separate directories:
+   `npm run build -- --outDir dist-before` (with the change reverted) and `npm run build`.
+2. Serve each over plain HTTP from node — **not** `vite preview`, which adds its own headers.
+3. Launch Chromium at `/opt/pw-browsers/chromium`, one **fresh context per run** with
+   `serviceWorkers: 'block'`, and `Emulation.setCPUThrottlingRate` at 4×.
+4. Collect in-page via `PerformanceObserver` (`longtask`, `paint`, `largest-contentful-paint` —
+   the LCP entry carries `.element`, which is how you find out _what_ LCP actually is), and via
+   CDP `Performance.getMetrics` for `LayoutDuration`, `RecalcStyleDuration`, `LayoutCount`.
+5. Take **medians of 9–15 runs**, and measure one variant twice as a control. Differences under
+   ~10 ms at 4× throttle are noise at this payload size.
 
-| Phase                                                       | Window                                        |
-| ----------------------------------------------------------- | --------------------------------------------- |
-| document (6.9 KB gz)                                        | 1 → 120 ms                                    |
-| `index.js` (29.0 KB gz) + `vendor.js` (7.5 KB gz), parallel | 135 → 251 ms                                  |
-| mount task                                                  | 263 → 341 ms (**77.9 ms**, only task > 50 ms) |
-| first content painted                                       | 386 ms                                        |
+Six things that cost real time to rediscover:
 
-LCP decomposes into 2.2 ms time-to-first-byte and **384 ms element render delay**, on the
-textarea's placeholder. That is the shape of a client-rendered app, and §1.3 already settled what
-to do about it — nothing, on measured grounds.
-
-Three things are worth acting on. All three are small; the honest summary of this report is that
-there is no large loading win left to take.
-
-### 4.1 The forced reflow at mount — 46.2 ms inside the 77.9 ms task
-
-Lighthouse reports exactly one forced reflow, at `index-TZU0mzVT.js:14:7589`. The deployed bundle
-is byte-identical to a local `npm run build` (same content hash), so that location maps precisely:
-it is the `ta.scrollTop` / `scrollHeight` / `clientHeight` read inside `syncScroll`, reached from
-the layout effect in `hooks/useEditorSync.js` that re-mirrors the scroll offset whenever the
-backdrop's html commits. Style & Layout (50 ms) is consequently the largest main-thread group in
-the profile, ahead of script evaluation (41 ms).
-
-At mount that call has nothing to do: the textarea is at offset 0, the backdrop is at 0, and there
-is no transform to clear. But reading the geometry forces the app's entire first layout
-synchronously **inside the JS task**, rather than letting it happen in the browser's own rendering
-step immediately afterwards.
-
-**Be precise about the saving.** The layout has to happen either way; not forcing it does not
-delete 46 ms of work, it moves it out of the long task. On this machine (benchmarkIndex 669) TBT
-is already 0 and the visible win is near zero. The reason to do it anyway is that the 77.9 ms task
-is the thing that scales on slower hardware — at 4× CPU throttle it is the difference between a
-task that registers as blocking and one that does not — and the fix is four lines.
-
-**The fix:** the effect only has work to do if the editor has ever scrolled. Track that in a ref
-set by `syncScroll` itself (it runs as the textarea's `onScroll` handler and from `scrollTo`), and
-gate the layout effect on it. The large-paste case the effect exists for is unaffected: a paste
-scrolls the textarea to the caret _before_ the debounced html commits — that ordering is the
-premise of the bug the effect fixes — so the ref is set by the time it matters.
-
-### 4.2 What sits on the critical path that first paint cannot use
-
-48% of the app chunk goes unused during load (39.4 KB of 82.8 KB raw). Attributing bundle bytes
-back through a sourcemap build, two things in the eager chunk are reachable only by explicit user
-action:
-
-| Module                                                       | Raw bytes | Why it is not needed to paint                                                                            |
-| ------------------------------------------------------------ | --------- | -------------------------------------------------------------------------------------------------------- |
-| `HelpDialog.jsx` + its `help*` / `key*` strings in `i18n.js` | ~4.8 KB   | Opened by a click on the `?` button                                                                      |
-| `logic/beeFlight.js`                                         | 1.5 KB    | The flight model belongs to the already-lazy `Bee` chunk; only `countBees` is eager, and it is six lines |
-
-Both follow §1.5's rule exactly, precache obligation included. Expect roughly **2 KB gzipped, ~7%
-of the app chunk** — small, and worth stating as small rather than dressing up.
-
-### 4.3 Two contrast failures, and the hole in the guard that missed them
-
-The run's accessibility score is 0.95, from two WCAG AA failures — the only outright bugs in the
-report:
-
-| Element                      | Rendered pair                                        | Ratio    |
-| ---------------------------- | ---------------------------------------------------- | -------- |
-| `.lang-toggle button.active` | `#fff` on `--accent` (dark)                          | **2.17** |
-| `.reset-btn`                 | `--text-dim` on `--surface2`, through `opacity: 0.7` | **3.05** |
-
-`logic/palette.test.js` passes both, and the reason is worth recording because it generalises:
-it compares **raw tokens** against `--bg` / `--surface` / `--surface2`. It therefore cannot see
-
-1. a foreground that is not a token (`#fff`) on a background that is not a surface (`--accent`), or
-2. **`opacity` compositing** — the token pair `--text-dim` on `--surface2` really does clear AA at
-   4.59, and `opacity: 0.7` composites both against `--bg` and drops it to 3.10. Reproducing axe's
-   numbers from the stylesheet confirms the model: 3.10 computed against 3.05 measured.
-
-The same opacity bug is worse in the light theme (**2.79**), where the run never looked, and the
-button's `:hover` red `#e05252` is a hardcoded hex that fails in both themes (3.04 / 2.82) while
-the existing `--bare` token would pass in both (4.75 / 6.13).
-
-**The fixes:** add an `--on-accent` token (`--bg` on dark, `#fff` on light — 6.79 and 6.50) and use
-it for the active language pill; drop the reset button's `opacity` and let `--text-dim` carry the
-softness on its own (4.59 / 5.16); replace the hover hex with `var(--bare)`.
-
-**The guard matters more than the fixes.** Two additions to `palette.test.js`:
-
-- a small **composite table** for pairs the token matrix cannot express by construction (text on a
-  coloured fill), and
-- a **stylesheet scan** that fails any rule setting both a text `color:` and an `opacity:` below 1.
-  That is the general form of the second bug rather than this instance of it, and after the fix
-  `.reset-btn` is the only rule in the file that would have tripped it. Decorative opacity
-  (`.buf-dot`, `.ov-empty svg`) sets no `color:` and is naturally out of scope.
-
-### Delivered (Phase 4) — measured in Chromium at 4× CPU throttle
-
-Nine runs per variant against the built bundle over a local server, cold context, empty buffers —
-the case Lighthouse measured. Medians:
-
-| Measure                             | Before   | After        |
-| ----------------------------------- | -------- | ------------ |
-| Critical path (gzipped)             | 42.6 KB  | **40.6 KB**  |
-| App chunk (gzipped)                 | 29.74 KB | **27.68 KB** |
-| Longest main-thread task            | 145 ms   | **138 ms**   |
-| Total blocking time                 | 95 ms    | **88 ms**    |
-| FCP / LCP                           | 276 ms   | **252 ms**   |
-| `LayoutDuration` (renderer counter) | 64.6 ms  | **56.3 ms**  |
-| Tests                               | 692      | **705**      |
-
-Isolating the two changes against each other (11 runs, byte trim held constant) puts the reflow
-gate at −5 ms of longest task, −5 ms TBT and −8 ms FCP on its own, with the rest coming from the
-smaller chunk. Two details are worth keeping:
-
-- **`LayoutCount` is 2 before and 2 after.** The layout was never wasted work and the fix does not
-  remove it — it moves it out of the JS task, exactly as predicted above. Anyone re-measuring this
-  and finding "no layout was saved" has confirmed the change, not refuted it.
-- **The byte win is understated here**, because the harness serves uncompressed over localhost.
-  What it measures is parse and execute; the transfer saving is on top and only shows on a real
-  network.
-
-Verified in the browser rather than reasoned about: the help chunk is **not** fetched before an
-interaction (only `index` and `vendor` load), the dialog opens with focus inside it, both fixed
-colours composite to the values the palette test asserts (`#282828` on `#f59b4a`, and `#ada197` on
-`#3c3836` at opacity 1) — and, the constraint that governs everything here, an **offline reload
-still boots the app, runs extraction, and opens the deferred help screen from the precache**.
-
-### What this phase deliberately leaves alone
-
-- **Splitting `i18n.js` by language.** It is the largest module in the critical chunk (16.1 KB,
-  19% of it) and half is the language the reader will never see — but the only way to stop shipping
-  it is a dynamic import, and the strings are needed by the first render. That trades ~2 KB gzipped
-  for a round trip before paint on a page whose whole JS payload is 37 KB. It is a straight loss.
-- **Deferring the analysis layer.** `extract`, `stem`, `claims`, `crossref`, `reconcile` and the
-  rest total ~21 KB raw of the eager chunk, and first paint needs none of it — the boot extraction
-  is already deferred past paint by §2.2. Splitting it into another _statically imported_ chunk
-  moves the same bytes across two parallel requests and wins nothing; the byte win needs a
-  **dynamic** import, which makes extraction async and turns App's `useMemo` results into state.
-  That is a real restructuring of the data flow for ~6 KB gzipped, and it should be gated on a
-  throttled measurement rather than done on the strength of the byte count.
-- **`network-dependency-tree-insight`, which scores 0.** Its own reported LCP saving is **0 ms**
-  and it says "no additional origins are good candidates for preconnecting". It fires on the mere
-  existence of a document → JS chain. There is nothing here.
+- **A local uncompressed server understates byte wins.** It measures parse and execute; the
+  transfer saving is on top and only shows on a throttled network.
+- **`LayoutCount` not dropping is not a failed fix.** Moving a forced layout out of a JS task does
+  not remove the layout — it still has to happen. The task length is the metric, not the count.
+- **FCP is the wrong instrument for the boot case.** It fires on the top bar, which paints early
+  in every variant, and says nothing about when the user's _document_ appears. Poll for the
+  editor's value and the backdrop's mark count instead.
+- **The app's own debounced `localStorage` save (`SAVE_MS = 400`) will overwrite buffers you seed
+  before a reload**, which once made a harness bimodal and briefly suggested a real win did
+  nothing.
+- **A deployed bundle can be mapped back to source exactly.** The Cloudflare build was
+  byte-identical to a local `npm run build` (same content hash), which is what turned
+  "`index-TZU0mzVT.js:14:7589`" into a specific line. Lighthouse source locations are 0-based.
+- **For byte attribution, build once with `--sourcemap`** and walk the mappings to tally generated
+  bytes per source module. That is where "48% of the app chunk is unused" and "`i18n.js` is 19% of
+  it" came from.
 
 ---
 
-## What not to do
+## History
 
-- **Do not move extraction to a Web Worker.** Already considered and rejected on the record, and
-  the numbers still support that: post-optimization extraction sits inside the 200 ms debounce.
-  After 2.2 the boot case is handled too. A worker would add a serialization boundary around the
-  ExtractResult for no measured gain.
-- **Do not restructure the service-worker install into blocking/non-blocking phases.** It looks
-  attractive (`addAll` currently covers ~191 KB) but opportunistic caching was already a real bug
-  here — the app became offline-capable on the _second_ visit. The install does not block the
-  page's first paint anyway; it registers on `load`. **Shrink the payload instead** (Phase 1), which
-  fixes the install cost as a side effect and cannot regress the offline guarantee.
-- **Do not move hosting for cache headers.** os8088 is on Cloudflare Workers; GitHub Pages will not
-  set `immutable`. But the service worker already serves every hashed asset cache-first with no
-  revalidation, which is what those headers would buy. No gain, real migration cost.
-- **Do not add preconnect/dns-prefetch.** There are no third-party origins — fonts are self-hosted,
-  the bee is vendored, there is no analytics. On this axis the tool already matches os8088.
+### Phases 1 and 2 — the payload and the boot
 
-## What the measurements overturned
-
-Two steps above were built, measured, and then removed. Both are recorded here because the
-reasoning that produced them was sound and would produce them again.
-
-### 1.3 The static app shell — built, measured, removed
-
-The shell was built exactly as described (top bar + three-column frame at the app's real
-geometry, verified pixel-identical to the mounted app: no layout shift at all). It was then A/B'd
-against the empty `#root` in Chromium under CPU throttling:
-
-| First contentful paint | empty `#root` | static shell |
-| ---------------------- | ------------- | ------------ |
-| Fast 3G, 4× CPU        | 228 ms        | 244 ms       |
-| Slow 3G, 4× CPU        | 544 ms        | 568 ms       |
-
-**Consistently ~20 ms slower**, on both profiles. The shell adds DOM to parse and lay out before
-the paint it was supposed to bring forward, and the window it aimed at had already closed: with
-the CSS inlined and the bundle down to ~37 KB gzipped, the modulepreloaded chunks arrive and
-execute in the same frame the shell would have painted in. It was removed, and `index.html`
-carries a comment saying not to add one back without re-running that measurement — it costs a
-standing obligation to keep the markup in sync with `TopBar.jsx` and `App.jsx`.
-
-The general lesson is worth keeping: **a static shell is a fix for a slow bundle.** Fix the
-bundle and it has nothing left to do.
-
-### 2.2 The boot deferral — much bigger than predicted
-
-The plan estimated "~150 ms, realistically 400–600 ms on a mid-range laptop", extrapolated from
-77 ms per buffer of pure-logic work measured in node. In a real browser with two 112 KB buffers
-restored and a 4× CPU throttle:
-
-|                                     | editor shows the document | highlights complete |
-| ----------------------------------- | ------------------------- | ------------------- |
-| before (first render extracts both) | **4199 ms**               | 4199 ms             |
-| after (deferred past first paint)   | **227 ms**                | 2785 ms             |
-
-Nothing at all appeared for 4.2 seconds. The node measurement missed the larger half of the cost:
-reconciling 11,704 `<mark>` elements and 1,088 sidebar cards, which only happens in a DOM. The
-editor is now usable in 227 ms and the highlights fill in behind it.
-
-That remaining 2785 ms is **Phase 3.1** — the backdrop — and it is now the largest single number
-left in the app.
-
-### A note on FCP as a metric here
-
-First contentful paint turned out to be the wrong instrument for the boot case: it fires on the
-top bar, which paints early in both variants, and says nothing about when the user's document
-appears. The table above polls for the editor's value and the backdrop's mark count instead. An
-earlier run of that harness was bimodal and briefly suggested the deferral did nothing — the app's
-own debounced `localStorage` save (`SAVE_MS = 400`) was overwriting the seeded buffers before the
-reload. Worth knowing before re-running any of this.
-
-## Sequencing
-
-| Phase | Work                                                                                       | Risk   | Expected result                                        |
-| ----- | ------------------------------------------------------------------------------------------ | ------ | ------------------------------------------------------ |
-| **1** | 1.1–1.7: fonts, inline CSS, ~~static shell~~, ~~preload~~, defer bee, vendor split, budget | Low    | **done** — 176.6 KB → 60 KB, 9 → 3 requests            |
-| **2** | 2.1 Preact (gated on the suite) · 2.2 deferred boot extraction                             | Medium | **done** — 60 KB → 42.6 KB; document visible in 227 ms |
-| **3** | 3.1 windowed backdrop · 3.2 sidebar cap · 3.3 integer units                                | Higher | Typing in a 100 KB document stops being the slow case  |
-
-Phase 1 is worth doing on its own merits whatever happens to 2 and 3. Every step is independently
-revertible, and none of them touch `logic/` or the `.docx` pipeline.
-
-### Delivered (Phases 1 and 2)
+Fonts were the finding nobody had measured: **95.82 KB across six `.woff2` files, 54% of the
+critical path**, more than React and the application code combined. They are gone entirely — both
+faces are system stacks. Also shipped: the CSS inlined into `index.html`, the bee deferred, the
+vendor chunk split (with the service worker's install carrying unchanged hashed chunks across from
+the previous build's cache), a payload budget in CI, **Preact via `preact/compat`** (45.23 KB gz →
+7.64 KB, viable because the API surface is plain hooks plus `createRoot`/`StrictMode` — no
+portals, Suspense, `React.lazy`, `flushSync` or concurrent features), and the first extraction of a
+restored buffer deferred past first paint.
 
 | Measure                       | Before         | After       |
 | ----------------------------- | -------------- | ----------- |
@@ -540,35 +267,63 @@ revertible, and none of them touch `logic/` or the `.docx` pipeline.
 | Restored doc visible (4× CPU) | 4199 ms        | **227 ms**  |
 | Tests                         | 668            | **692**     |
 
-Verified in Chromium, not merely built: the app mounts and extracts on Preact with **zero font
-requests** and 4 requests on a cold load; the textarea and backdrop still resolve to an identical
-computed font, line-height and `scrollHeight` (the invariant the monospace swap could have broken);
-and a **first-ever visit followed by an offline reload** boots the app, restores the buffer and
-renders highlights, with the `.docx` and bee chunks both present in the precache.
+The boot deferral was far bigger than predicted. The estimate was "~150 ms, realistically
+400–600 ms", extrapolated from 77 ms per buffer of pure-logic work measured in node. In a browser
+with two 112 KB buffers restored at 4× CPU throttle, **nothing at all appeared for 4199 ms** — the
+node measurement missed the larger half of the cost, which is reconciling 11,704 `<mark>` elements
+and 1,088 sidebar cards, and only happens in a DOM.
 
-`logic/` and the `.docx` pipeline were not touched.
+### Phase 4 — the Lighthouse follow-up
 
-## Offline guarantee — how each step interacts with it
+The run scored 100, so this was deliberately small. Three real items:
 
-The constraint is that the tool works after one visit with the network off. Checked step by step:
+**The mount task forced the app's entire first layout.** Lighthouse reported one forced reflow,
+46.2 ms of a 77.9 ms mount task, with Style & Layout (50 ms) the largest main-thread group — ahead
+of script evaluation. It mapped to `syncScroll`'s `scrollTop`/`scrollHeight`/`clientHeight` read,
+reached from the layout effect in `useEditorSync.js` that re-mirrors after every backdrop commit —
+including the first, where both layers sit at offset 0 and there is nothing to mirror. The effect
+is now gated on whether the editor has ever scrolled, which the scroll paths already know.
 
-| Step                    | Effect on offline                                                                                                                                |
-| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
-| 1.1 fewer/smaller fonts | Strictly better — less to precache                                                                                                               |
-| 1.2 inline CSS          | Better — one fewer entry that can miss                                                                                                           |
-| 1.3 static shell        | _Dropped_ — measured slower (see above)                                                                                                          |
-| 1.4 preload             | _Dropped_ — there are no fonts left to preload                                                                                                   |
-| 1.5 defer bee           | **Requires** keeping the chunk + svg in `PRECACHE` — same rule as `.docx`                                                                        |
-| 1.6 vendor split        | Both chunks must enter `PRECACHE`; `swPrecache.js` derives it from the emitted asset list, so this is automatic — covered by `swInstall.test.js` |
-| 1.7 budget              | Neutral                                                                                                                                          |
-| 2.1 Preact              | Neutral (smaller bundle)                                                                                                                         |
-| 2.2 deferred extraction | Neutral — runtime only, no new network work                                                                                                      |
-| 3.1 windowed backdrop   | Neutral — runtime only                                                                                                                           |
+**~2 KB gz off the critical chunk.** The help dialog and its strings in both languages, plus the
+bee's motion model — eager only because `useBee` imported `countBees` from the same file — now
+load with what uses them. `logic/beeCount.js` exists solely to keep that one eager import away from
+`beeFlight.js`; do not re-export it back.
 
-The one rule to hold onto: **anything lazily loaded stays in the precache list.** That is what
-makes deferral safe here, and it is already the documented reason the `.docx` chunk is listed.
+**Two WCAG AA failures**, the report's only outright bugs: `#fff` on `--accent` at 2.17:1, and the
+reset button's `--text-dim` on `--surface2` composited through `opacity: 0.7` down to 3.05:1.
+`palette.test.js` passed both, because it compares raw tokens against surfaces and so can see
+neither a literal colour nor an opacity composite. The same opacity bug was worse in the light
+theme (2.79) where the run never looked, and the hover red `#e05252` failed in both (3.04 / 2.82).
+The guards added for it are Rule 4 above, and each fails on the pre-fix stylesheet.
 
-## Sources
+| Measure                             | Before   | After        |
+| ----------------------------------- | -------- | ------------ |
+| Critical path (gzipped)             | 42.6 KB  | **40.6 KB**  |
+| App chunk (gzipped)                 | 29.74 KB | **27.68 KB** |
+| Longest main-thread task            | 145 ms   | **138 ms**   |
+| Total blocking time                 | 95 ms    | **88 ms**    |
+| FCP / LCP                           | 276 ms   | **252 ms**   |
+| `LayoutDuration` (renderer counter) | 64.6 ms  | **56.3 ms**  |
+| Tests                               | 692      | **705**      |
 
-- [os8088 — colophon](https://os8088.com/colophon/) · [os8088.com](https://os8088.com/) ·
-  [os8088 FAQ](https://os8088.com/faq/) · [jggonz/os8088](https://github.com/jggonz/os8088)
+Isolating the two changes (11 runs, byte trim held constant) puts the reflow gate at −5 ms longest
+task, −5 ms TBT and −8 ms FCP on its own; the rest is the smaller chunk.
+
+Verified in the browser rather than reasoned about: the help chunk is **not** fetched before an
+interaction, the dialog opens with focus inside it, both fixed colours composite to the values the
+palette test asserts — and an **offline reload still boots the app, runs extraction, and opens the
+deferred help screen from the precache**.
+
+### Where the original framing came from
+
+This work started as a port of the techniques [os8088.com](https://os8088.com/colophon/)
+documents in its colophon: static HTML so first paint is one round trip; body prose in whatever
+face the reader's system supplies rather than a web font; the one remaining font subset to
+`U+0020-007E`; the logo generated as inline SVG; heavy things (a 2.4 MB emulator) loaded only when
+asked for. The principle underneath is the one worth keeping: **ship nothing you have not proven
+you need, and let the first paint happen without JavaScript.**
+
+Two of those did not survive contact with this codebase — the static shell measured slower, and
+the fonts were removed outright rather than subset — but the framing is why anyone measured the
+payload at all. The site itself could not be fetched from this environment; the techniques are
+quoted from its colophon.
