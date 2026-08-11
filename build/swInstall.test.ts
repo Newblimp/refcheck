@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { transformSync } from 'esbuild';
 import { renderServiceWorker } from './swPrecache.ts';
 
 // The install handler is where the offline guarantee is actually delivered, and
@@ -9,10 +10,13 @@ import { renderServiceWorker } from './swPrecache.ts';
 // its source text, this runs the WORKER THAT SHIPS — public/sw.js put through the
 // same build substitution — against a fake CacheStorage.
 
-const SRC = readFileSync(
-  join(dirname(fileURLToPath(import.meta.url)), '..', 'public', 'sw.js'),
-  'utf8'
-);
+// The worker ships as TypeScript stripped by the build plugin, so the test has
+// to run the same two steps in the same order (strip, then substitute) — see
+// swPrecache.ts. transformSync keeps this a plain synchronous module init.
+const SRC = transformSync(
+  readFileSync(join(dirname(fileURLToPath(import.meta.url)), '..', 'src', 'sw.ts'), 'utf8'),
+  { loader: 'ts', format: 'iife', target: 'es2022' }
+).code;
 
 /** The subset of Response the worker touches: it only ever re-puts what it got. */
 interface FakeResponse {

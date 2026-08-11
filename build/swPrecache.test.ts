@@ -72,8 +72,10 @@ describe('buildId', () => {
 });
 
 describe('renderServiceWorker', () => {
-  const SRC = `const BUILD_ID = '__SW_BUILD_ID__';
-const BASE = '__SW_BASE__';
+  // Mirrors the shape sw.ts actually has: the tokens are bare identifiers, and
+  // renderServiceWorker supplies the quotes.
+  const SRC = `const BUILD_ID = __SW_BUILD_ID__;
+const BASE = __SW_BASE__;
 const PRECACHE = __SW_PRECACHE__;`;
 
   it('substitutes all three placeholders', () => {
@@ -81,7 +83,7 @@ const PRECACHE = __SW_PRECACHE__;`;
     expect(out).not.toContain('__SW_BUILD_ID__');
     expect(out).not.toContain('__SW_BASE__');
     expect(out).not.toContain('__SW_PRECACHE__');
-    expect(out).toContain(`const BASE = '/refcheck/';`);
+    expect(out).toContain(`const BASE = "/refcheck/";`);
   });
 
   it('emits the precache list as valid parseable JSON', () => {
@@ -95,7 +97,7 @@ const PRECACHE = __SW_PRECACHE__;`;
     // The whole offline guarantee rests on this substitution happening, so a
     // rename in sw.js must fail the build, not degrade silently.
     expect(() =>
-      renderServiceWorker(`const BASE = '__SW_BASE__';`, { base: '/', emitted: [] })
+      renderServiceWorker(`const BASE = __SW_BASE__;`, { base: '/', emitted: [] })
     ).toThrow(/__SW_BUILD_ID__/);
   });
 });

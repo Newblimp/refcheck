@@ -4,8 +4,26 @@
 // refcheck-sw-precache plugin (build/swPrecache.js); the placeholder text is
 // what ships in the repo and is never what runs. The plugin throws if it cannot
 // find them, so a rename here cannot silently ship a worker that caches nothing.
-const BUILD_ID = '__SW_BUILD_ID__';
-const BASE = '__SW_BASE__';
+// Ambient declarations for the three build-time constants. They are `declare`
+// so the substitution below has something to type-check against; the statements
+// erase entirely, which is why the type stripping has to run BEFORE the token
+// substitution (see swPrecache.ts) — otherwise replaceAll would rewrite the
+// tokens inside these lines too and emit `declare const ["/a","/b"]: string[]`.
+declare const __SW_BUILD_ID__: string;
+declare const __SW_BASE__: string;
+declare const __SW_PRECACHE__: string[];
+
+// This file runs in a ServiceWorkerGlobalScope, not a window. `lib: WebWorker`
+// types the global `self` as the generic WorkerGlobalScope, which has no
+// skipWaiting, no clients and no install/fetch events — so narrow it once here
+// rather than redeclaring the global (which the lib already owns) or asserting
+// at each use. With this in place the handlers below get real ExtendableEvent
+// and FetchEvent types, including the fact that `caches.match()` may resolve to
+// undefined.
+const sw = self as unknown as ServiceWorkerGlobalScope;
+
+const BUILD_ID = __SW_BUILD_ID__;
+const BASE = __SW_BASE__;
 const PRECACHE = __SW_PRECACHE__;
 
 // Named after the build id, so each deploy gets its own cache and the activate
@@ -31,7 +49,7 @@ const UNHASHED = new Set([`${BASE}manifest.webmanifest`, `${BASE}icon.svg`]);
 // bytes cannot legitimately vary by request header.
 //
 // ignoreSearch keeps a query string (?utm_source=…) from missing the shell.
-const MATCH_OPTS = { ignoreVary: true, ignoreSearch: true };
+const MATCH_OPTS: CacheQueryOptions = { ignoreVary: true, ignoreSearch: true };
 
 // Precache the whole shell up front. The worker registers after the page has
 // already fetched its assets, so those requests never reach the fetch handler;
@@ -48,7 +66,7 @@ const MATCH_OPTS = { ignoreVary: true, ignoreSearch: true };
 // The all-or-nothing behaviour of addAll is preserved deliberately: a non-2xx
 // rejects the whole install, because a half-filled cache that reports success is
 // exactly the failure this precaching exists to prevent.
-async function precacheAll() {
+async function precacheAll(): Promise<void> {
   const cache = await caches.open(CACHE_NAME);
   await Promise.all(
     PRECACHE.map(async (url) => {
@@ -69,40 +87,39 @@ async function precacheAll() {
 // cache. Only content-hashed URLs may be carried over; anything whose bytes can
 // change under a stable URL has to be fetched, or a deploy would pin the old
 // icon, manifest or index document forever.
-function mustRefetch(url) {
+function mustRefetch(url: string): boolean {
   return url === BASE || UNHASHED.has(url);
 }
 
-self.addEventListener('install', (event) => {
-  event.waitUntil(precacheAll().then(() => self.skipWaiting()));
+sw.addEventListener('install', (event) => {
+  event.waitUntil(precacheAll().then(() => sw.skipWaiting()));
 });
 
-self.addEventListener('activate', (event) => {
+sw.addEventListener('activate', (event) => {
   event.waitUntil(
     caches
       .keys()
       .then((keys) =>
         Promise.all(keys.filter((k) => k !== CACHE_NAME).map((k) => caches.delete(k)))
       )
-      .then(() => self.clients.claim())
+      .then(() => sw.clients.claim())
   );
 });
 
 // Cache a response without blocking the one being returned, but keep the worker
 // alive until the write lands (an un-awaited put can be killed mid-flight).
-function cachePut(event, request, response) {
+function cachePut(event: ExtendableEvent, request: Request, response: Response): void {
   event.waitUntil(caches.open(CACHE_NAME).then((c) => c.put(request, response)));
 }
 
-self.addEventListener('fetch', (event) => {
+sw.addEventListener('fetch', (event) => {
   const { request } = event;
-  if (request.method !== 'GET' || !request.url.startsWith(self.location.origin)) return;
+  if (request.method !== 'GET' || !request.url.startsWith(sw.location.origin)) return;
 
   // Navigations: network-first so a returning-online user gets the latest build.
   // Offline, fall back to this exact URL and then to the precached shell. Both
   // lookups ignore the query string: a navigation to ?foo=1 is still the shell,
-  // and without ignoreSearch it would miss the cache and resolve to undefined —
-  // which respondWith turns into a network error rather than the app.
+  // and without ignoreSearch it would miss the cache and resolve to undefined.
   if (request.mode === 'navigate') {
     event.respondWith(
       fetch(request)
@@ -110,9 +127,17 @@ self.addEventListener('fetch', (event) => {
           cachePut(event, request, res.clone());
           return res;
         })
-        .catch(() =>
-          caches.match(request, MATCH_OPTS).then((res) => res || caches.match(BASE, MATCH_OPTS))
-        )
+        .catch(async () => {
+          const hit =
+            (await caches.match(request, MATCH_OPTS)) ?? (await caches.match(BASE, MATCH_OPTS));
+          // Offline with nothing cached — a first visit that never completed.
+          // There is genuinely nothing to serve, so fail the request rather than
+          // handing respondWith an undefined: per spec that is a network error
+          // either way, but it also raises an unhandled rejection, so the
+          // failure reads as a bug in the worker rather than as being offline.
+          if (!hit) throw new Error('offline: navigation not cached');
+          return hit;
+        })
     );
     return;
   }
@@ -126,7 +151,11 @@ self.addEventListener('fetch', (event) => {
           if (res.ok) cachePut(event, request, res.clone());
           return res;
         })
-        .catch(() => caches.match(request, MATCH_OPTS))
+        .catch(async () => {
+          const hit = await caches.match(request, MATCH_OPTS);
+          if (!hit) throw new Error('offline: asset not cached');
+          return hit;
+        })
     );
     return;
   }

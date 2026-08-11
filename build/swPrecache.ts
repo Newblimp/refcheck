@@ -64,7 +64,10 @@ const TOKENS = ['__SW_BUILD_ID__', '__SW_BASE__', '__SW_PRECACHE__'];
  * Throws if a token is missing, so a rename in sw.js cannot silently ship a
  * worker that precaches nothing.
  *
- * @param source  The service worker source, types already stripped
+ * @param source  The service worker source, TYPES ALREADY STRIPPED. That order
+ *   is load-bearing: sw.ts declares the three tokens as ambient constants so it
+ *   can type-check, and substituting first would rewrite the tokens inside those
+ *   `declare` lines too and emit `declare const ["/a","/b"]: string[]`.
  */
 export function renderServiceWorker(
   source: string,
@@ -75,17 +78,47 @@ export function renderServiceWorker(
       throw new Error(`sw.js is missing the ${token} placeholder — precaching would be skipped`);
   }
   const urls = precacheUrls(base, emitted);
+  // All three values are substituted as JSON literals, because in sw.ts the
+  // tokens are bare identifiers (`const BASE = __SW_BASE__;`) rather than the
+  // contents of a string. They have to arrive carrying their own quotes; they
+  // used to sit inside quotes in the source, and emitting them raw produced
+  // `const BASE = /;`.
   return source
-    .replaceAll('__SW_BUILD_ID__', buildId(urls))
-    .replaceAll('__SW_BASE__', base.endsWith('/') ? base : base + '/')
+    .replaceAll('__SW_BUILD_ID__', JSON.stringify(buildId(urls)))
+    .replaceAll('__SW_BASE__', JSON.stringify(base.endsWith('/') ? base : base + '/'))
     .replaceAll('__SW_PRECACHE__', JSON.stringify(urls));
 }
 
 /**
- * Vite plugin: rewrite dist/sw.js after the bundle is on disk.
+ * Strip the types from the service worker source.
  *
- * `writeBundle` rather than `generateBundle` because sw.js is copied verbatim
- * from public/ and so never appears in the bundle object.
+ * The worker is TypeScript like everything else, but it cannot go through the
+ * normal bundle: it has to ship as a CLASSIC script at a stable, unhashed URL
+ * (`navigator.serviceWorker.register` is called without `{type:'module'}`, and
+ * Firefox still does not support module workers), and a worker that imports a
+ * chunk in order to boot defeats its own purpose. It has no imports and no
+ * exports, so it needs type ERASURE, not bundling — which is exactly what this
+ * is. The emitted bytes are the source minus its annotations.
+ *
+ * esbuild is already a dependency of Vite, so this adds nothing to install.
+ */
+async function stripTypes(source: string): Promise<string> {
+  const { transform } = await import('esbuild');
+  const out = await transform(source, {
+    loader: 'ts',
+    // No module wrapper: the output must stay a classic script.
+    format: 'iife',
+    target: 'es2022',
+  });
+  return out.code;
+}
+
+/**
+ * Vite plugin: compile src/sw.ts and write dist/sw.js.
+ *
+ * `writeBundle` rather than `generateBundle` because the worker is not part of
+ * the bundle at all — the precache list is derived FROM the bundle, so this has
+ * to run once the rest of the build is known.
  */
 export function swPrecachePlugin(): Plugin {
   let config: ResolvedConfig;
@@ -99,13 +132,13 @@ export function swPrecachePlugin(): Plugin {
       const { readFile, writeFile } = await import('node:fs/promises');
       const { join } = await import('node:path');
       const outDir = options.dir || join(config.root, config.build.outDir);
-      const swPath = join(outDir, 'sw.js');
-      const source = await readFile(swPath, 'utf8');
-      const rendered = renderServiceWorker(source, {
+      const source = await readFile(join(config.root, 'src', 'sw.ts'), 'utf8');
+      // Strip first, substitute second — see renderServiceWorker.
+      const rendered = renderServiceWorker(await stripTypes(source), {
         base: config.base,
         emitted: Object.keys(bundle),
       });
-      await writeFile(swPath, rendered);
+      await writeFile(join(outDir, 'sw.js'), rendered);
     },
   };
 }
