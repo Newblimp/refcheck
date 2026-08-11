@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { T } from './i18n.ts';
-import { HELP } from './helpText.js';
+import { HELP } from './helpText.ts';
 import { BINDINGS } from './components/HelpDialog.jsx';
 
 // A missing key renders as "undefined" silently, so parity between the two

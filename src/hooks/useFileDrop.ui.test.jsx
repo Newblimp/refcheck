@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, act } from '@testing-library/preact';
-import { useFileDrop } from './useFileDrop.js';
+import { useFileDrop } from './useFileDrop.ts';
 
 function Harness({ onFile }) {
   const dragging = useFileDrop(onFile);

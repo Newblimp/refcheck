@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { countBees } from '../logic/beeCount.ts';
-import { useDebounced } from './useDebounced.js';
+import { useDebounced } from './useDebounced.ts';
+import type { Lang } from '../logic/constants.ts';
 
 // Decides WHEN a bee shows up. Two triggers:
 //   • a rare random chance, tuned to roughly one bee every MEAN_MS
@@ -21,21 +22,21 @@ const prefersReducedMotion = () =>
   !!window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 /**
- * @param {string} watchText Text whose "bee" count triggers a flight. Pass BOTH
- *   buffers concatenated, so switching modes never looks like new text.
- * @param {'en'|'de'} [lang] Active language; in German "Biene" triggers too.
- * @returns {[number[], (id:number)=>void]} ids of the bees in flight, and the
- *   callback a bee calls when it has left the screen.
+ * @param watchText Text whose "bee" count triggers a flight. Pass BOTH buffers
+ *   concatenated, so switching modes never looks like new text.
+ * @param lang Active language; in German "Biene" triggers too.
+ * @returns ids of the bees in flight, and the callback a bee calls when it has
+ *   left the screen.
  */
-export function useBee(watchText, lang) {
-  const [bees, setBees] = useState([]);
+export function useBee(watchText: string, lang?: Lang): [number[], (id: number) => void] {
+  const [bees, setBees] = useState<number[]>([]);
   const nextId = useRef(1);
 
   const add = useCallback(() => {
     setBees((list) => (list.length >= MAX_BEES ? list : [...list, nextId.current++]));
   }, []);
   // Stable identity: Bee holds this for the lifetime of its flight.
-  const done = useCallback((id) => setBees((list) => list.filter((x) => x !== id)), []);
+  const done = useCallback((id: number) => setBees((list) => list.filter((x) => x !== id)), []);
 
   // Random appearances. Unrequested motion, so this one honours the OS setting.
   useEffect(() => {
@@ -60,7 +61,7 @@ export function useBee(watchText, lang) {
   // Waiting for a pause means only what the user actually left standing counts.
   const settled = useDebounced(watchText, SETTLE_MS);
 
-  const seen = useRef(null);
+  const seen = useRef<number | null>(null);
   const prevLang = useRef(lang);
   useEffect(() => {
     const n = countBees(settled, lang);

@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { HELP } from '../helpText.js';
+import { HELP } from '../helpText.ts';
 
 // ── HELP ────────────────────────────────────────────────────────────────────
 // A short usage guide and the keyboard shortcuts. Until this existed the only

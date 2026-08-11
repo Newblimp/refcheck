@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { act, renderHook, waitFor } from '@testing-library/preact';
-import { usePersistentState, jsonCodec, setCodec, oneOf } from './usePersistentState.js';
+import { usePersistentState, jsonCodec, setCodec, oneOf } from './usePersistentState.ts';
 
 describe('usePersistentState', () => {
   beforeEach(() => localStorage.clear());
@@ -101,10 +101,10 @@ describe('usePersistentState', () => {
 
   describe('codecs', () => {
     it('jsonCodec round-trips an object', () => {
-      const { result } = renderHook(() => usePersistentState('k', {}, jsonCodec));
+      const { result } = renderHook(() => usePersistentState('k', {}, jsonCodec()));
       act(() => result.current[1]({ housing: 1 }));
       expect(localStorage.getItem('k')).toBe('{"housing":1}');
-      const { result: reread } = renderHook(() => usePersistentState('k', {}, jsonCodec));
+      const { result: reread } = renderHook(() => usePersistentState('k', {}, jsonCodec()));
       expect(reread.current[0]).toEqual({ housing: 1 });
     });
 

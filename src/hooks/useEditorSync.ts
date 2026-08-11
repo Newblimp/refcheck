@@ -15,15 +15,14 @@ import { backdropScroll } from '../logic/scrollSync.ts';
 const useIsoLayoutEffect = typeof window !== 'undefined' ? useLayoutEffect : useEffect;
 
 /**
- * @param {Object} opts
- * @param {string} opts.html  The backdrop's current markup — re-syncing keys off
- *   this, because it is what changes the backdrop's height.
- * @param {string} opts.text  The active buffer, for line counting in scrollTo.
+ * @param html The backdrop's current markup — re-syncing keys off this, because
+ *   it is what changes the backdrop's height.
+ * @param text The active buffer, for line counting in scrollTo.
  */
-export function useEditorSync({ html, text }) {
-  const taRef = useRef(null);
-  const bdRef = useRef(null);
-  const [hoverSign, setHoverSign] = useState(null);
+export function useEditorSync({ html, text }: { html: string; text: string }) {
+  const taRef = useRef<HTMLTextAreaElement | null>(null);
+  const bdRef = useRef<HTMLDivElement | null>(null);
+  const [hoverSign, setHoverSign] = useState<string | null>(null);
 
   // Live mirror of the buffer, so scrollTo can stay a stable identity.
   const textRef = useRef(text);
@@ -80,7 +79,7 @@ export function useEditorSync({ html, text }) {
   // hit-test, so throttle to one lookup per animation frame instead of running
   // it on every mousemove.
   const hoverPending = useRef(false);
-  const onEditorHover = useCallback((e) => {
+  const onEditorHover = useCallback((e: { clientX: number; clientY: number }) => {
     if (hoverPending.current) return;
     hoverPending.current = true;
     const x = e.clientX,
@@ -88,7 +87,7 @@ export function useEditorSync({ html, text }) {
     const raf =
       typeof requestAnimationFrame === 'function'
         ? requestAnimationFrame
-        : (cb) => setTimeout(cb, 16);
+        : (cb: FrameRequestCallback) => setTimeout(() => cb(performance.now()), 16);
     raf(() => {
       hoverPending.current = false;
       const ta = taRef.current;
@@ -96,7 +95,9 @@ export function useEditorSync({ html, text }) {
       ta.style.pointerEvents = 'none';
       const el = document.elementFromPoint(x, y);
       ta.style.pointerEvents = '';
-      const sign = el?.dataset?.sign || el?.closest?.('[data-sign]')?.dataset?.sign || null;
+      const hit = el instanceof HTMLElement ? el : null;
+      const sign =
+        hit?.dataset.sign || hit?.closest<HTMLElement>('[data-sign]')?.dataset.sign || null;
       setHoverSign((prev) => (prev === sign ? prev : sign));
     });
   }, []);
@@ -106,14 +107,15 @@ export function useEditorSync({ html, text }) {
   // querySelectorAll plus a classList write per mark — thousands of them on a
   // real patent, for a pointer movement. Index the marks by sign once per
   // backdrop render, then touch only the outgoing and incoming sign's marks.
-  const markIndex = useRef(new Map());
-  const hoveredMarks = useRef(null);
+  const markIndex = useRef<Map<string, HTMLElement[]>>(new Map());
+  const hoveredMarks = useRef<HTMLElement[] | null>(null);
   useIsoLayoutEffect(() => {
     const bd = bdRef.current;
-    const index = new Map();
+    const index = new Map<string, HTMLElement[]>();
     if (bd) {
-      for (const m of bd.querySelectorAll('mark[data-sign]')) {
+      for (const m of bd.querySelectorAll<HTMLElement>('mark[data-sign]')) {
         const s = m.dataset.sign;
+        if (s === undefined) continue;
         const list = index.get(s);
         if (list) list.push(m);
         else index.set(s, [m]);
@@ -126,14 +128,14 @@ export function useEditorSync({ html, text }) {
 
   useEffect(() => {
     for (const m of hoveredMarks.current || []) m.classList.remove('h-hover');
-    const next = hoverSign === null ? null : markIndex.current.get(hoverSign) || null;
+    const next = hoverSign === null ? null : (markIndex.current.get(hoverSign) ?? null);
     for (const m of next || []) m.classList.add('h-hover');
     hoveredMarks.current = next;
   }, [hoverSign, html]);
 
   /** Select [start, end] and scroll it into view. */
   const scrollTo = useCallback(
-    (start, end) => {
+    (start: number, end: number) => {
       const ta = taRef.current;
       if (!ta) return;
       ta.focus();
@@ -152,8 +154,8 @@ export function useEditorSync({ html, text }) {
   // Put the caret back after an edit the app made on the user's behalf. The
   // textarea is controlled, so the new value only exists after this commit —
   // setting the selection inside the click handler would move it in the old one.
-  const pendingCaret = useRef(null);
-  const setCaretAfterCommit = useCallback((at) => {
+  const pendingCaret = useRef<number | null>(null);
+  const setCaretAfterCommit = useCallback((at: number) => {
     pendingCaret.current = at;
   }, []);
   useEffect(() => {

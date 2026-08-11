@@ -1,6 +1,9 @@
 import { useCallback, useRef, useState } from 'react';
 import { fileKind } from '../logic/fileKind.ts';
-import { useFileDrop } from './useFileDrop.js';
+import { useFileDrop } from './useFileDrop.ts';
+import type { ExportResult, ImportResult, RefListStatus } from '../logic/importDoc.ts';
+import type { Lang } from '../logic/constants.ts';
+import type { ExportDiffSummary, Strings } from '../i18n.ts';
 
 // ── useDocumentIO ────────────────────────────────────────────────────────────
 // The whole .docx round trip: picking or dropping a file, reading it into the
@@ -25,29 +28,62 @@ import { useFileDrop } from './useFileDrop.js';
 const loadDocIO = () => import('../logic/importDoc.ts');
 
 // Why an edited reference list was left out of the export, per refListWritable.
-const REF_SKIPPED = {
+const REF_SKIPPED: Partial<Record<RefListStatus, keyof Strings>> = {
   noSection: 'expRefNoSection',
   ambiguous: 'expRefAmbiguous',
   table: 'expRefTable',
 };
 
+/** The three buffers this hook reads and writes. */
+export interface IOBuffers {
+  description: string;
+  claims: string;
+  refList: string;
+}
+
+/** One extra line under the banner's headline. */
+export interface BannerWarning {
+  key: keyof Strings;
+  /** Argument for the i18n formatter, when it takes one. */
+  arg?: number | ExportDiffSummary;
+}
+
 /**
- * @param {Object} opts
- * @param {Object} opts.t     Resolved i18n strings (for the confirm dialogs only)
- * @param {'en'|'de'} opts.lang
- * @param {{description: string, claims: string, refList: string}} opts.buffers
- * @param {(next: {description: string, claims: string, refList: string,
- *   lang: 'en'|'de'}) => void} opts.apply  Load a document (or an undo) into App
+ * What the import/export banner should say.
+ *
+ * Deliberately one shape with optional fields rather than a union: the banner
+ * renders whichever parts are present, and an import summary and an error
+ * report differ by which fields are filled rather than by kind alone (a `warn`
+ * is either).
  */
-export function useDocumentIO({ t, lang, buffers, apply }) {
+export interface IOReport {
+  kind: 'ok' | 'warn' | 'error';
+  /** i18n key naming what happened; absent for a plain import summary. */
+  messageKey?: keyof Strings;
+  descChars?: number;
+  claimsChars?: number;
+  lang?: Lang;
+  warnings?: BannerWarning[];
+}
+
+export interface DocumentIOOpts {
+  /** Resolved i18n strings (for the confirm dialogs only). */
+  t: Strings;
+  lang: Lang;
+  buffers: IOBuffers;
+  /** Load a document (or an undo) into App. */
+  apply: (next: IOBuffers & { lang: Lang }) => void;
+}
+
+export function useDocumentIO({ t, lang, buffers, apply }: DocumentIOOpts) {
   // The parsed source document plus the paragraph provenance round-trip export
   // needs. Deliberately NOT persisted — a 200 KB document would blow the
   // localStorage quota alongside the text buffers — so a refresh keeps the text
   // but drops round-trip export.
-  const [imported, setImported] = useState(null);
-  const [report, setReport] = useState(null);
-  const undoRef = useRef(null);
-  const fileRef = useRef(null);
+  const [imported, setImported] = useState<ImportResult | null>(null);
+  const [report, setReport] = useState<IOReport | null>(null);
+  const undoRef = useRef<(IOBuffers & { lang: Lang }) | null>(null);
+  const fileRef = useRef<HTMLInputElement | null>(null);
 
   // Live mirrors, so every callback below can be a stable identity rather than
   // re-created on each keystroke.
@@ -60,7 +96,7 @@ export function useDocumentIO({ t, lang, buffers, apply }) {
   const applyRef = useRef(apply);
   applyRef.current = apply;
 
-  const handleFile = useCallback(async (file) => {
+  const handleFile = useCallback(async (file: File) => {
     const kind = fileKind(file?.name);
     if (kind !== 'ok') {
       setReport({
@@ -69,7 +105,7 @@ export function useDocumentIO({ t, lang, buffers, apply }) {
       });
       return;
     }
-    let result;
+    let result: ImportResult;
     try {
       const { importPatentDoc } = await loadDocIO();
       result = importPatentDoc(await file.arrayBuffer());
@@ -100,7 +136,7 @@ export function useDocumentIO({ t, lang, buffers, apply }) {
     });
     setImported(result);
 
-    const warnings = [];
+    const warnings: BannerWarning[] = [];
     const d = split.detected;
     if (!d.description) warnings.push({ key: 'impNoDesc' });
     if (!d.claims) warnings.push({ key: 'impNoClaims' });
@@ -119,10 +155,10 @@ export function useDocumentIO({ t, lang, buffers, apply }) {
   const dragging = useFileDrop(handleFile);
 
   const pickFile = useCallback(
-    (e) => {
+    (e: { target: HTMLInputElement }) => {
       const file = e.target.files?.[0];
       e.target.value = ''; // re-selecting the same file must fire change again
-      if (file) handleFile(file);
+      if (file) void handleFile(file);
     },
     [handleFile]
   );
@@ -147,7 +183,7 @@ export function useDocumentIO({ t, lang, buffers, apply }) {
     const { exportPatentDoc } = await loadDocIO();
     const cur = bufRef.current;
     const l = langRef.current;
-    let result;
+    let result: ExportResult;
     try {
       result = exportPatentDoc(imported, cur, {
         claimsHeading: l === 'de' ? 'Patentansprüche' : 'Claims',
@@ -172,11 +208,12 @@ export function useDocumentIO({ t, lang, buffers, apply }) {
         messageKey: 'expErrUnverified',
         warnings: d ? [{ key: 'expDiffAt', arg: d }] : [],
       });
-    } else if (REF_SKIPPED[refList]) {
-      setReport({ kind: 'warn', messageKey: REF_SKIPPED[refList] });
+    } else {
+      const skipped = REF_SKIPPED[refList];
+      if (skipped) setReport({ kind: 'warn', messageKey: skipped });
     }
     const base = imported?.fileName ? imported.fileName.replace(/\.docm?x?$/i, '') : 'refcheck';
-    const blob = new Blob([bytes], {
+    const blob = new Blob([bytes as BlobPart], {
       type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
     });
     const url = URL.createObjectURL(blob);

@@ -1,4 +1,18 @@
 import { useState, useEffect, useRef } from 'react';
+import type { Dispatch, SetStateAction } from 'react';
+
+/** How a stored value is turned into a string and back. */
+export interface Codec<T> {
+  parse: (raw: string) => T;
+  stringify: (value: T) => string;
+}
+
+export interface PersistOpts {
+  /** ms to wait before writing (default 0 = write on the next effect). */
+  debounce?: number;
+  /** Called when a write throws — quota exceeded, most likely. */
+  onError?: (err: unknown, key: string) => void;
+}
 
 // ── usePersistentState ───────────────────────────────────────────────────────
 // useState that initializes from localStorage and writes back on change.
@@ -17,12 +31,32 @@ import { useState, useEffect, useRef } from 'react';
 //   onError   called when a write throws (quota exceeded, most likely). Without
 //             this the failure was swallowed and the user silently lost their
 //             work on the next refresh.
-export function usePersistentState(key, initial, codec, { debounce = 0, onError } = {}) {
-  const [value, setValue] = useState(() => {
+// Without a codec the value is written to localStorage as-is, so it has to be a
+// string — the overloads make that a type error rather than a silently stored
+// "[object Object]".
+export function usePersistentState(
+  key: string,
+  initial: string,
+  codec?: undefined,
+  opts?: PersistOpts
+): [string, Dispatch<SetStateAction<string>>];
+export function usePersistentState<T>(
+  key: string,
+  initial: T,
+  codec: Codec<T>,
+  opts?: PersistOpts
+): [T, Dispatch<SetStateAction<T>>];
+export function usePersistentState<T>(
+  key: string,
+  initial: T,
+  codec?: Codec<T>,
+  { debounce = 0, onError }: PersistOpts = {}
+): [T, Dispatch<SetStateAction<T>>] {
+  const [value, setValue] = useState<T>(() => {
     try {
       const raw = localStorage.getItem(key);
       if (raw === null) return initial;
-      return codec ? codec.parse(raw) : raw;
+      return codec ? codec.parse(raw) : (raw as T);
     } catch {
       return initial;
     }
@@ -41,7 +75,7 @@ export function usePersistentState(key, initial, codec, { debounce = 0, onError 
   // The value currently written to storage, so the mount-time effect does not
   // immediately rewrite what it just read back.
   const writtenRef = useRef(value);
-  const pendingRef = useRef(null);
+  const pendingRef = useRef<(() => void) | null>(null);
 
   useEffect(() => {
     if (Object.is(value, writtenRef.current)) return;
@@ -50,7 +84,7 @@ export function usePersistentState(key, initial, codec, { debounce = 0, onError 
       const k = keyRef.current;
       const c = codecRef.current;
       try {
-        localStorage.setItem(k, c ? c.stringify(value) : value);
+        localStorage.setItem(k, c ? c.stringify(value) : (value as unknown as string));
         writtenRef.current = value;
       } catch (err) {
         onErrorRef.current?.(err, k);
@@ -85,13 +119,27 @@ export function usePersistentState(key, initial, codec, { debounce = 0, onError 
   return [value, setValue];
 }
 
-export const jsonCodec = { parse: JSON.parse, stringify: JSON.stringify };
-export const setCodec = {
-  parse: (raw) => new Set(JSON.parse(raw)),
+/**
+ * JSON codec for a value of type T.
+ *
+ * A function rather than a constant so each call site names what it is storing:
+ * `jsonCodec<Panes>()`. As a single shared constant its type would have to be
+ * `Codec<any>`, which would quietly un-type every value that goes through it —
+ * and these are exactly the values restored from storage, i.e. the ones whose
+ * shape is least under the app's control.
+ */
+export const jsonCodec = <T>(): Codec<T> => ({
+  parse: JSON.parse as (raw: string) => T,
+  stringify: JSON.stringify,
+});
+
+export const setCodec: Codec<Set<string>> = {
+  parse: (raw) => new Set<string>(JSON.parse(raw)),
   stringify: (s) => JSON.stringify([...s]),
 };
-// Rejects unknown stored values (e.g. hand-edited storage) in favor of a fallback.
-export const oneOf = (allowed, fallback) => ({
-  parse: (raw) => (allowed.includes(raw) ? raw : fallback),
+
+/** Rejects unknown stored values (e.g. hand-edited storage) in favor of a fallback. */
+export const oneOf = <T extends string>(allowed: readonly T[], fallback: T): Codec<T> => ({
+  parse: (raw) => (allowed.includes(raw as T) ? (raw as T) : fallback),
   stringify: (v) => v,
 });

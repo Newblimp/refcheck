@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, act } from '@testing-library/preact';
-import { useDebounced } from './useDebounced.js';
+import { useDebounced } from './useDebounced.ts';
 
 /** Renders the hook and records the value it returned on every render. */
 function harness(initialProps) {

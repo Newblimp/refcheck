@@ -26,6 +26,11 @@ export interface ImportResult {
   split: SplitResult;
   lang: Lang;
   langFrom: LangSource;
+  /**
+   * Name of the file this came from, used to name the export. Set by the caller
+   * that had the File object — importPatentDoc only ever sees bytes.
+   */
+  fileName?: string;
 }
 
 /** What happened to the reference-sign list on export. */

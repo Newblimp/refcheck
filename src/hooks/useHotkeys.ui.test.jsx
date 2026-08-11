@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, fireEvent } from '@testing-library/preact';
-import { useHotkeys } from './useHotkeys.js';
+import { useHotkeys } from './useHotkeys.ts';
 
 function Harness({ bindings, enabled }) {
   useHotkeys(bindings, enabled);

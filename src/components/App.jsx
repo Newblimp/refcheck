@@ -10,13 +10,13 @@ import { listTermIndex, appliedListTerms } from '../logic/listTerms.ts';
 import { claimStats } from '../logic/claimStats.ts';
 import { compareSigns, disKey } from '../logic/constants.ts';
 import { ctxMenuItems } from '../logic/ctxMenuItems.ts';
-import { useDebounced } from '../hooks/useDebounced.js';
-import { usePersistentState, jsonCodec, setCodec, oneOf } from '../hooks/usePersistentState.js';
-import { useTheme } from '../hooks/useTheme.js';
-import { useBee } from '../hooks/useBee.js';
-import { useHotkeys } from '../hooks/useHotkeys.js';
-import { useEditorSync } from '../hooks/useEditorSync.js';
-import { useDocumentIO } from '../hooks/useDocumentIO.js';
+import { useDebounced } from '../hooks/useDebounced.ts';
+import { usePersistentState, jsonCodec, setCodec, oneOf } from '../hooks/usePersistentState.ts';
+import { useTheme } from '../hooks/useTheme.ts';
+import { useBee } from '../hooks/useBee.ts';
+import { useHotkeys } from '../hooks/useHotkeys.ts';
+import { useEditorSync } from '../hooks/useEditorSync.ts';
+import { useDocumentIO } from '../hooks/useDocumentIO.ts';
 import { CtxMenu } from './CtxMenu.jsx';
 import { Sidebar } from './Sidebar.jsx';
 import { RefPane } from './RefPane.jsx';
@@ -74,11 +74,11 @@ export function App() {
   // Which side panes are open. Persisted because it is a working preference,
   // not transient state — a drafter who folds the reference pane away wants it
   // to stay away.
-  const [panes, setPanes] = usePersistentState('rsc_panes', { left: true, right: true }, jsonCodec);
+  const [panes, setPanes] = usePersistentState('rsc_panes', { left: true, right: true }, jsonCodec());
   // Narrow screens show exactly one pane; ignored by the desktop layout.
   const [mobilePane, setMobilePane] = useState('editor');
   const [helpOpen, setHelpOpen] = useState(false);
-  const [mwo, setMwo] = usePersistentState('rsc_mwo', {}, jsonCodec);
+  const [mwo, setMwo] = usePersistentState('rsc_mwo', {}, jsonCodec());
   const [dis, setDis] = usePersistentState('rsc_dis', new Set(), setCodec);
   const [theme, setTheme] = useTheme();
   // Transient UI state

@@ -12,15 +12,18 @@ import { useEffect, useRef } from 'react';
 // unqualified "/" binding would otherwise make the app impossible to type in.
 // Modified bindings still fire there, which is the point of Ctrl+[ / Ctrl+].
 
-const isTypingTarget = (el) => {
-  if (!el) return false;
+/** Descriptor → handler, e.g. `{ 'mod+]': next }`. */
+export type HotkeyBindings = Record<string, ((e: KeyboardEvent) => void) | undefined>;
+
+const isTypingTarget = (el: EventTarget | null): boolean => {
+  if (!(el instanceof HTMLElement)) return false;
   const tag = el.tagName;
   return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || el.isContentEditable;
 };
 
 /** Normalize an event into the same descriptor shape the bindings use. */
-function descriptorFor(e) {
-  const parts = [];
+function descriptorFor(e: KeyboardEvent): string {
+  const parts: string[] = [];
   if (e.ctrlKey || e.metaKey) parts.push('mod');
   if (e.altKey) parts.push('alt');
   if (e.shiftKey) parts.push('shift');
@@ -28,11 +31,7 @@ function descriptorFor(e) {
   return parts.join('+');
 }
 
-/**
- * @param {Object<string, (e: KeyboardEvent) => void>} bindings
- * @param {boolean} [enabled=true]
- */
-export function useHotkeys(bindings, enabled = true) {
+export function useHotkeys(bindings: HotkeyBindings, enabled = true): void {
   // Held in a ref so a fresh bindings object per render does not re-bind the
   // listener on every keystroke.
   const ref = useRef(bindings);
@@ -40,7 +39,7 @@ export function useHotkeys(bindings, enabled = true) {
 
   useEffect(() => {
     if (!enabled || typeof window === 'undefined') return;
-    const onKey = (e) => {
+    const onKey = (e: KeyboardEvent) => {
       const handler = ref.current[descriptorFor(e)];
       if (!handler) return;
       const bare = !e.ctrlKey && !e.metaKey && !e.altKey;

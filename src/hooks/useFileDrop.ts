@@ -7,7 +7,7 @@ import { useEffect, useState, useRef } from 'react';
 // and only a preventDefault that the browser sees on BOTH dragover and drop
 // suppresses it. dragenter/dragleave are counted because they also fire for
 // every child element the pointer crosses.
-export function useFileDrop(onFile) {
+export function useFileDrop(onFile: (file: File) => void): boolean {
   const [dragging, setDragging] = useState(false);
   const cb = useRef(onFile);
   cb.current = onFile;
@@ -15,17 +15,17 @@ export function useFileDrop(onFile) {
   useEffect(() => {
     if (typeof window === 'undefined') return;
     let depth = 0;
-    const hasFiles = (e) => {
+    const hasFiles = (e: DragEvent): boolean => {
       const types = e.dataTransfer?.types;
-      return types && Array.prototype.indexOf.call(types, 'Files') !== -1;
+      return !!types && Array.prototype.indexOf.call(types, 'Files') !== -1;
     };
-    const onEnter = (e) => {
+    const onEnter = (e: DragEvent) => {
       if (!hasFiles(e)) return;
       e.preventDefault();
       depth++;
       setDragging(true);
     };
-    const onOver = (e) => {
+    const onOver = (e: DragEvent) => {
       if (!hasFiles(e)) return;
       e.preventDefault(); // without this the browser opens the file on drop
       if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy';
@@ -38,7 +38,7 @@ export function useFileDrop(onFile) {
       depth = Math.max(0, depth - 1);
       if (depth === 0) setDragging(false);
     };
-    const onDrop = (e) => {
+    const onDrop = (e: DragEvent) => {
       if (!hasFiles(e)) return;
       e.preventDefault();
       depth = 0;

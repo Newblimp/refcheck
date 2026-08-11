@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { render, act } from '@testing-library/preact';
-import { useEditorSync } from './useEditorSync.js';
+import { useEditorSync } from './useEditorSync.ts';
 
 // The layer-alignment effect must not force layout at mount.
 //

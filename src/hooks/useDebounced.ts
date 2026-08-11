@@ -27,16 +27,18 @@ import { useEffect, useReducer, useRef } from 'react';
 // highlights to save nothing.
 //
 /**
- * @template T
- * @param {T} value
- * @param {number} delay      ms of quiet before `value` is adopted; <= 0 passes through
- * @param {T} [initial]       what the first render returns instead of `value`
- * @returns {T}
+ * @param delay   ms of quiet before `value` is adopted; <= 0 passes through
+ * @param initial what the first render returns instead of `value`
  */
-export function useDebounced(value, delay, initial) {
-  const [, force] = useReducer((c) => c + 1, 0);
+export function useDebounced<T>(value: T, delay: number, initial?: T): T {
+  // The `void` action parameter is what lets `force()` be called with no
+  // argument: useReducer's dispatch takes the reducer's action type, and a
+  // parameter typed `void` may be omitted at the call site.
+  const [, force] = useReducer((c: number, _action: void) => c + 1, 0);
   const deferring = useRef(initial !== undefined && delay > 0);
-  const ref = useRef(deferring.current ? /** @type {T} */ (initial) : value);
+  // `deferring` is only true when `initial` was supplied, so the cast is the
+  // invariant on the line above written down.
+  const ref = useRef<T>(deferring.current ? (initial as T) : value);
 
   useEffect(() => {
     if (deferring.current) {
