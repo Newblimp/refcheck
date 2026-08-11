@@ -4,7 +4,7 @@ import { ErrorCard } from './ErrorCard.jsx';
 import { ClaimStats } from './ClaimStats.jsx';
 import { Section } from './Section.jsx';
 import { EmptyDocIcon } from './icons.jsx';
-import { ERROR_KINDS } from '../logic/errorKinds.js';
+import { ERROR_KINDS } from '../logic/errorKinds.ts';
 
 // ── SIDEBAR (overview pane) ─────────────────────────────────────────────────
 // Purely presentational: App owns all state and the search/dismissal filtering;

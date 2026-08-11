@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { zipSync, strToU8 } from 'fflate';
-import { docxXmlToParagraphs, decodeXml, readDocx, DocxError } from './read.js';
-import { para, documentXml, makeDocx, DE_BODY } from './fixture.js';
+import { docxXmlToParagraphs, decodeXml, readDocx, DocxError } from './read.ts';
+import { para, documentXml, makeDocx, DE_BODY } from './fixture.ts';
 
 const texts = (xml) => docxXmlToParagraphs(xml).map((p) => p.text);
 

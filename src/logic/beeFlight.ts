@@ -17,8 +17,41 @@ const EXIT_MARGIN = 200; // how far outside the edge it aims when leaving
 const GONE_MARGIN = 120; // past this, it has left the screen
 const EDGE_PAD = 48; // wander waypoints stay this far inside the viewport
 
+/** A source of randomness, so tests can drive the model deterministically. */
+export type Rnd = () => number;
+
+/** A point in viewport coordinates. */
+interface Point {
+  x: number;
+  y: number;
+}
+
+/** One bee's complete state. Mutated in place — this runs every frame. */
+export interface Bee {
+  x: number;
+  y: number;
+  /** Velocity, px/s. */
+  vx: number;
+  vy: number;
+  /** Current waypoint. */
+  tx: number;
+  ty: number;
+  /** Seconds since spawn. */
+  age: number;
+  /** Seconds until the next waypoint. */
+  retargetIn: number;
+  /** Heading for an exit rather than wandering. */
+  leaving: boolean;
+  /** Has been fully inside the viewport at least once. */
+  entered: boolean;
+  /** Facing: -1 left, 1 right. */
+  dir: -1 | 1;
+  /** Which edge it came in through. 0=top 1=right 2=bottom 3=left */
+  entrySide: number;
+}
+
 /** Pick a point just outside one of the four edges. side: 0=top 1=right 2=bottom 3=left */
-function edgePoint(side, w, h, margin, rnd) {
+function edgePoint(side: number, w: number, h: number, margin: number, rnd: Rnd): Point {
   switch (side & 3) {
     case 0:
       return { x: rnd() * w, y: -margin };
@@ -33,7 +66,7 @@ function edgePoint(side, w, h, margin, rnd) {
 
 /** Choose the next waypoint: a nearby point while wandering, an off-screen point
  *  once the bee has decided to leave. */
-export function pickTarget(b, w, h, rnd = Math.random) {
+export function pickTarget(b: Bee, w: number, h: number, rnd: Rnd = Math.random): Bee {
   if (b.leaving) {
     const p = edgePoint(Math.floor(rnd() * 4), w, h, EXIT_MARGIN, rnd);
     b.tx = p.x;
@@ -52,10 +85,10 @@ export function pickTarget(b, w, h, rnd = Math.random) {
 }
 
 /** A bee entering from a random side, aimed inward. */
-export function spawnBee(w, h, rnd = Math.random) {
+export function spawnBee(w: number, h: number, rnd: Rnd = Math.random): Bee {
   const entrySide = Math.floor(rnd() * 4) & 3;
   const { x, y } = edgePoint(entrySide, w, h, SPAWN_MARGIN, rnd);
-  const b = {
+  const b: Bee = {
     x,
     y,
     vx: 0,
@@ -78,7 +111,7 @@ export function spawnBee(w, h, rnd = Math.random) {
 }
 
 /** Advance the simulation by `dt` seconds (mutates and returns `b`). */
-export function stepBee(b, dt, w, h, rnd = Math.random) {
+export function stepBee(b: Bee, dt: number, w: number, h: number, rnd: Rnd = Math.random): Bee {
   b.age += dt;
   b.retargetIn -= dt;
   if (!b.leaving && b.age >= LIFESPAN) {
@@ -122,7 +155,7 @@ export function stepBee(b, dt, w, h, rnd = Math.random) {
 }
 
 /** True once the bee has been on screen and then left it (or overstayed). */
-export function beeGone(b, w, h) {
+export function beeGone(b: Bee, w: number, h: number): boolean {
   if (b.age > MAX_AGE) return true;
   if (!b.entered) return false;
   return b.x < -GONE_MARGIN || b.x > w + GONE_MARGIN || b.y < -GONE_MARGIN || b.y > h + GONE_MARGIN;

@@ -1,9 +1,9 @@
 import { describe, it, expect } from 'vitest';
-import { ctxMenuItems } from './ctxMenuItems.js';
+import { ctxMenuItems } from './ctxMenuItems.ts';
 import { extractData } from './extract.ts';
-import { findAtPos } from './buildHtml.js';
+import { findAtPos } from './buildHtml.ts';
 import { disKey } from './constants.ts';
-import { T } from '../i18n.js';
+import { T } from '../i18n.ts';
 
 // The menu used to be built inside App, so it could only be exercised by
 // mounting the whole app in jsdom. It is pure now.

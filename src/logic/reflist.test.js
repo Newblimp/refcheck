@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { extractData } from './extract.ts';
-import { buildRefList, toPlainText } from './reflist.js';
+import { buildRefList, toPlainText } from './reflist.ts';
 
 const desc = (txt) => extractData(txt, 'en');
 

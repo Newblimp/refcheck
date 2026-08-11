@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import { splitPatentDoc, refListWritable } from './docSplit.js';
-import { docxXmlToParagraphs } from './docx/read.js';
-import { para, DE_BODY, EN_BODY } from './docx/fixture.js';
+import { splitPatentDoc, refListWritable } from './docSplit.ts';
+import { docxXmlToParagraphs } from './docx/read.ts';
+import { para, DE_BODY, EN_BODY } from './docx/fixture.ts';
 
 const split = (body) => splitPatentDoc({ paragraphs: docxXmlToParagraphs(body) });
 

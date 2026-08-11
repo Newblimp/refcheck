@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { spawnBee, stepBee, beeGone } from '../logic/beeFlight.js';
+import { spawnBee, stepBee, beeGone } from '../logic/beeFlight.ts';
 import beeUrl from '../assets/bee.svg';
 
 // The bee itself. Position is written straight to the DOM node each frame rather

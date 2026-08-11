@@ -35,10 +35,8 @@ const SURROGATE_RE = /[\uD800-\uDBFF][\uDC00-\uDFFF]|[\uD800-\uDFFF]/g;
 
 /**
  * Drop the characters XML 1.0 cannot represent.
- * @param {string} s
- * @returns {string}
  */
-export function stripInvalidXmlChars(s) {
+export function stripInvalidXmlChars(s: string): string {
   const noControls = String(s).replace(INVALID_RE, '');
   // Fast path: no surrogate at all is the overwhelmingly common case.
   SURROGATE_RE.lastIndex = 0;
@@ -48,4 +46,4 @@ export function stripInvalidXmlChars(s) {
 }
 
 /** Text ready to sit inside a `<w:t>`: XML-representable, then escaped. */
-export const xmlText = (s) => escapeMarkup(stripInvalidXmlChars(s));
+export const xmlText = (s: string): string => escapeMarkup(stripInvalidXmlChars(s));

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { alignLines } from './lineDiff.js';
+import { alignLines } from './lineDiff.ts';
 
 describe('alignLines', () => {
   it('maps identical arrays one to one', () => {

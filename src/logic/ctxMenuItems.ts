@@ -1,5 +1,41 @@
 import { disKey } from './constants.ts';
 import { stem } from './stem.ts';
+import type { AtPos } from './buildHtml.ts';
+import type { BareTerm } from './extract.ts';
+import type { Lang } from './constants.ts';
+import type { Strings } from '../i18n.ts';
+
+/** What App's handleCtxAction dispatches on. */
+export type CtxAction =
+  'extend' | 'reduce' | 'toggle-dis' | 'insert-sign' | 'dis-all' | 'restore-all';
+
+/** The term the extend/reduce actions operate on, and its width as displayed. */
+export interface CtxTermData {
+  /** Base stem — the key under which a manual override is stored. */
+  bs: string;
+  /** Current width in words, read off the term as recorded. */
+  cur: number;
+}
+
+/**
+ * One menu entry.
+ *
+ * A discriminated union rather than one shape with optional fields: `d` carries
+ * something different for each action, and App's dispatcher has to know which.
+ * A separator carries nothing at all.
+ */
+export type CtxMenuItem =
+  | { sep: true }
+  | { label: string; a: 'extend' | 'reduce'; d: CtxTermData }
+  | { label: string; a: 'toggle-dis'; d: { key: string } }
+  | { label: string; a: 'insert-sign'; d: { bt: BareTerm; sign: string } }
+  | { label: string; a: 'dis-all'; v: 'warn' }
+  | { label: string; a: 'restore-all' };
+
+export interface CtxMenu {
+  label: string;
+  items: CtxMenuItem[];
+}
 
 // ── EDITOR CONTEXT MENU ──────────────────────────────────────────────────────
 // Turns "what sits at the caret" (findAtPos) into the menu to show for it.
@@ -21,26 +57,24 @@ import { stem } from './stem.ts';
  * offered "Extend term (1 word)" on a term already showing two words would both
  * mislabel it and, on the next click, widen it by nothing.
  */
-function termItems(rawTerm, lang, t) {
+function termItems(rawTerm: string, lang: Lang, t: Strings): CtxMenuItem[] {
   const words = rawTerm.split(' ');
-  const bs = stem(words[words.length - 1], lang);
+  const bs = stem(words[words.length - 1] ?? '', lang);
   const cur = words.length;
-  const items = [{ label: t.extendTerm(cur), a: 'extend', d: { bs, cur } }];
+  const items: CtxMenuItem[] = [{ label: t.extendTerm(cur), a: 'extend', d: { bs, cur } }];
   if (cur > 1) items.push({ label: t.reduceTerm, a: 'reduce', d: { bs, cur } });
   return items;
 }
 
-/**
- * @param {ReturnType<import('./buildHtml.js').findAtPos>} found
- * @param {{t: object, lang: 'en'|'de', dis: Set<string>}} ctx
- * @returns {{label: string, items: object[]}|null} null when the caret is on
- *   nothing the menu can act on.
- */
-export function ctxMenuItems(found, { t, lang, dis }) {
+/** @returns null when the caret is on nothing the menu can act on. */
+export function ctxMenuItems(
+  found: AtPos | null,
+  { t, lang, dis }: { t: Strings; lang: Lang; dis: Set<string> }
+): CtxMenu | null {
   if (!found) return null;
   const disCt = dis.size;
-  const items = [];
-  let label;
+  const items: CtxMenuItem[] = [];
+  let label: string;
 
   if (found.type === 'sign') {
     const { sign, pos: p } = found;
@@ -59,12 +93,13 @@ export function ctxMenuItems(found, { t, lang, dis }) {
     items.push(...termItems(bt.term, lang, t));
     // Writing the sign in is only offered when the term has exactly one — with
     // two or more, choosing between them is the drafter's call, not ours.
-    if (bt.signs.length === 1) {
+    const onlySign = bt.signs.length === 1 ? bt.signs[0] : undefined;
+    if (onlySign !== undefined) {
       items.push({ sep: true });
       items.push({
-        label: t.insertSign(bt.signs[0]),
+        label: t.insertSign(onlySign),
         a: 'insert-sign',
-        d: { bt, sign: bt.signs[0] },
+        d: { bt, sign: onlySign },
       });
     }
     items.push({ sep: true });
@@ -76,7 +111,7 @@ export function ctxMenuItems(found, { t, lang, dis }) {
     });
   } else {
     const { ae } = found;
-    label = `Article: ${ae?.article}`;
+    label = `Article: ${ae.article}`;
     const key = disKey.art(ae.termStem);
     items.push({
       label: dis.has(key) ? `↩ Restore article` : t.disArt(ae.termStem),

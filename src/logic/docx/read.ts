@@ -19,41 +19,66 @@
 import { unzipSync, strFromU8 } from 'fflate';
 
 /**
- * @typedef {Object} ParaSrc  Provenance handle. Written here, read only by
- *   ../docx/write.js — the splitter and UI never look inside it.
- * @property {number} xmlStart   Offset of `<w:p …>` in document.xml
- * @property {number} xmlEnd     Offset just past `</w:p>`
- * @property {string} pPrXml     The paragraph's `<w:pPr>…</w:pPr>`, or ''
- * @property {string} rPrXml     First run's `<w:rPr>…</w:rPr>`, or ''
- * @property {string} pAttrs     Attributes on the `<w:p>` tag
- * @property {string} synthesizedPrefix  Claim number we injected, or ''
+ * Provenance handle. Written here, read only by ./write.ts — the splitter and
+ * the UI never look inside it.
  */
+export interface ParaSrc {
+  /** Offset of `<w:p …>` in document.xml. */
+  xmlStart: number;
+  /** Offset just past `</w:p>`. */
+  xmlEnd: number;
+  /** The paragraph's `<w:pPr>…</w:pPr>`, or ''. */
+  pPrXml: string;
+  /** First run's `<w:rPr>…</w:rPr>`, or ''. */
+  rPrXml: string;
+  /** Attributes on the `<w:p>` tag. */
+  pAttrs: string;
+  /** Claim number we injected, or ''. */
+  synthesizedPrefix: string;
+}
 
-/**
- * @typedef {Object} Para
- * @property {string} text       Flattened paragraph text (no trailing newline)
- * @property {string} style      w:pStyle value, e.g. 'Heading1' ('' if none)
- * @property {boolean} numbered  Carries <w:numPr> (Word auto-numbering)
- * @property {number|null} numId Auto-numbering list id
- * @property {number} ilvl       Auto-numbering level
- * @property {boolean} bold      Every run in the paragraph is bold
- * @property {boolean} inTable   Sits inside a `<w:tbl>` (one paragraph per cell)
- * @property {ParaSrc} src
- */
+/** One paragraph of the format-agnostic document model. */
+export interface Para {
+  /** Flattened paragraph text (no trailing newline). */
+  text: string;
+  /** w:pStyle value, e.g. 'Heading1' ('' if none). */
+  style: string;
+  /** Carries <w:numPr> (Word auto-numbering). */
+  numbered: boolean;
+  /** Auto-numbering list id. */
+  numId: number | null;
+  /** Auto-numbering level. */
+  ilvl: number;
+  /** Every run in the paragraph is bold. */
+  bold: boolean;
+  /** Sits inside a `<w:tbl>` (one paragraph per cell). */
+  inTable: boolean;
+  src: ParaSrc;
+}
 
-/**
- * @typedef {Object} PatentDoc
- * @property {Para[]} paragraphs
- * @property {string} documentXml  Raw word/document.xml (export splices into it)
- * @property {Uint8Array} bytes    The original file, for round-trip export
- */
+export interface PatentDoc {
+  paragraphs: Para[];
+  /** Raw word/document.xml (export splices into it). */
+  documentXml: string;
+  /** The original file, for round-trip export. */
+  bytes: Uint8Array;
+}
 
-const ENTITIES = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'" };
+/** Why a file could not be read as a Word document. */
+export type DocxErrorCode = 'notZip' | 'noDocument' | 'spliceOverlap';
+
+const ENTITIES: Record<string, string | undefined> = {
+  amp: '&',
+  lt: '<',
+  gt: '>',
+  quot: '"',
+  apos: "'",
+};
 
 /** Decode the XML entities Word actually emits. */
-export function decodeXml(s) {
+export function decodeXml(s: string): string {
   if (s.indexOf('&') === -1) return s;
-  return s.replace(/&(#x?[0-9a-fA-F]+|[a-z]+);/g, (m, e) => {
+  return s.replace(/&(#x?[0-9a-fA-F]+|[a-z]+);/g, (m: string, e: string) => {
     if (e[0] === '#') {
       const cp = e[1] === 'x' || e[1] === 'X' ? parseInt(e.slice(2), 16) : parseInt(e.slice(1), 10);
       return Number.isFinite(cp) ? String.fromCodePoint(cp) : m;
@@ -66,15 +91,15 @@ export function decodeXml(s) {
 // (w:val, w:numId, w:ilvl, …) — thousands of times per import. Compiling the
 // regex per call was the bulk of that; only a few distinct names ever occur, so
 // cache them.
-const ATTR_RE_CACHE = new Map();
-const attr = (attrs, name) => {
+const ATTR_RE_CACHE = new Map<string, RegExp>();
+const attr = (attrs: string, name: string): string | null => {
   let re = ATTR_RE_CACHE.get(name);
   if (re === undefined) {
     re = new RegExp(`${name}="([^"]*)"`);
     ATTR_RE_CACHE.set(name, re);
   }
   const m = re.exec(attrs);
-  return m ? m[1] : null;
+  return m ? (m[1] ?? null) : null;
 };
 
 // Matches one XML tag: name, attributes, self-closing flag.
@@ -82,15 +107,13 @@ const TAG_RE = /<(\/?)([A-Za-z0-9:_.-]+)((?:"[^"]*"|'[^']*'|[^>"'])*?)(\/?)>/g;
 
 /**
  * Parse word/document.xml into the paragraph model. Pure — no DOM, no zip.
- * @param {string} xml
- * @returns {Para[]}
  */
-export function docxXmlToParagraphs(xml) {
-  const paras = [];
-  let p = null; // paragraph under construction
-  let chunks = null; // text pieces of the current paragraph
+export function docxXmlToParagraphs(xml: string): Para[] {
+  const paras: Para[] = [];
+  let p: Para | null = null; // paragraph under construction
+  let chunks: string[] | null = null; // text pieces of the current paragraph
   let skipDepth = 0; // inside <w:txbxContent> / <w:del> → ignore content
-  let skipTag = null; // which tag opened the skip
+  let skipTag: string | null = null; // which tag opened the skip
   let inT = false; // inside <w:t>
   let tStart = 0; // where the current <w:t> body began
   let inPPr = 0; // inside <w:pPr> (paragraph-level props)
@@ -108,9 +131,10 @@ export function docxXmlToParagraphs(xml) {
   let tblDepth = 0;
 
   TAG_RE.lastIndex = 0;
-  let m;
+  let m: RegExpExecArray | null;
   while ((m = TAG_RE.exec(xml)) !== null) {
-    const [full, close, name, attrs, selfClose] = m;
+    // Every group is part of the match, so none can be absent here.
+    const [full = '', close, name = '', attrs = '', selfClose] = m;
     const isClose = close === '/';
     const isSelf = selfClose === '/';
 
@@ -288,16 +312,26 @@ export function docxXmlToParagraphs(xml) {
   return paras;
 }
 
-function makePara(text, style, numbered, numId, ilvl, bold, src, inTable = false) {
+function makePara(
+  text: string,
+  style: string,
+  numbered: boolean,
+  numId: number | null,
+  ilvl: number,
+  bold: boolean,
+  src: ParaSrc,
+  inTable = false
+): Para {
   return { text, style, numbered, numId, ilvl, bold, inTable, src };
 }
 
 /** True for the Office Open XML magic bytes (a ZIP local file header). */
-const isZip = (b) =>
+const isZip = (b: Uint8Array): boolean =>
   b.length > 4 && b[0] === 0x50 && b[1] === 0x4b && (b[2] === 3 || b[2] === 5 || b[2] === 7);
 
 export class DocxError extends Error {
-  constructor(code) {
+  readonly code: DocxErrorCode;
+  constructor(code: DocxErrorCode) {
     super(code);
     this.code = code;
   }
@@ -305,15 +339,13 @@ export class DocxError extends Error {
 
 /**
  * Read a .docx/.docm into the document model.
- * @param {ArrayBuffer|Uint8Array} buf
- * @returns {PatentDoc}
  * @throws {DocxError} code 'notZip' (legacy .doc / not a Word file) or
  *   'noDocument' (a zip, but not a Word document)
  */
-export function readDocx(buf) {
+export function readDocx(buf: ArrayBuffer | Uint8Array): PatentDoc {
   const bytes = buf instanceof Uint8Array ? buf : new Uint8Array(buf);
   if (!isZip(bytes)) throw new DocxError('notZip');
-  let entries;
+  let entries: Record<string, Uint8Array>;
   try {
     entries = unzipSync(bytes, { filter: (f) => f.name === 'word/document.xml' });
   } catch {

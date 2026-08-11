@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { extractData } from './extract.ts';
-import { buildHtml, esc, findAtPos } from './buildHtml.js';
+import { buildHtml, esc, findAtPos } from './buildHtml.ts';
 
 const EMPTY = {
   signData: {},

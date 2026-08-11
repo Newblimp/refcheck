@@ -1,9 +1,9 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, screen, fireEvent, waitFor, within } from '@testing-library/preact';
 import { App } from './App.jsx';
-import { makeDocx, para, DE_BODY } from '../logic/docx/fixture.js';
-import { readDocx } from '../logic/docx/read.js';
-import { splitPatentDoc } from '../logic/docSplit.js';
+import { makeDocx, para, DE_BODY } from '../logic/docx/fixture.ts';
+import { readDocx } from '../logic/docx/read.ts';
+import { splitPatentDoc } from '../logic/docSplit.ts';
 
 // jsdom's File has no arrayBuffer() in this version, so provide the bytes the
 // import path actually reads.

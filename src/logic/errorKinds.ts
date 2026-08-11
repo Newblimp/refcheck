@@ -1,4 +1,7 @@
 import { disKey } from './constants.ts';
+import type { DepError } from './claims.ts';
+import type { ArtError, BareTerm, ExtractResult, NumError, TermEntry } from './extract.ts';
+import type { Strings } from '../i18n.ts';
 
 // ── ERROR KINDS ──────────────────────────────────────────────────────────────
 //
@@ -35,31 +38,80 @@ import { disKey } from './constants.ts';
 //    every consumer special-cases them anyway. Forcing them into the table would
 //    mean a row whose fields are mostly unused and consumers that still branch.
 
-/**
- * @typedef {Object} ErrorKind
- * @property {string} id          Category id, also `type` in getAllErrors output
- * @property {string} field       Where extractData puts the array
- * @property {(e: any) => string} disId    Dismissal identity within the category
- * @property {(e: any) => string} disKey   Full dismissal key (prefix + identity)
- * @property {(e: any) => number} start    Char span of the highlight
- * @property {(e: any) => number} end
- * @property {(e: any) => string|null} term  Stemmed term, or null if it has none
- * @property {(e: any) => string|number} cardKey  React key for the card
- * @property {string} hl          Highlight class in styles.css
- * @property {string} navProp     Historical property name in getAllErrors output
- * @property {(e: any, q: string, termData: object) => boolean} matches  Search
- * @property {string} icon        Glyph for the sidebar section header
- * @property {string} color       CSS token base: `var(--<color>)`, `--<color>-bg`
- * @property {string} sectionLbl  i18n key for the section header
- * @property {string} chipLbl     i18n key for the status-bar chip
- * @property {(e: any) => string} badge  Card badge content
- * @property {((e: any) => string)|null} sub  Card's second line, if any
- * @property {(e: any, t: object) => string} message  Card's main line
- */
+/** The four categories. Also the `type` in getAllErrors output. */
+export type ErrorKindId = 'art' | 'bare' | 'num' | 'dep';
 
-/** @type {ErrorKind[]} */
-export const ERROR_KINDS = [
-  {
+/** Historical property names getAllErrors carries the raw record under. */
+export type NavProp = 'ae' | 'bt' | 'ne' | 'de';
+
+/** The record types the table describes — one per row. */
+export type ErrorRecord = ArtError | BareTerm | NumError | DepError;
+
+/**
+ * The field of an ExtractResult holding `T[]`, derived rather than written out,
+ * so a row cannot name a field whose records are a different shape.
+ */
+type FieldFor<T> = {
+  [K in keyof ExtractResult]-?: ExtractResult[K] extends T[] ? K : never;
+}[keyof ExtractResult];
+
+/**
+ * One error category.
+ *
+ * `T` is the record type this row describes. Every accessor is checked against
+ * it, which is the point of the type parameter: these were all `(e: any)`
+ * before, so a row reading a field its records do not have — the exact mistake
+ * this table exists to make impossible — type-checked fine and produced
+ * `undefined` in the UI.
+ */
+export interface ErrorKind<T extends ErrorRecord = ErrorRecord> {
+  id: ErrorKindId;
+  /** Where extractData puts the array. */
+  field: FieldFor<T>;
+  /** Dismissal identity within the category. */
+  disId: (e: T) => string;
+  /** Full dismissal key (prefix + identity). */
+  disKey: (e: T) => string;
+  /** Char span of the highlight. */
+  start: (e: T) => number;
+  end: (e: T) => number;
+  /** Stemmed term, or null for the categories that name none. */
+  term: (e: T) => string | null;
+  /** React key for the card. */
+  cardKey: (e: T) => string | number;
+  /** Highlight class in styles.css. */
+  hl: string;
+  navProp: NavProp;
+  /** Sidebar search predicate. */
+  matches: (e: T, q: string, termData: Record<string, TermEntry | undefined>) => boolean;
+  /** Glyph for the sidebar section header. */
+  icon: string;
+  /** CSS token base: `var(--<color>)`, `--<color>-bg`. */
+  color: string;
+  /** i18n key for the section header. */
+  sectionLbl: keyof Strings;
+  /** i18n key for the status-bar chip. */
+  chipLbl: keyof Strings;
+  /** Card badge content. */
+  badge: (e: T) => string;
+  /** Card's second line, if any. */
+  sub: ((e: T) => string) | null;
+  /** Card's main line. Takes the resolved strings, so this module imports no i18n. */
+  message: (e: T, t: Strings) => string;
+}
+
+/**
+ * Author one row, bound to its own record type.
+ *
+ * This exists purely so the object literal below is checked against `ArtError`
+ * (or `BareTerm`, …) rather than against the union — inference from a bare
+ * array literal would widen every accessor's parameter and give back exactly
+ * the `any` this replaced.
+ */
+const defineKind = <T extends ErrorRecord>(row: ErrorKind<T>): ErrorKind<T> => row;
+
+const ROWS = [
+  defineKind<ArtError>({
     id: 'art',
     field: 'artErrors',
     disId: (e) => e.termStem,
@@ -85,9 +137,9 @@ export const ERROR_KINDS = [
         ? t.artFD(e.article)
         : e.errType === 'repeat-indef'
           ? t.artRI(e.article)
-          : t.artGender(e.article, e.prevArt),
-  },
-  {
+          : t.artGender(e.article, e.prevArt ?? ''),
+  }),
+  defineKind<BareTerm>({
     id: 'bare',
     field: 'bareTerms',
     disId: (e) => e.termStem,
@@ -106,8 +158,8 @@ export const ERROR_KINDS = [
     badge: () => '∅',
     sub: null,
     message: (e, t) => t.bareTerm(e.term, e.signs),
-  },
-  {
+  }),
+  defineKind<NumError>({
     id: 'num',
     field: 'numErrors',
     disId: (e) => e.key,
@@ -129,8 +181,8 @@ export const ERROR_KINDS = [
     badge: () => '⌗',
     sub: null,
     message: (e, t) => t.numberingErr(e.value, e.expected),
-  },
-  {
+  }),
+  defineKind<DepError>({
     id: 'dep',
     field: 'depErrors',
     disId: (e) => e.key,
@@ -154,11 +206,41 @@ export const ERROR_KINDS = [
         : e.type === 'self'
           ? t.depSelf(e.claim)
           : t.depForward(e.claim, e.ref),
-  },
-];
+  }),
+] as const;
 
-/** Rows by id, for the consumers that hold an id rather than a row. */
-export const KIND_BY_ID = Object.fromEntries(ERROR_KINDS.map((k) => [k.id, k]));
+/**
+ * The table as every consumer sees it.
+ *
+ * The record type is erased here, deliberately, and this is the ONE cast in the
+ * design. Each row above is checked against its own record type — that is where
+ * mistakes are actually made. But which row goes with which records is a
+ * runtime invariant of this array, and TypeScript has no way to carry it
+ * through: iterating a heterogeneous table hands a consumer a union of rows
+ * whose accessors would then demand an intersection of all four record types.
+ *
+ * Erasing to `ErrorRecord` keeps consumers honest anyway — they get a union,
+ * not `any`, so the only way to read a field off a record is through the row's
+ * own accessor. That is precisely the discipline the table exists to enforce.
+ */
+export const ERROR_KINDS = ROWS as unknown as readonly ErrorKind<ErrorRecord>[];
+
+/**
+ * Rows by id, for the consumers that hold an id rather than a row.
+ *
+ * Total over ErrorKindId by construction — the table has exactly one row per id,
+ * which errorKinds.test.js asserts — so consumers do not have to null-check a
+ * lookup that cannot miss.
+ */
+export const KIND_BY_ID = Object.fromEntries(ERROR_KINDS.map((k) => [k.id, k])) as Record<
+  ErrorKindId,
+  ErrorKind<ErrorRecord>
+>;
 
 /** The records of one kind in an extraction result (never undefined). */
-export const kindItems = (res, kind) => res?.[kind.field] || [];
+export function kindItems<T extends ErrorRecord>(
+  res: ExtractResult | null | undefined,
+  kind: ErrorKind<T>
+): T[] {
+  return (res?.[kind.field] ?? []) as T[];
+}

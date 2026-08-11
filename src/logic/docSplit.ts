@@ -13,38 +13,81 @@
 import { SECTION_KINDS, matchHeading } from './headings.ts';
 import { trimBlankEdges } from './blankEdges.ts';
 import { CLAIM_NUM_PREFIX_RE } from './constants.ts';
+import type { HeadingMatch, SectionKind } from './headings.ts';
+import type { Lang } from './constants.ts';
+import type { Para, PatentDoc } from './docx/read.ts';
 
-/**
- * @typedef {Object} SplitResult
- * @property {string} description   Text for the Description buffer
- * @property {string} claims        Text for the Claims buffer
- * @property {'en'|'de'|null} lang  Language implied by the matched headings
- * @property {Object} detected      What was found, for the UI banner
- * @property {import('./docx/read.js').Para[]} descParas   Paragraphs backing `description`
- * @property {import('./docx/read.js').Para[]} claimsParas Paragraphs backing `claims`
- * @property {string} signList  The Bezugszeichenliste, excluded from both
- *   buffers but handed back so the reference-list check can use it
- * @property {import('./docx/read.js').Para[]} signListParas  Paragraphs backing
- *   `signList` — what refListWritable inspects and export splices into
- */
+/** A heading, plus where in the paragraph list it sits. */
+interface LocatedHeading extends HeadingMatch {
+  index: number;
+}
+
+/** One heading as reported to the UI banner. */
+export interface DetectedHeading {
+  kind: SectionKind;
+  lang: Lang;
+  text: string;
+}
+
+/** What the split found, for the import banner. */
+export interface SplitDetected {
+  description: boolean;
+  claims: boolean;
+  signList: boolean;
+  descHeading: string | null;
+  claimsHeading: string | null;
+  /** No detailed-description heading: the description is a best guess. */
+  fellBack: boolean;
+  /** How many claim numbers were reconstructed from Word's list numbering. */
+  synthesizedClaimNumbers: number;
+  /** Multi-level list numbering was seen and deliberately not guessed at. */
+  unusualNumbering: boolean;
+  headings: DetectedHeading[];
+}
+
+export interface SplitResult {
+  /** Text for the Description buffer. */
+  description: string;
+  /** Text for the Claims buffer. */
+  claims: string;
+  /**
+   * The Bezugszeichenliste, excluded from both buffers but handed back so the
+   * reference-list check can use it.
+   */
+  signList: string;
+  /** Language implied by the matched headings. */
+  lang: Lang | null;
+  /** Paragraphs backing `description`. */
+  descParas: Para[];
+  /** Paragraphs backing `claims`. */
+  claimsParas: Para[];
+  /** Paragraphs backing `signList` — what refListWritable inspects. */
+  signListParas: Para[];
+  detected: SplitDetected;
+}
 
 /** Locate every heading in the document, in order. */
-function findHeadings(paragraphs) {
-  const out = [];
+function findHeadings(paragraphs: Para[]): LocatedHeading[] {
+  const out: LocatedHeading[] = [];
   for (let i = 0; i < paragraphs.length; i++) {
-    const hit = matchHeading(paragraphs[i].text);
+    const para = paragraphs[i];
+    if (!para) continue;
+    const hit = matchHeading(para.text);
     if (hit) out.push({ ...hit, index: i });
   }
   return out;
 }
 
 /** First heading of `kind` at or after `from`. */
-const firstOf = (headings, kind, from = 0) =>
+const firstOf = (headings: LocatedHeading[], kind: SectionKind, from = 0): LocatedHeading | null =>
   headings.find((h) => h.kind === kind && h.index >= from) || null;
 
 /** First heading of any kind in `kinds` strictly after `after`. */
-const nextOf = (headings, kinds, after) =>
-  headings.find((h) => h.index > after && kinds.includes(h.kind)) || null;
+const nextOf = (
+  headings: LocatedHeading[],
+  kinds: SectionKind[],
+  after: number
+): LocatedHeading | null => headings.find((h) => h.index > after && kinds.includes(h.kind)) || null;
 
 /**
  * Word auto-numbering lives in numbering.xml, not in the text — so an
@@ -58,8 +101,12 @@ const nextOf = (headings, kinds, after) =>
  * warn rather than guess. The injected prefix is recorded on the provenance
  * handle so export can strip it again (otherwise Word would double-number).
  */
-function applyClaimNumbering(paras) {
-  const counters = new Map();
+function applyClaimNumbering(paras: Para[]): {
+  paras: Para[];
+  synthesized: number;
+  unusual: boolean;
+} {
+  const counters = new Map<string, number>();
   let synthesized = 0,
     unusual = false;
   const out = paras.map((p) => {
@@ -71,7 +118,7 @@ function applyClaimNumbering(paras) {
     if (CLAIM_NUM_PREFIX_RE.test(p.text)) return p; // already numbered in text
     if (!p.text.trim()) return p;
     const key = p.numId == null ? '_' : String(p.numId);
-    const n = (counters.get(key) || 0) + 1;
+    const n = (counters.get(key) ?? 0) + 1;
     counters.set(key, n);
     synthesized++;
     const prefix = `${n}. `;
@@ -83,13 +130,18 @@ function applyClaimNumbering(paras) {
 /** Join paragraphs into buffer text, trimming leading/trailing blank lines.
  *  The trimming rule is shared with docx/write.planEdits, which has to rebuild
  *  this exact line array to diff against. */
-function toText(paras) {
+function toText(paras: Para[]): string {
   return trimBlankEdges(paras.map((p) => p.text)).join('\n');
 }
 
 /** Do two paragraph runs cover any of the same bytes of document.xml? */
-const intersects = (a, b) =>
+const intersects = (a: Para[], b: Para[]): boolean =>
   a.some((x) => b.some((y) => x.src.xmlStart < y.src.xmlEnd && y.src.xmlStart < x.src.xmlEnd));
+
+/** Why the reference list could not be written back. */
+export type RefListRefusal = 'noSection' | 'ambiguous' | 'table';
+
+export type RefListWritable = { ok: true } | { ok: false; reason: RefListRefusal };
 
 /**
  * Can an edited reference-sign list be written back into the source document?
@@ -110,10 +162,8 @@ const intersects = (a, b) =>
  * The caller exports the other buffers regardless and reports the reason; the
  * list is never guessed at.
  *
- * @param {SplitResult} split
- * @returns {{ok: true} | {ok: false, reason: 'noSection'|'ambiguous'|'table'}}
  */
-export function refListWritable(split) {
+export function refListWritable(split: SplitResult | null | undefined): RefListWritable {
   const paras = split?.signListParas || [];
   if (!split?.detected?.signList || !paras.length) return { ok: false, reason: 'noSection' };
   if (paras.some((p) => p.inTable)) return { ok: false, reason: 'table' };
@@ -127,12 +177,8 @@ export function refListWritable(split) {
   return { ok: true };
 }
 
-/**
- * Split a parsed document into the Description and Claims buffers.
- * @param {{paragraphs: import('./docx/read.js').Para[]}} doc
- * @returns {SplitResult}
- */
-export function splitPatentDoc(doc) {
+/** Split a parsed document into the Description and Claims buffers. */
+export function splitPatentDoc(doc: Pick<PatentDoc, 'paragraphs'> | null | undefined): SplitResult {
   const paragraphs = doc?.paragraphs || [];
   const headings = findHeadings(paragraphs);
 
@@ -158,8 +204,10 @@ export function splitPatentDoc(doc) {
   // Deliberately only the sections actually located, not every heading of a
   // section kind: clipping at those would truncate a German description at its
   // own "Ausführungsbeispiel 2" subheading.
-  const located = [descH, claimsH, signListH].filter(Boolean).map((h) => h.index);
-  const rangeAfter = (heading, stopKinds) => {
+  const located = [descH, claimsH, signListH]
+    .filter((h): h is LocatedHeading => h !== null)
+    .map((h) => h.index);
+  const rangeAfter = (heading: LocatedHeading | null, stopKinds: SectionKind[]): Para[] => {
     if (!heading) return [];
     const stop = nextOf(headings, stopKinds, heading.index);
     const end = Math.min(
@@ -215,15 +263,15 @@ export function splitPatentDoc(doc) {
       description: !!descH,
       claims: !!claimsH,
       signList: !!signListH,
-      descHeading: descH ? paragraphs[descH.index].text.trim() : null,
-      claimsHeading: claimsH ? paragraphs[claimsH.index].text.trim() : null,
+      descHeading: descH ? (paragraphs[descH.index]?.text.trim() ?? null) : null,
+      claimsHeading: claimsH ? (paragraphs[claimsH.index]?.text.trim() ?? null) : null,
       fellBack,
       synthesizedClaimNumbers: numbering.synthesized,
       unusualNumbering: numbering.unusual,
       headings: headings.map((h) => ({
         kind: h.kind,
         lang: h.lang,
-        text: paragraphs[h.index].text.trim(),
+        text: paragraphs[h.index]?.text.trim() ?? '',
       })),
     },
   };

@@ -22,7 +22,7 @@ import { useFileDrop } from './useFileDrop.js';
 // paste text and never touch it, so it does not belong in the initial bundle.
 // The service worker precaches every emitted chunk, so this still resolves
 // offline for a user who imports for the first time with no connection.
-const loadDocIO = () => import('../logic/importDoc.js');
+const loadDocIO = () => import('../logic/importDoc.ts');
 
 // Why an edited reference list was left out of the export, per refListWritable.
 const REF_SKIPPED = {

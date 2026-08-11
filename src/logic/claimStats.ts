@@ -1,3 +1,5 @@
+import type { ClaimGraph } from './claims.ts';
+
 // ── CLAIM-SET STATISTICS ─────────────────────────────────────────────────────
 // Facts about a claim set that a drafter checks before filing, derived entirely
 // from the graph computeClaimGraph already builds.
@@ -34,28 +36,31 @@ export const THRESHOLDS = {
   epoHighExcessClaims: 50, // EPO: a steeper per-claim rate applies from the 51st
 };
 
-/**
- * @typedef {Object} ClaimStats
- * @property {number} total
- * @property {number} independent
- * @property {number} dependent
- * @property {number[]} independentNums
- * @property {number[]} multipleDependent      Claims with more than one direct parent
- * @property {number[]} dependsOnMultiple      Claims whose chain passes through one
- * @property {number} maxDepth                 Longest dependency chain
- * @property {string[]} flags                  Threshold keys that were exceeded
- */
+/** A threshold or condition the claim set has crossed. */
+export type ClaimStatsFlag = keyof typeof THRESHOLDS | 'multipleDependent';
 
-/**
- * @param {ReturnType<import('./claims.ts').computeClaimGraph>} graph
- * @returns {ClaimStats|null} null when the buffer holds no claims
- */
-export function claimStats(graph) {
+export interface ClaimStats {
+  total: number;
+  independent: number;
+  dependent: number;
+  independentNums: number[];
+  /** Claims with more than one direct parent. */
+  multipleDependent: number[];
+  /** Claims whose chain passes through a multiply-dependent one. */
+  dependsOnMultiple: number[];
+  /** Longest dependency chain. */
+  maxDepth: number;
+  /** Thresholds and conditions that were exceeded. */
+  flags: ClaimStatsFlag[];
+}
+
+/** @returns null when the buffer holds no claims */
+export function claimStats(graph: ClaimGraph | null | undefined): ClaimStats | null {
   if (!graph || !graph.claims.length) return null;
   const { claims, direct, ancestors } = graph;
 
-  const independentNums = [];
-  const multipleDependent = [];
+  const independentNums: number[] = [];
+  const multipleDependent: number[] = [];
   for (const c of claims) {
     const parents = direct.get(c.num);
     const n = parents ? parents.size : 0;
@@ -66,7 +71,7 @@ export function claimStats(graph) {
   }
 
   const multiSet = new Set(multipleDependent);
-  const dependsOnMultiple = [];
+  const dependsOnMultiple: number[] = [];
   for (const c of claims) {
     if (multiSet.has(c.num)) continue;
     const anc = ancestors.get(c.num);
@@ -86,7 +91,7 @@ export function claimStats(graph) {
   // the DPMA limit and under the EPO one, and a drafter filing both wants both.
   // The EPO's own two bands are exclusive — the steeper rate replaces the first
   // rather than adding to it.
-  const flags = [];
+  const flags: ClaimStatsFlag[] = [];
   if (total > THRESHOLDS.dpmaExcessClaims) flags.push('dpmaExcessClaims');
   if (total > THRESHOLDS.epoHighExcessClaims) flags.push('epoHighExcessClaims');
   else if (total > THRESHOLDS.epoExcessClaims) flags.push('epoExcessClaims');

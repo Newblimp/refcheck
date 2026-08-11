@@ -1,9 +1,9 @@
 import { describe, it, expect } from 'vitest';
-import { fileKind, importPatentDoc, exportPatentDoc } from './importDoc.js';
-import { readDocx } from './docx/read.js';
-import { splitPatentDoc } from './docSplit.js';
-import { documentXmlOf } from './docx/write.js';
-import { para, makeDocx, DE_BODY, EN_BODY } from './docx/fixture.js';
+import { fileKind, importPatentDoc, exportPatentDoc } from './importDoc.ts';
+import { readDocx } from './docx/read.ts';
+import { splitPatentDoc } from './docSplit.ts';
+import { documentXmlOf } from './docx/write.ts';
+import { para, makeDocx, DE_BODY, EN_BODY } from './docx/fixture.ts';
 
 describe('fileKind', () => {
   it('accepts .docx and .docm, in any case', () => {

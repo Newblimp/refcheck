@@ -3,10 +3,23 @@
 import { zipSync, strToU8 } from 'fflate';
 import { escapeMarkup } from '../escape.ts';
 
-/** One `<w:p>`. opts: {style, num, ilvl, numId, bold, italic, raw} */
-export function para(text, opts = {}) {
+/** How a fixture paragraph should be built. */
+export interface ParaOpts {
+  style?: string;
+  /** Give the paragraph Word list numbering. */
+  num?: boolean;
+  ilvl?: number;
+  numId?: number;
+  bold?: boolean;
+  italic?: boolean;
+  /** Bypass the builder entirely and emit this markup verbatim. */
+  raw?: string;
+}
+
+/** One `<w:p>`. */
+export function para(text: string, opts: ParaOpts = {}): string {
   if (opts.raw) return opts.raw;
-  const props = [];
+  const props: string[] = [];
   if (opts.style) props.push(`<w:pStyle w:val="${opts.style}"/>`);
   if (opts.num) {
     props.push(
@@ -22,7 +35,7 @@ export function para(text, opts = {}) {
   return `<w:p>${pPr}<w:r>${rPr}<w:t xml:space="preserve">${esc}</w:t></w:r></w:p>`;
 }
 
-export function documentXml(body) {
+export function documentXml(body: string): string {
   return (
     `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>` +
     `<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">` +
@@ -41,14 +54,14 @@ export function documentXml(body) {
  * Deliberately a small hand-rolled check rather than DOMParser: the logic tests
  * run in the `node` environment, which has no DOM.
  *
- * @returns {string} '' when well-formed, otherwise a description of the fault
+ * @returns '' when well-formed, otherwise a description of the fault
  */
-export function xmlFault(xml) {
+export function xmlFault(xml: string): string {
   const body = String(xml).replace(/^\s*<\?xml[^>]*\?>/, '');
-  const stack = [];
+  const stack: string[] = [];
   const tag = /<(\/?)([A-Za-z0-9:_.-]+)((?:"[^"]*"|'[^']*'|[^>"'])*?)(\/?)>/g;
-  let m,
-    last = 0;
+  let m: RegExpExecArray | null;
+  let last = 0;
   while ((m = tag.exec(body)) !== null) {
     // Text between tags may not contain a stray '<' or '>'; a mis-cut splice
     // leaves fragments like "/w:t><w:br/>" lying in the character data.
@@ -56,12 +69,14 @@ export function xmlFault(xml) {
     if (/[<>]/.test(between))
       return `stray markup in text: ${JSON.stringify(between.slice(0, 40))}`;
     last = m.index + m[0].length;
-    if (m[2].startsWith('?') || m[2].startsWith('!')) continue;
+    // Every group is part of the match, so none can be absent here.
+    const name = m[2] ?? '';
+    if (name.startsWith('?') || name.startsWith('!')) continue;
     if (m[4] === '/') continue;
     if (m[1] === '/') {
       const open = stack.pop();
-      if (open !== m[2]) return `</${m[2]}> closes <${open || 'nothing'}>`;
-    } else stack.push(m[2]);
+      if (open !== name) return `</${name}> closes <${open || 'nothing'}>`;
+    } else stack.push(name);
   }
   if (/[<>]/.test(body.slice(last))) return 'stray markup after the last tag';
   if (stack.length) return `unclosed <${stack[stack.length - 1]}>`;
@@ -69,7 +84,7 @@ export function xmlFault(xml) {
 }
 
 /** A complete .docx (plus a header part, to prove headers are excluded). */
-export function makeDocx(body, extra = {}) {
+export function makeDocx(body: string, extra: Record<string, Uint8Array> = {}): Uint8Array {
   return zipSync({
     '[Content_Types].xml': strToU8('<Types/>'),
     '_rels/.rels': strToU8('<Relationships/>'),

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { parseRefList } from './refListParse.ts';
-import { reconcileRefList } from './reconcile.js';
+import { reconcileRefList } from './reconcile.ts';
 import { extractData } from './extract.ts';
 
 describe('parseRefList', () => {

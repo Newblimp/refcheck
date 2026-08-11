@@ -1,9 +1,9 @@
 import { describe, it, expect } from 'vitest';
 import { unzipSync } from 'fflate';
-import { planEdits, writeDocx, createDocx, documentXmlOf } from './write.js';
-import { readDocx, docxXmlToParagraphs } from './read.js';
-import { splitPatentDoc } from '../docSplit.js';
-import { para, makeDocx, DE_BODY, EN_BODY } from './fixture.js';
+import { planEdits, writeDocx, createDocx, documentXmlOf } from './write.ts';
+import { readDocx, docxXmlToParagraphs } from './read.ts';
+import { splitPatentDoc } from '../docSplit.ts';
+import { para, makeDocx, DE_BODY, EN_BODY } from './fixture.ts';
 
 const load = (body) => {
   const doc = readDocx(makeDocx(body));

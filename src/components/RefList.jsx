@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { buildRefList, toPlainText } from '../logic/reflist.js';
+import { buildRefList, toPlainText } from '../logic/reflist.ts';
 
 // ── REFERENCE NUMERAL LIST ───────────────────────────────────────────────────
 // Collapsible sidebar section showing the sign → term table for the active

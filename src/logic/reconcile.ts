@@ -1,7 +1,10 @@
 import { compareSigns } from './constants.ts';
 import { stem } from './stem.ts';
-import { buildRefList } from './reflist.js';
+import { buildRefList } from './reflist.ts';
 import { parseRefList } from './refListParse.ts';
+import type { RefListDuplicate, RefListEntry } from './refListParse.ts';
+import type { Lang } from './constants.ts';
+import type { ExtractResult } from './extract.ts';
 
 // ── REFERENCE-LIST RECONCILIATION ────────────────────────────────────────────
 // Compares the drafter's own reference-sign list against the signs actually used
@@ -18,25 +21,52 @@ import { parseRefList } from './refListParse.ts';
 // Claims, and it is modelled on that function deliberately — same shape of
 // output, so the sidebar renders it the same way.
 
-/**
- * @typedef {Object} ReconcileResult
- * @property {{sign: string, term: string}[]} listedNotUsed
- * @property {{sign: string, term: string, count: number}[]} usedNotListed
- * @property {{sign: string, listTerm: string, textTerm: string}[]} termMismatch
- * @property {{sign: string, terms: string[]}[]} duplicates  Same sign twice in the list
- * @property {number} listed  Total entries parsed, for the "n of m match" summary
- * @property {number} matched
- * @property {boolean} hasAny  Whether there is anything at all to report — the
- *   panel shows the "n entries match" summary when there is not
- */
+/** In the list, never used in the text. */
+export interface ListedNotUsed {
+  sign: string;
+  term: string;
+}
+
+/** Used in the text, missing from the list. */
+export interface UsedNotListed {
+  sign: string;
+  term: string;
+  count: number;
+}
+
+/** Same sign, different term in list and text — the one that matters. */
+export interface TermMismatch {
+  sign: string;
+  listTerm: string;
+  textTerm: string;
+}
+
+export interface ReconcileResult {
+  listedNotUsed: ListedNotUsed[];
+  usedNotListed: UsedNotListed[];
+  termMismatch: TermMismatch[];
+  /** Same sign listed twice under two names. */
+  duplicates: RefListDuplicate[];
+  /** Total entries parsed, for the "n of m match" summary. */
+  listed: number;
+  matched: number;
+  /**
+   * Whether there is anything at all to report — the panel shows the
+   * "n entries match" summary when there is not.
+   */
+  hasAny: boolean;
+}
 
 /**
- * @param {string} listText  Raw reference-list text (pasted or imported)
- * @param {import('./extract.ts').ExtractResult} result  Extraction of the text to check
- * @param {'en'|'de'} lang
- * @returns {ReconcileResult|null} null when there is nothing to compare
+ * @param listText  Raw reference-list text (pasted or imported)
+ * @param result    Extraction of the text to check
+ * @returns null when there is nothing to compare
  */
-export function reconcileRefList(listText, result, lang) {
+export function reconcileRefList(
+  listText: string,
+  result: ExtractResult | null | undefined,
+  lang: Lang
+): ReconcileResult | null {
   if (!listText || !listText.trim() || !result) return null;
   const { entries, duplicates } = parseRefList(listText);
   if (!entries.length) return null;
@@ -48,11 +78,11 @@ export function reconcileRefList(listText, result, lang) {
 
   // First listing wins for a sign listed twice; the duplication is reported
   // separately rather than being allowed to skew the comparison.
-  const listBySign = new Map();
+  const listBySign = new Map<string, RefListEntry>();
   for (const e of entries) if (!listBySign.has(e.sign)) listBySign.set(e.sign, e);
 
-  const listedNotUsed = [];
-  const termMismatch = [];
+  const listedNotUsed: ListedNotUsed[] = [];
+  const termMismatch: TermMismatch[] = [];
   let matched = 0;
   for (const [sign, entry] of listBySign) {
     const row = usedBySign.get(sign);
@@ -88,7 +118,7 @@ export function reconcileRefList(listText, result, lang) {
 }
 
 /** Stem every word of a term so list and text spellings compare fairly. */
-function stemPhrase(phrase, lang) {
+function stemPhrase(phrase: string, lang: Lang): string {
   return String(phrase)
     .toLowerCase()
     .split(/[\s ]+/)

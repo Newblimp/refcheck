@@ -1,5 +1,5 @@
 import { memo } from 'react';
-import { ERROR_KINDS } from '../logic/errorKinds.js';
+import { ERROR_KINDS } from '../logic/errorKinds.ts';
 import { ChevronLeftIcon, ChevronRightIcon } from './icons.jsx';
 
 // ── STATUS BAR ──────────────────────────────────────────────────────────────

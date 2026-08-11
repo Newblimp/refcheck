@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { extractData, classify, detectOrdStems } from './extract.ts';
-import { getAllErrors } from './errorSpans.js';
+import { getAllErrors } from './errorSpans.ts';
 import { tokenize } from './tokenize.ts';
 import { stem } from './stem.ts';
 import { compareSigns } from './constants.ts';

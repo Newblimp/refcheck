@@ -17,6 +17,7 @@
 // touches the zip or the buffer.
 
 import { CLAIM_NUM_PREFIX_RE, startsWithClaimNumber, stripClaimNumber } from '../constants.ts';
+import type { Para } from './read.ts';
 
 /** `<w:numPr>…</w:numPr>`, self-closing or not — removing it un-lists a paragraph. */
 export const NUMPR_RE = /<w:numPr\b(?:[^>]*\/>|[^>]*>[\s\S]*?<\/w:numPr>)/g;
@@ -34,7 +35,7 @@ export const isClaimLine = startsWithClaimNumber;
  * now reads "3. …" and the literal number survives. A synthesized prefix is
  * proof that the numbering is Word's, so any leading claim number goes.
  */
-export function stripAutoNumber(text, para) {
+export function stripAutoNumber(text: string, para: Para): string {
   return para.src.synthesizedPrefix ? stripClaimNumber(text) : text;
 }
 
@@ -46,9 +47,9 @@ export function stripAutoNumber(text, para) {
  * numbers the paragraph itself (single-level decimal `<w:numPr>`), so its
  * presence proves the section is a Word list rather than typed "1. " text.
  *
- * @param {import('./read.js').Para[]} paras The claims section's paragraphs
+ * @param paras The claims section's paragraphs
  */
-export function claimListTemplate(paras) {
+export function claimListTemplate(paras: Para[]): Para | null {
   return paras.find((p) => p.numbered && p.ilvl === 0 && p.src.synthesizedPrefix) || null;
 }
 
@@ -65,12 +66,14 @@ export function claimListTemplate(paras) {
  * lead-in line alone: it is not a claim, so it must not join the list and take
  * a number of its own.
  *
- * @param {import('./read.js').Para} para The paragraph the line landed in
- * @param {string} line
- * @param {import('./read.js').Para|null} listTpl From claimListTemplate
- * @returns {{para: import('./read.js').Para, text: string}}
+ * @param para    The paragraph the line landed in
+ * @param listTpl From claimListTemplate
  */
-export function conformClaim(para, line, listTpl) {
+export function conformClaim(
+  para: Para,
+  line: string,
+  listTpl: Para | null
+): { para: Para; text: string } {
   // Multi-level numbering is the case docSplit refuses to guess at (it
   // synthesizes no number and flags `unusualNumbering`); guessing here instead
   // would be no better informed.

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { T } from './i18n.js';
+import { T } from './i18n.ts';
 import { HELP } from './helpText.js';
 import { BINDINGS } from './components/HelpDialog.jsx';
 

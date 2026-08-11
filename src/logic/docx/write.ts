@@ -19,18 +19,43 @@
 
 import { unzipSync, zipSync, strToU8, strFromU8 } from 'fflate';
 import { blankEdges } from '../blankEdges.ts';
-import { DocxError } from './read.js';
-import { alignLines } from './lineDiff.js';
-import { xmlText } from './xmlText.js';
+import { DocxError } from './read.ts';
+import type { Para, PatentDoc } from './read.ts';
+import { alignLines } from './lineDiff.ts';
+import { xmlText } from './xmlText.ts';
 import {
   NUMPR_RE,
   isClaimLine,
   stripAutoNumber,
   claimListTemplate,
   conformClaim,
-} from './claimNumbering.js';
+} from './claimNumbering.ts';
 
 export { alignLines };
+
+/** One replacement or insertion into document.xml. */
+export interface Splice {
+  xmlStart: number;
+  /** Equal to xmlStart for an insertion. */
+  xmlEnd: number;
+  xml: string;
+  /** True for an insertion — it must be ordered after a replacement at the same offset. */
+  append?: boolean;
+}
+
+/** One buffer to write back, with the paragraphs it came from. */
+export interface WriteBuffer {
+  paras: Para[];
+  text: string;
+  /** Set on the claims buffer so its claim lines keep the section's numbering style. */
+  claims?: boolean;
+}
+
+/** One section of a freshly generated (never-imported) document. */
+export interface NewSection {
+  heading?: string;
+  text?: string;
+}
 
 // ── paragraph XML ────────────────────────────────────────────────────────────
 
@@ -42,7 +67,7 @@ export { alignLines };
 const NBHYPHEN = '\u2011'; // non-breaking hyphen
 const SOFTHYPHEN = '\u00AD'; // soft hyphen (invisible — never type it literally)
 const SPLIT_RE = /([\n\t\u2011\u00AD])/;
-const AS_ELEMENT = {
+const AS_ELEMENT: Record<string, string | undefined> = {
   '\n': '<w:br/>',
   '\t': '<w:tab/>',
   [NBHYPHEN]: '<w:noBreakHyphen/>',
@@ -50,10 +75,11 @@ const AS_ELEMENT = {
 };
 
 /** Render paragraph text as a single run, mapping the structural characters. */
-function runsFor(text, rPrXml) {
+function runsFor(text: string, rPrXml: string): string {
   let out = '';
   for (const part of String(text).split(SPLIT_RE)) {
-    if (AS_ELEMENT[part]) out += AS_ELEMENT[part];
+    const element = AS_ELEMENT[part];
+    if (element) out += element;
     else if (part !== '') out += `<w:t xml:space="preserve">${xmlText(part)}</w:t>`;
   }
   if (!out) out = '<w:t xml:space="preserve"></w:t>';
@@ -61,7 +87,7 @@ function runsFor(text, rPrXml) {
 }
 
 /** Rebuild one `<w:p>` around new text, preserving its paragraph properties. */
-function buildParagraph(para, text) {
+function buildParagraph(para: Para, text: string): string {
   const { pAttrs, pPrXml, rPrXml } = para.src;
   return `<w:p${pAttrs || ''}>${pPrXml || ''}${runsFor(text, rPrXml || '')}</w:p>`;
 }
@@ -78,17 +104,24 @@ const CLONE_DROP_ATTR = /\s+w14:(?:paraId|textId)="[^"]*"/g;
  * different alignment from every other claim — and, on an auto-numbered list,
  * leaves it unnumbered.
  */
-function templateNear(paras, i) {
-  for (let k = Math.min(i, paras.length - 1); k >= 0; k--)
-    if (paras[k].text.trim()) return paras[k];
-  for (let k = i + 1; k < paras.length; k++) if (paras[k].text.trim()) return paras[k];
+function templateNear(paras: Para[], i: number): Para | undefined {
+  for (let k = Math.min(i, paras.length - 1); k >= 0; k--) {
+    const p = paras[k];
+    if (p?.text.trim()) return p;
+  }
+  for (let k = i + 1; k < paras.length; k++) {
+    const p = paras[k];
+    if (p?.text.trim()) return p;
+  }
   return paras[Math.max(0, Math.min(i, paras.length - 1))];
 }
 
 /** A brand-new `<w:p>` carrying the surrounding claims' formatting. */
-function clonedParagraph(paras, i, line, listTpl) {
+function clonedParagraph(paras: Para[], i: number, line: string, listTpl: Para | null): string {
   // A claim always copies the list, wherever in the section it is being added.
   const tpl = listTpl && isClaimLine(line) ? listTpl : templateNear(paras, i);
+  // Only reachable with a non-empty `paras`, which planEdits guarantees.
+  if (!tpl) return '';
   const src = { ...tpl.src, pAttrs: (tpl.src.pAttrs || '').replace(CLONE_DROP_ATTR, '') };
   // An empty line is a spacer, and an empty list item would still consume a
   // claim number, so it inherits the formatting but never the numbering.
@@ -103,25 +136,27 @@ function clonedParagraph(paras, i, line, listTpl) {
 // counterpart and rewrite the entire document; and a literal CR written into
 // <w:t> is normalized back to a line break by any XML parser, so it would not
 // survive the trip anyway.
-const normalizeNewlines = (s) => String(s).replace(/\r\n?/g, '\n');
+const normalizeNewlines = (s: string): string => String(s).replace(/\r\n?/g, '\n');
 
 /**
  * Work out which paragraphs changed, for one buffer.
- * @param {import('./read.js').Para[]} paras Paragraphs as imported
- * @param {string} editedText                Current buffer contents
- * @param {{claims?: boolean}} [opts]        `claims` makes every claim line
- *   follow the section's own numbering style (see conformClaim). It is opt-in
- *   because only the claims buffer holds claims: a description line that
- *   happens to start with "1." is prose, not a list item.
- * @returns {{xmlStart:number, xmlEnd:number, xml:string, append?:boolean}[]}
- *   splices into document.xml
+ * @param paras      Paragraphs as imported
+ * @param editedText Current buffer contents
+ * @param opts       `claims` makes every claim line follow the section's own
+ *   numbering style (see conformClaim). It is opt-in because only the claims
+ *   buffer holds claims: a description line that happens to start with "1." is
+ *   prose, not a list item.
  */
-export function planEdits(paras, editedText, opts = {}) {
+export function planEdits(
+  paras: Para[],
+  editedText: string,
+  opts: { claims?: boolean } = {}
+): Splice[] {
   if (!paras || !paras.length) return [];
   // Rebuild the line array exactly as the importer assembled the buffer, so the
   // diff lines up with what the user actually saw.
-  const oldLines = [];
-  const owner = []; // line index → paragraph index
+  const oldLines: string[] = [];
+  const owner: number[] = []; // line index → paragraph index
   paras.forEach((p, pi) => {
     const ls = p.text.split('\n');
     for (const l of ls) {
@@ -141,16 +176,19 @@ export function planEdits(paras, editedText, opts = {}) {
   const { map, insertAfter, tail } = alignLines(visOld, newLines);
 
   // Gather each paragraph's new text from its (possibly re-mapped) lines.
-  const byPara = new Map();
-  const added = new Map(); // paragraph index → lines to add as new paragraphs after it
-  const lastLineOf = new Map(); // paragraph index → its last visible line
+  const byPara = new Map<number, { lines: string[]; deleted: boolean }>();
+  /** paragraph index → lines to add as new paragraphs after it */
+  const added = new Map<number, string[]>();
+  /** paragraph index → its last visible line */
+  const lastLineOf = new Map<number, number>();
   visOwner.forEach((pi, li) => lastLineOf.set(pi, li));
 
   visOwner.forEach((pi, li) => {
-    if (!byPara.has(pi)) byPara.set(pi, { lines: [], deleted: true });
-    const rec = byPara.get(pi);
-    if (map[li] != null) {
-      rec.lines.push(newLines[map[li]]);
+    let rec = byPara.get(pi);
+    if (!rec) byPara.set(pi, (rec = { lines: [], deleted: true }));
+    const to = map[li];
+    if (to != null) {
+      rec.lines.push(newLines[to] ?? '');
       rec.deleted = false;
     }
     const ins = insertAfter.get(li);
@@ -160,7 +198,7 @@ export function planEdits(paras, editedText, opts = {}) {
       // a <w:br/> instead is what made an inserted claim show up indented and
       // unnumbered: a soft break inside a hanging-indent paragraph renders at
       // the indent, and Word's list numbering only counts paragraphs.
-      added.set(pi, [...(added.get(pi) || []), ...ins]);
+      added.set(pi, [...(added.get(pi) ?? []), ...ins]);
     } else {
       // ...but a line added between two lines of ONE paragraph (a paragraph
       // holding <w:br/>s of its own) really does belong inside it.
@@ -174,12 +212,13 @@ export function planEdits(paras, editedText, opts = {}) {
   const listTpl = opts.claims ? claimListTemplate(paras) : null;
   // Never write our synthesized claim numbers back — the paragraph already
   // carries <w:numPr> and Word would render "1. 1. A device…".
-  const finalise = (para, line) =>
+  const finalise = (para: Para, line: string): { para: Para; text: string } =>
     opts.claims ? conformClaim(para, line, listTpl) : { para, text: stripAutoNumber(line, para) };
 
-  const splices = [];
+  const splices: Splice[] = [];
   for (const [pi, rec] of byPara) {
     const was = paras[pi];
+    if (!was) continue;
     const { para, text: next } = finalise(was, rec.lines.join('\n'));
     const wasText = stripAutoNumber(was.text, was);
     // A paragraph also has to be rewritten when only its numbering changed —
@@ -199,7 +238,8 @@ export function planEdits(paras, editedText, opts = {}) {
 
   // Lines added mid-buffer become new paragraphs after the one they follow.
   for (const [pi, lines] of added) {
-    const at = paras[pi].src.xmlEnd;
+    const at = paras[pi]?.src.xmlEnd;
+    if (at === undefined) continue;
     const xml = lines.map((l) => clonedParagraph(paras, pi, l, listTpl)).join('');
     splices.push({ xmlStart: at, xmlEnd: at, xml, append: true });
   }
@@ -209,10 +249,12 @@ export function planEdits(paras, editedText, opts = {}) {
   // so appending after those puts a blank line between the last claim and the
   // new one that the buffer never showed.
   if (tail.length) {
-    const li = visOwner.length ? visOwner[visOwner.length - 1] : paras.length - 1;
-    const at = paras[li].src.xmlEnd;
-    const xml = tail.map((l) => clonedParagraph(paras, li, l, listTpl)).join('');
-    splices.push({ xmlStart: at, xmlEnd: at, xml, append: true });
+    const li = (visOwner.length ? visOwner[visOwner.length - 1] : paras.length - 1) ?? 0;
+    const at = paras[li]?.src.xmlEnd;
+    if (at !== undefined) {
+      const xml = tail.map((l) => clonedParagraph(paras, li, l, listTpl)).join('');
+      splices.push({ xmlStart: at, xmlEnd: at, xml, append: true });
+    }
   }
   return splices;
 }
@@ -237,11 +279,10 @@ export function planEdits(paras, editedText, opts = {}) {
  * docSplit.js), and a silently mangled patent application is far worse than a
  * failed export, so it throws.
  *
- * @param {{xmlStart:number, xmlEnd:number, xml:string, append?:boolean}[]} splices
- * @param {number} xmlLength Length of the document the offsets refer to
+ * @param xmlLength Length of the document the offsets refer to
  * @throws {DocxError} code 'spliceOverlap'
  */
-export function orderSplices(splices, xmlLength) {
+export function orderSplices(splices: Splice[], xmlLength: number): Splice[] {
   const ordered = [...splices].sort(
     // Descending by offset, and at equal offsets replacements before insertions.
     // Written as a subtraction so the comparator is a total order — a
@@ -264,7 +305,7 @@ export function orderSplices(splices, xmlLength) {
 }
 
 /** Apply ordered splices to document.xml. */
-function applySplices(xml, splices) {
+function applySplices(xml: string, splices: Splice[]): string {
   let out = xml;
   for (const s of orderSplices(splices, xml.length))
     out = out.slice(0, s.xmlStart) + s.xml + out.slice(s.xmlEnd);
@@ -273,15 +314,11 @@ function applySplices(xml, splices) {
 
 /**
  * Produce an edited .docx.
- * @param {import('./read.js').PatentDoc} doc  The imported document
- * @param {{paras: import('./read.js').Para[], text: string, claims?: boolean}[]} buffers
- *   Mark the claims buffer with `claims: true` so its claim lines keep the
- *   section's numbering style.
- * @returns {Uint8Array} the new file
+ * @returns the new file
  * @throws {DocxError} code 'spliceOverlap' rather than emitting a broken file
  */
-export function writeDocx(doc, buffers) {
-  const splices = [];
+export function writeDocx(doc: PatentDoc, buffers: WriteBuffer[]): Uint8Array {
+  const splices: Splice[] = [];
   for (const b of buffers) splices.push(...planEdits(b.paras, b.text, { claims: b.claims }));
 
   const xml = applySplices(doc.documentXml, splices);
@@ -291,7 +328,7 @@ export function writeDocx(doc, buffers) {
 }
 
 /** Build a minimal .docx from plain text, for buffers that were never imported. */
-export function createDocx(sections) {
+export function createDocx(sections: NewSection[]): Uint8Array {
   const body = sections
     .map((sec) => {
       const head = sec.heading
@@ -325,8 +362,10 @@ export function createDocx(sections) {
 }
 
 /** Read back document.xml from a produced file — used by the tests. */
-export function documentXmlOf(bytes) {
-  return strFromU8(
-    unzipSync(bytes, { filter: (f) => f.name === 'word/document.xml' })['word/document.xml']
-  );
+export function documentXmlOf(bytes: Uint8Array): string {
+  const part = unzipSync(bytes, { filter: (f) => f.name === 'word/document.xml' })[
+    'word/document.xml'
+  ];
+  if (!part) throw new DocxError('noDocument');
+  return strFromU8(part);
 }

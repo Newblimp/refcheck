@@ -1,6 +1,8 @@
-import { eachErrorSpan } from './errorSpans.js';
+import { eachErrorSpan } from './errorSpans.ts';
 import { escapeMarkup } from './escape.ts';
-import { ERROR_KINDS } from './errorKinds.js';
+import { ERROR_KINDS } from './errorKinds.ts';
+import type { Mode } from './constants.ts';
+import type { ArtError, BareTerm, ExtractResult, SignEntry, SignPosition } from './extract.ts';
 
 // ── HTML BUILDER ────────────────────────────────────────────────────────────
 
@@ -12,7 +14,7 @@ import { ERROR_KINDS } from './errorKinds.js';
 // The sign severities are listed here because signs are not an ERROR_KINDS row
 // (see errorKinds.js); the four error categories bring their own class along, so
 // adding a category cannot forget to add its highlight.
-export const HL = {
+export const HL: Record<string, string> = {
   warn: 'h-warn', // a sign with an inconsistency
   dis: 'h-dis', // a sign whose errors were dismissed
   ok: 'h-ok', // a consistent sign
@@ -29,18 +31,21 @@ export const esc = escapeMarkup;
  * Build the highlighted HTML for the backdrop overlay. Invariant: stripping the
  * <mark> tags from the output must reproduce esc(text) exactly, or the backdrop
  * misaligns with the textarea (guarded by a test).
- * @param {string} text
- * @param {import('./extract.ts').ExtractResult} res
- * @param {'description'|'claims'} mode
- * @param {Set<string>} dis       Dismissal keys
- * @param {string|null} focusSign Sign to mark with h-focus
+ * @param dis       Dismissal keys
+ * @param focusSign Sign to mark with h-focus
  */
-export function buildHtml(text, res, mode, dis, focusSign) {
+export function buildHtml(
+  text: string,
+  res: ExtractResult,
+  mode: Mode,
+  dis: Set<string>,
+  focusSign: string | null
+): string {
   if (!text) return '';
-  const spans = [];
+  const spans: { start: number; end: number; cls: string; sign?: string }[] = [];
   eachErrorSpan(res, mode, dis, (sp) => {
     if (sp.kind === 'sign') {
-      const cls = HL[sp.sev];
+      const cls = HL[sp.sev] ?? '';
       spans.push({
         start: sp.start,
         end: sp.end,
@@ -48,11 +53,11 @@ export function buildHtml(text, res, mode, dis, focusSign) {
         sign: sp.sign,
       });
     } else {
-      spans.push({ start: sp.start, end: sp.end, cls: HL[sp.kind] });
+      spans.push({ start: sp.start, end: sp.end, cls: HL[sp.kind] ?? '' });
     }
   });
   spans.sort((a, b) => a.start - b.start || a.end - b.end);
-  const clean = [];
+  const clean: typeof spans = [];
   let cur = 0;
   for (const sp of spans) {
     if (sp.start >= cur) {
@@ -79,6 +84,12 @@ export function buildHtml(text, res, mode, dis, focusSign) {
   return html + '\n';
 }
 
+/** What the editor's context menu found under the caret. */
+export type AtPos =
+  | { type: 'art'; ae: ArtError }
+  | { type: 'sign'; sign: string; pos: SignPosition }
+  | { type: 'bare'; bt: BareTerm };
+
 /**
  * What sits at a character position, for the editor's context menu.
  *
@@ -87,11 +98,16 @@ export function buildHtml(text, res, mode, dis, focusSign) {
  * between an article and the term behind it — which the article should win, as
  * before.
  */
-export function findAtPos(charPos, signData, artErrors, bareTerms = []) {
+export function findAtPos(
+  charPos: number,
+  signData: Record<string, SignEntry | undefined>,
+  artErrors: ArtError[],
+  bareTerms: BareTerm[] = []
+): AtPos | null {
   for (const ae of artErrors)
     if (charPos >= ae.artStart && charPos <= ae.artEnd) return { type: 'art', ae };
   for (const [sign, sData] of Object.entries(signData))
-    for (const p of sData.positions)
+    for (const p of sData?.positions ?? [])
       if (charPos >= p.termStart && charPos <= p.signEnd) return { type: 'sign', sign, pos: p };
   for (const bt of bareTerms)
     if (charPos >= bt.termStart && charPos <= bt.termEnd) return { type: 'bare', bt };

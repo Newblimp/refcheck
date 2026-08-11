@@ -2,11 +2,11 @@
 // document, so it has to be right in both directions: it must not cry wolf over
 // the differences the export makes deliberately, and it must catch a real one.
 import { describe, it, expect } from 'vitest';
-import { verifyExport } from './verify.js';
-import { writeDocx } from './write.js';
-import { readDocx } from './read.js';
-import { splitPatentDoc } from '../docSplit.js';
-import { para, makeDocx, EN_BODY, DE_BODY } from './fixture.js';
+import { verifyExport } from './verify.ts';
+import { writeDocx } from './write.ts';
+import { readDocx } from './read.ts';
+import { splitPatentDoc } from '../docSplit.ts';
+import { para, makeDocx, EN_BODY, DE_BODY } from './fixture.ts';
 
 const load = (body) => {
   const doc = readDocx(makeDocx(body));

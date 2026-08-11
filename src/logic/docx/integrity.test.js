@@ -11,11 +11,11 @@
 
 import { describe, it, expect } from 'vitest';
 import { unzipSync } from 'fflate';
-import { writeDocx, documentXmlOf, planEdits, orderSplices } from './write.js';
-import { readDocx, DocxError } from './read.js';
-import { splitPatentDoc } from '../docSplit.js';
-import { exportPatentDoc, importPatentDoc } from '../importDoc.js';
-import { para, makeDocx, xmlFault, EN_BODY, DE_BODY } from './fixture.js';
+import { writeDocx, documentXmlOf, planEdits, orderSplices } from './write.ts';
+import { readDocx, DocxError } from './read.ts';
+import { splitPatentDoc } from '../docSplit.ts';
+import { exportPatentDoc, importPatentDoc } from '../importDoc.ts';
+import { para, makeDocx, xmlFault, EN_BODY, DE_BODY } from './fixture.ts';
 
 const load = (body) => {
   const doc = readDocx(makeDocx(body));

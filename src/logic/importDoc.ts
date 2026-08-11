@@ -3,32 +3,51 @@
 // here (rather than in App.jsx) means the whole import pipeline stays testable
 // under the node environment.
 
-import { readDocx, DocxError } from './docx/read.js';
-import { writeDocx, createDocx } from './docx/write.js';
-import { verifyExport } from './docx/verify.js';
-import { splitPatentDoc, refListWritable } from './docSplit.js';
+import { readDocx, DocxError } from './docx/read.ts';
+import { writeDocx, createDocx } from './docx/write.ts';
+import { verifyExport } from './docx/verify.ts';
+import { splitPatentDoc, refListWritable } from './docSplit.ts';
 import { detectLang } from './detectLang.ts';
 import { fileKind } from './fileKind.ts';
+import type { NewSection, WriteBuffer } from './docx/write.ts';
+import type { PatentDoc } from './docx/read.ts';
+import type { SectionDiff } from './docx/verify.ts';
+import type { RefListRefusal, SplitResult } from './docSplit.ts';
+import type { LangSource } from './detectLang.ts';
+import type { Lang } from './constants.ts';
 
 // Re-exported so this module stays the single seam callers reason about, even
 // though the implementation lives elsewhere to keep it out of the lazy chunk.
 export { fileKind };
 
-/**
- * @typedef {Object} ImportResult
- * @property {import('./docx/read.js').PatentDoc} doc
- * @property {import('./docSplit.js').SplitResult} split
- * @property {'en'|'de'} lang
- * @property {'headings'|'text'} langFrom
- */
+/** Everything one import produced, including the provenance export needs. */
+export interface ImportResult {
+  doc: PatentDoc;
+  split: SplitResult;
+  lang: Lang;
+  langFrom: LangSource;
+}
+
+/** What happened to the reference-sign list on export. */
+export type RefListStatus = 'written' | 'unchanged' | RefListRefusal;
+
+/** Whether the export rewrote the source file or generated a new one. */
+export type ExportMode = 'roundTrip' | 'fresh';
+
+export interface ExportResult {
+  bytes: Uint8Array;
+  mode: ExportMode;
+  verified: boolean;
+  diffs: SectionDiff[];
+  verifyError?: string;
+  refList: RefListStatus;
+}
 
 /**
  * Read a .docx into buffers.
- * @param {ArrayBuffer|Uint8Array} buf
- * @returns {ImportResult}
  * @throws {DocxError}
  */
-export function importPatentDoc(buf) {
+export function importPatentDoc(buf: ArrayBuffer | Uint8Array): ImportResult {
   const doc = readDocx(buf);
   const split = splitPatentDoc(doc);
   const { lang, from } = detectLang(split, `${split.description}\n${split.claims}`);
@@ -54,17 +73,15 @@ export function importPatentDoc(buf) {
  * buffers still export and `refList` reports why the list was left alone, so
  * the caller can say so rather than let the user believe an edit was saved.
  *
- * @param {ImportResult|null} imported
- * @param {{description: string, claims: string, refList?: string}} buffers
- * @param {{claimsHeading?: string, refListHeading?: string}} [opts]
- * @returns {{bytes: Uint8Array, mode: 'roundTrip'|'fresh', verified: boolean,
- *   diffs: import('./docx/verify.js').SectionDiff[], verifyError?: string,
- *   refList: 'written'|'unchanged'|'noSection'|'ambiguous'|'table'}}
  */
-export function exportPatentDoc(imported, buffers, opts = {}) {
+export function exportPatentDoc(
+  imported: ImportResult | null | undefined,
+  buffers: { description: string; claims: string; refList?: string },
+  opts: { claimsHeading?: string; refListHeading?: string } = {}
+): ExportResult {
   const refList = buffers.refList || '';
   if (imported?.doc) {
-    const write = [
+    const write: WriteBuffer[] = [
       { paras: imported.split.descParas, text: buffers.description },
       { paras: imported.split.claimsParas, text: buffers.claims, claims: true },
     ];
@@ -77,9 +94,10 @@ export function exportPatentDoc(imported, buffers, opts = {}) {
     // check covers the third buffer rather than the two it used to.
     const bytes = writeDocx(imported.doc, write);
     const check = verifyExport(bytes, buffers);
-    // `'reason' in can` rather than `!can.ok`: an `in` check narrows the union
-    // to the member that actually carries the property.
-    const refListStatus = 'reason' in can ? can.reason : unchanged ? 'unchanged' : 'written';
+    // `!can.ok` narrows the union to the refusing member, which carries the
+    // reason. (This was an `'reason' in can` check under JSDoc, where a boolean
+    // discriminant did not narrow reliably; TypeScript handles it directly.)
+    const refListStatus: RefListStatus = !can.ok ? can.reason : unchanged ? 'unchanged' : 'written';
     return {
       bytes,
       mode: 'roundTrip',
@@ -89,7 +107,7 @@ export function exportPatentDoc(imported, buffers, opts = {}) {
       refList: refListStatus,
     };
   }
-  const sections = [];
+  const sections: NewSection[] = [];
   if (buffers.description) sections.push({ text: buffers.description });
   if (buffers.claims)
     sections.push({ heading: opts.claimsHeading || 'Claims', text: buffers.claims });

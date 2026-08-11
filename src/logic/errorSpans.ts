@@ -1,6 +1,10 @@
 import { classify } from './extract.ts';
 import { disKey } from './constants.ts';
-import { ERROR_KINDS, KIND_BY_ID, kindItems } from './errorKinds.js';
+import { ERROR_KINDS, KIND_BY_ID, kindItems } from './errorKinds.ts';
+import type { ErrorKindId, ErrorRecord } from './errorKinds.ts';
+import type { DepError } from './claims.ts';
+import type { Mode } from './constants.ts';
+import type { ArtError, BareTerm, ExtractResult, NumError, Severity } from './extract.ts';
 
 // ── ERROR SPANS ─────────────────────────────────────────────────────────────
 //
@@ -21,46 +25,84 @@ import { ERROR_KINDS, KIND_BY_ID, kindItems } from './errorKinds.js';
 // span is a sign, and with it optional every consumer had to either assert or
 // risk indexing HL with undefined. Narrowing on `kind` now proves it.
 //
-// The two sign shapes are separate typedefs carrying ONE literal `kind` each,
-// rather than one typedef with `'sign'|'signTerm'`. That is a JSDoc constraint,
-// not a stylistic choice: a member whose discriminant is a union of literals is
-// not eliminated by narrowing, so `getAllErrors` could not reach `sp.item`
-// without an assertion. One literal per member and it narrows.
+// The two sign shapes are SEPARATE members carrying ONE literal `kind` each,
+// rather than one member with `'sign'|'signTerm'`. That is a language
+// constraint, not a stylistic choice, and it survived the migration unchanged:
+// TypeScript does not eliminate a union member whose discriminant is itself a
+// union of literals, even when every one of those literals has been excluded.
+// With the two merged, `getAllErrors` could not reach `sp.item` after ruling out
+// both sign kinds without an assertion. One literal per member and it narrows.
+// (This was previously recorded as a JSDoc limitation. It is not — plain
+// TypeScript behaves identically; see docs/typescript-migration.md.)
 
-/**
- * A sign occurrence.
- * @typedef {Object} SignSpan
- * @property {'sign'} kind
- * @property {number} start
- * @property {number} end
- * @property {string} sign
- * @property {'warn'|'ok'|'dis'} sev
- * @property {string} term       The term stem of THIS occurrence
- */
+/** How a sign or its term is highlighted. Dismissed signs still render, greyed. */
+export type SpanSeverity = Severity | 'dis';
+
+/** A sign occurrence. */
+export interface SignSpan {
+  kind: 'sign';
+  start: number;
+  end: number;
+  sign: string;
+  sev: SpanSeverity;
+  /** The term stem of THIS occurrence. */
+  term: string;
+}
 
 /**
  * The term attached to a warned sign — highlighted alongside it, but never a
  * navigation target of its own.
- * @typedef {Object} SignTermSpan
- * @property {'signTerm'} kind
- * @property {number} start
- * @property {number} end
- * @property {string} sign
- * @property {'warn'|'ok'|'dis'} sev
- * @property {string} term
  */
+export interface SignTermSpan {
+  kind: 'signTerm';
+  start: number;
+  end: number;
+  sign: string;
+  sev: SpanSeverity;
+  term: string;
+}
+
+/** One of the four ERROR_KINDS categories. */
+export interface KindSpan {
+  kind: ErrorKindId;
+  start: number;
+  end: number;
+  /** null for the categories that name no term. */
+  term: string | null;
+  /** The originating error record. */
+  item: ErrorRecord;
+}
+
+export type ErrorSpan = SignSpan | SignTermSpan | KindSpan;
+
+/** A warned sign, as the navigator steps through it. */
+export interface SignErrorEntry {
+  type: 'sign';
+  start: number;
+  end: number;
+  sign: string;
+  term: string;
+}
 
 /**
- * One of the four ERROR_KINDS categories.
- * @typedef {Object} KindSpan
- * @property {'art'|'bare'|'num'|'dep'} kind
- * @property {number} start
- * @property {number} end
- * @property {string|null} term  null for the categories that name no term
- * @property {Object} item       The originating error record
+ * One categorised error, as the navigator steps through it.
+ *
+ * The raw record rides along under its category's historical `navProp` name.
+ * These are read by name in App and in the tests, which is why they are spelled
+ * out here rather than derived — see the note in errorKinds.ts.
  */
+export interface KindErrorEntry {
+  type: ErrorKindId;
+  start: number;
+  end: number;
+  term: string | null;
+  ae?: ArtError;
+  bt?: BareTerm;
+  ne?: NumError;
+  de?: DepError;
+}
 
-/** @typedef {SignSpan|SignTermSpan|KindSpan} ErrorSpan */
+export type ErrorEntry = SignErrorEntry | KindErrorEntry;
 
 /**
  * Visit every span of interest, in no particular order.
@@ -70,16 +112,18 @@ import { ERROR_KINDS, KIND_BY_ID, kindItems } from './errorKinds.js';
  * four error categories are reported only when not dismissed, which is what both
  * consumers want.
  *
- * @param {import('./extract.ts').ExtractResult} res
- * @param {'description'|'claims'} mode
- * @param {Set<string>} dis
- * @param {(span: ErrorSpan) => void} visit
  */
-export function eachErrorSpan(res, mode, dis, visit) {
+export function eachErrorSpan(
+  res: ExtractResult,
+  mode: Mode,
+  dis: Set<string>,
+  visit: (span: ErrorSpan) => void
+): void {
   const { signData, termData } = res;
 
   for (const [sign, sData] of Object.entries(signData)) {
-    const sev = dis.has(disKey.sign(sign)) ? 'dis' : classify(sData, termData, mode);
+    if (!sData) continue;
+    const sev: SpanSeverity = dis.has(disKey.sign(sign)) ? 'dis' : classify(sData, termData, mode);
     for (const p of sData.positions) {
       visit({ kind: 'sign', start: p.signStart, end: p.signEnd, sign, sev, term: p.termStem });
       // The term a warned sign is attached to is highlighted alongside it.
@@ -100,7 +144,7 @@ export function eachErrorSpan(res, mode, dis, visit) {
     for (const item of kindItems(res, kind)) {
       if (dis.has(kind.disKey(item))) continue;
       visit({
-        kind: /** @type {KindSpan['kind']} */ (kind.id),
+        kind: kind.id,
         start: kind.start(item),
         end: kind.end(item),
         term: kind.term(item),
@@ -115,12 +159,9 @@ export function eachErrorSpan(res, mode, dis, visit) {
  * Dismissed signs and dismissed errors are excluded; consistent signs are not
  * errors and are excluded too.
  *
- * @param {import('./extract.ts').ExtractResult} res
- * @param {'description'|'claims'} mode
- * @param {Set<string>} dis
  */
-export function getAllErrors(res, mode, dis) {
-  const out = [];
+export function getAllErrors(res: ExtractResult, mode: Mode, dis: Set<string>): ErrorEntry[] {
+  const out: ErrorEntry[] = [];
   eachErrorSpan(res, mode, dis, (sp) => {
     // Both sign shapes are handled in one branch, so what follows is a KindSpan
     // by elimination — which is also what lets `sp.item` below be reached
@@ -155,8 +196,8 @@ export function getAllErrors(res, mode, dis) {
  * rather than sharing one nameless bucket, which would make the jump behave like
  * the plain next-error arrow for them.
  *
- * @param {{type: string, term?: string|null}} e  An entry from getAllErrors
+ * @param e An entry from getAllErrors
  */
-export function errorGroup(e) {
+export function errorGroup(e: { type: string; term?: string | null } | null | undefined): string {
   return e?.term ? `t:${e.term}` : `k:${e?.type}`;
 }

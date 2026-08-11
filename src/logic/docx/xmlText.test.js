@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { stripInvalidXmlChars, xmlText } from './xmlText.js';
+import { stripInvalidXmlChars, xmlText } from './xmlText.ts';
 
 describe('stripInvalidXmlChars', () => {
   it('leaves ordinary text alone', () => {

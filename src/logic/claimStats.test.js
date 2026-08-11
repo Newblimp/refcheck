@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { extractData } from './extract.ts';
 import { computeClaimGraph } from './claims.ts';
-import { claimStats, THRESHOLDS } from './claimStats.js';
+import { claimStats, THRESHOLDS } from './claimStats.ts';
 
 // Build the graph the way extractData does, from a claims buffer.
 const statsFor = (text) => {

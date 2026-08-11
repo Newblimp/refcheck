@@ -8,7 +8,7 @@ import {
   stripAutoNumber,
   claimListTemplate,
   conformClaim,
-} from './claimNumbering.js';
+} from './claimNumbering.ts';
 
 const NUMPR = '<w:numPr><w:ilvl w:val="0"/><w:numId w:val="1"/></w:numPr>';
 
