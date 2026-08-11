@@ -7,7 +7,7 @@ import { readDocx, DocxError } from './docx/read.js';
 import { writeDocx, createDocx } from './docx/write.js';
 import { verifyExport } from './docx/verify.js';
 import { splitPatentDoc, refListWritable } from './docSplit.js';
-import { detectLang } from './detectLang.js';
+import { detectLang } from './detectLang.ts';
 import { fileKind } from './fileKind.ts';
 
 // Re-exported so this module stays the single seam callers reason about, even

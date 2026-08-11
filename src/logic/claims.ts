@@ -11,22 +11,71 @@ import { CONNECTOR_ALT, RANGE_DASHES } from './constants.ts';
 // EN and DE patterns are always both parsed; they cannot collide and drafts
 // occasionally mix languages.
 
-/**
- * @typedef {Object} ClaimSpan
- * @property {number} num    Claim number as written (may be out of order)
- * @property {number} start  Char offset of the claim's leading number
- * @property {number} end    Char offset where the next claim starts (or EOF)
- */
+/** A line-leading claim number as the extraction scan found it. */
+export interface ClaimNumber {
+  /** The number as written. */
+  value: number;
+  /** Char span of the number itself. */
+  start: number;
+  end: number;
+}
 
-/**
- * @typedef {Object} DepError
- * @property {number} claim  The claim containing the bad reference
- * @property {number} ref    The referenced claim number
- * @property {'missing'|'forward'|'self'} type
- * @property {number} start  Char span of the referenced number (for highlight)
- * @property {number} end
- * @property {string} key    Edit-stable dismissal id: "claim>ref#ordinal"
- */
+/** One claim's extent in the buffer. */
+export interface ClaimSpan {
+  /** Claim number as written (may be out of order). */
+  num: number;
+  /** Char offset of the claim's leading number. */
+  start: number;
+  /** Char offset where the next claim starts (or EOF). */
+  end: number;
+}
+
+/** Why a dependency reference is wrong. */
+export type DepErrorType = 'missing' | 'forward' | 'self';
+
+export interface DepError {
+  /** The claim containing the bad reference. */
+  claim: number;
+  /** The referenced claim number. */
+  ref: number;
+  type: DepErrorType;
+  /** Char span of the referenced number (for the highlight). */
+  start: number;
+  end: number;
+  /** Edit-stable dismissal id: "claim>ref#ordinal". */
+  key: string;
+}
+
+/** One literally written claim reference, with where it sits in the buffer. */
+export interface ClaimRef {
+  num: number;
+  start: number;
+  end: number;
+}
+
+/** What `parseClaimRefs` found inside one claim. */
+export interface ParsedClaimRefs {
+  /** Every literally written number, with its position. */
+  refs: ClaimRef[];
+  /** `refs` plus range intermediates ("1 to 4" adds 2 and 3). */
+  nums: Set<number>;
+  /** The claim used a "preceding claims" phrase. */
+  allPreceding: boolean;
+}
+
+/** The whole dependency picture for a claims buffer. */
+export interface ClaimGraph {
+  claims: ClaimSpan[];
+  /** Per claim, the transitive closure of the claims it depends on. */
+  ancestors: Map<number, Set<number>>;
+  depErrors: DepError[];
+  /**
+   * Each claim's immediate parents. Part of the contract, not an implementation
+   * detail: claimStats reads it to tell an independent claim from a dependent
+   * one and to spot multiple dependency, without re-parsing.
+   */
+  direct: Map<number, Set<number>>;
+}
 
 // "claim(s) 1, 2 or 4 to 7" — the word, then a number list whose connectors are
 // commas, EN/DE conjunctions or range words/dashes. The list regex backtracks
@@ -46,34 +95,31 @@ const PRECEDING_RE =
 
 /** Split the claims text into per-claim spans. `claimNums` comes from
  *  extractData's line-leading claim-number scan and is in document order. */
-export function segmentClaims(text, claimNums) {
+export function segmentClaims(text: string, claimNums: ClaimNumber[]): ClaimSpan[] {
   return claimNums.map((cn, i) => ({
     num: cn.value,
     start: cn.start,
-    end: i + 1 < claimNums.length ? claimNums[i + 1].start : text.length,
+    end: claimNums[i + 1]?.start ?? text.length,
   }));
 }
 
 /**
  * Parse the dependency references inside one claim's text.
- * @param {string} body   The claim's text (slice of the buffer)
- * @param {number} offset Char offset of `body` in the full buffer
- * @returns {{refs: {num:number,start:number,end:number}[], nums: Set<number>,
- *            allPreceding: boolean}}
- *   `refs`  — every literally written number, with its position
- *   `nums`  — refs plus range intermediates ("1 to 4" adds 2 and 3)
+ * @param body   The claim's text (slice of the buffer)
+ * @param offset Char offset of `body` in the full buffer
  */
-export function parseClaimRefs(body, offset = 0) {
-  const refs = [];
-  const nums = new Set();
+export function parseClaimRefs(body: string, offset = 0): ParsedClaimRefs {
+  const refs: ClaimRef[] = [];
+  const nums = new Set<number>();
   REF_RE.lastIndex = 0;
-  let m;
+  let m: RegExpExecArray | null;
   while ((m = REF_RE.exec(body)) !== null) {
-    const list = m[1];
+    // Group 1 is the number list and cannot be absent when exec matched.
+    const list = m[1] ?? '';
     const listStart = m.index + m[0].length - list.length;
     const numRe = /\d{1,4}/g;
-    let nm,
-      prev = null;
+    let nm: RegExpExecArray | null;
+    let prev: { num: number; endIdx: number } | null = null;
     while ((nm = numRe.exec(list)) !== null) {
       const num = parseInt(nm[0], 10);
       refs.push({
@@ -101,26 +147,23 @@ export function parseClaimRefs(body, offset = 0) {
  * implementation detail: claimStats reads it to tell an independent claim from a
  * dependent one and to spot multiple dependency, without re-parsing.
  *
- * @returns {{claims: ClaimSpan[], ancestors: Map<number, Set<number>>,
- *            depErrors: DepError[], direct: Map<number, Set<number>>} | null}
- *   null when there are no claims.
+ * @returns null when there are no claims.
  */
-export function computeClaimGraph(text, claimNums) {
+export function computeClaimGraph(text: string, claimNums: ClaimNumber[]): ClaimGraph | null {
   if (!claimNums || claimNums.length === 0) return null;
   const claims = segmentClaims(text, claimNums);
   const claimSet = new Set(claims.map((c) => c.num));
-  /** @type {DepError[]} */
-  const depErrors = [];
-  const direct = new Map(); // claim num → Set of direct parent nums
-  const keyCount = {};
+  const depErrors: DepError[] = [];
+  /** claim num → Set of direct parent nums */
+  const direct = new Map<number, Set<number>>();
+  const keyCount: Record<string, number | undefined> = {};
 
   for (const c of claims) {
     const { refs, nums, allPreceding } = parseClaimRefs(text.slice(c.start, c.end), c.start);
     const parents = direct.get(c.num) || new Set();
     if (allPreceding) for (const o of claims) if (o.num < c.num) parents.add(o.num);
     for (const r of refs) {
-      /** @type {'missing'|'self'|'forward'|null} */
-      const type = !claimSet.has(r.num)
+      const type: DepErrorType | null = !claimSet.has(r.num)
         ? 'missing'
         : r.num === c.num
           ? 'self'
@@ -147,11 +190,11 @@ export function computeClaimGraph(text, claimNums) {
   }
 
   // Transitive closure (memoized DFS; the graph is acyclic, see above).
-  const ancestors = new Map();
-  function closure(num) {
+  const ancestors = new Map<number, Set<number>>();
+  function closure(num: number): Set<number> {
     let anc = ancestors.get(num);
     if (anc) return anc;
-    anc = new Set();
+    anc = new Set<number>();
     ancestors.set(num, anc); // set before recursing (cheap cycle guard)
     for (const p of direct.get(num) || []) {
       anc.add(p);

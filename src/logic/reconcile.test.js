@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import { parseRefList } from './refListParse.js';
+import { parseRefList } from './refListParse.ts';
 import { reconcileRefList } from './reconcile.js';
-import { extractData } from './extract.js';
+import { extractData } from './extract.ts';
 
 describe('parseRefList', () => {
   it('parses the plain "10 housing" form', () => {

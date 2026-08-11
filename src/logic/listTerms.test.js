@@ -1,8 +1,8 @@
 import { describe, it, expect } from 'vitest';
-import { listTermIndex, listExtra, appliedListTerms, MAX_LIST_TERM_WORDS } from './listTerms.js';
+import { listTermIndex, listExtra, appliedListTerms, MAX_LIST_TERM_WORDS } from './listTerms.ts';
 import { stem } from './stem.ts';
 import { tokenize } from './tokenize.ts';
-import { extractData } from './extract.js';
+import { extractData } from './extract.ts';
 
 // Term tokens as extract.js collects them: the words in front of a sign, base
 // noun last.

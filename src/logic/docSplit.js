@@ -10,7 +10,7 @@
 //   Description = after a detailedDesc heading → next claims/signList heading
 //   Claims      = after a claims heading       → next signList/abstract heading
 
-import { SECTION_KINDS, matchHeading } from './headings.js';
+import { SECTION_KINDS, matchHeading } from './headings.ts';
 import { trimBlankEdges } from './blankEdges.ts';
 import { CLAIM_NUM_PREFIX_RE } from './constants.ts';
 

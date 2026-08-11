@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { segmentClaims, parseClaimRefs, computeClaimGraph } from './claims.js';
+import { segmentClaims, parseClaimRefs, computeClaimGraph } from './claims.ts';
 
 // Helper: claimNums as extractData produces them (line-leading numbers).
 const nums = (text) => {

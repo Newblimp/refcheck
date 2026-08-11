@@ -47,7 +47,7 @@ export const THRESHOLDS = {
  */
 
 /**
- * @param {ReturnType<import('./claims.js').computeClaimGraph>} graph
+ * @param {ReturnType<import('./claims.ts').computeClaimGraph>} graph
  * @returns {ClaimStats|null} null when the buffer holds no claims
  */
 export function claimStats(graph) {

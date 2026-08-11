@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { extractData } from './extract.js';
-import { computeClaimGraph } from './claims.js';
+import { extractData } from './extract.ts';
+import { computeClaimGraph } from './claims.ts';
 import { claimStats, THRESHOLDS } from './claimStats.js';
 
 // Build the graph the way extractData does, from a claims buffer.

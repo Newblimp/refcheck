@@ -1,3 +1,5 @@
+import type { Lang } from './constants.ts';
+
 // ── SECTION HEADINGS ─────────────────────────────────────────────────────────
 // The dictionary that drives .docx section detection. Everything here is DATA:
 // adding a language means adding a key to each entry below, and adding a section
@@ -13,7 +15,18 @@ export const SECTION_KINDS = {
   FIGURE_LISTING: 'figureListing',
   SIGN_LIST: 'signList',
   ABSTRACT: 'abstract',
-};
+} as const;
+
+/** The five kinds of section this dictionary can identify. */
+export type SectionKind = (typeof SECTION_KINDS)[keyof typeof SECTION_KINDS];
+
+/** A line classified as a heading. */
+export interface HeadingMatch {
+  kind: SectionKind;
+  lang: Lang;
+  /** True for a whole-line dictionary hit, false for the prefix fallback. */
+  exact: boolean;
+}
 
 /**
  * Exact whole-line headings, by kind then language.
@@ -23,7 +36,7 @@ export const SECTION_KINDS = {
  * Because matching is exact on the whole normalized line, they cannot collide —
  * the ambiguity only exists for the prefix fallback below, which is ordered.
  */
-export const HEADINGS = {
+export const HEADINGS: Record<SectionKind, Record<Lang, string[]>> = {
   [SECTION_KINDS.DETAILED_DESC]: {
     de: [
       'Detaillierte Beschreibung',
@@ -110,7 +123,7 @@ export const HEADINGS = {
 // specific first, so `brief description of the` claims the line before
 // `description of the` can. Only applied to short lines (see MAX_HEADING_LEN),
 // which is what keeps a prose paragraph from matching a prefix.
-const PREFIXES = [
+const PREFIXES: [prefix: string, kind: SectionKind, lang: Lang][] = [
   ['brief description of the', SECTION_KINDS.FIGURE_LISTING, 'en'],
   ['brief description of', SECTION_KINDS.FIGURE_LISTING, 'en'],
   ['kurzbeschreibung der', SECTION_KINDS.FIGURE_LISTING, 'de'],
@@ -159,7 +172,7 @@ const LEAD_LABEL_RE = /^(?:\d{1,3}|[IVXLCDM]{1,6}|[A-Za-z])[.)]\s+/;
 /** Normalize a line for heading comparison: unify whitespace (Word emits plenty
  *  of non-breaking spaces), drop a leading section label, drop trailing
  *  punctuation, lowercase. */
-export function normalizeHeading(line) {
+export function normalizeHeading(line: string | null | undefined): string {
   let s = String(line == null ? '' : line)
     .replace(/[   \t]/g, ' ')
     .replace(/\s+/g, ' ')
@@ -170,11 +183,11 @@ export function normalizeHeading(line) {
 }
 
 // Exact lookup: normalized heading → {kind, lang}. Built once at module load.
-const EXACT = new Map();
-for (const [kind, byLang] of Object.entries(HEADINGS)) {
-  for (const [lang, list] of Object.entries(byLang)) {
-    if (!Array.isArray(list)) continue;
-    for (const h of list) {
+const EXACT = new Map<string, { kind: SectionKind; lang: Lang }>();
+for (const kind of Object.keys(HEADINGS) as SectionKind[]) {
+  const byLang = HEADINGS[kind];
+  for (const lang of Object.keys(byLang) as Lang[]) {
+    for (const h of byLang[lang]) {
       const k = normalizeHeading(h);
       if (k && !EXACT.has(k)) EXACT.set(k, { kind, lang });
     }
@@ -183,18 +196,16 @@ for (const [kind, byLang] of Object.entries(HEADINGS)) {
 
 /**
  * Classify a single line as a section heading.
- * @param {string} line The paragraph's full text.
- * @returns {{kind: string, lang: 'en'|'de', exact: boolean}|null}
+ * @param line The paragraph's full text.
  */
-export function matchHeading(line) {
+export function matchHeading(line: string): HeadingMatch | null {
   const norm = normalizeHeading(line);
   if (!norm) return null;
   const hit = EXACT.get(norm);
   if (hit) return { kind: hit.kind, lang: hit.lang, exact: true };
   if (norm.length > MAX_HEADING_LEN) return null;
   for (const [prefix, kind, lang] of PREFIXES) {
-    if (norm.startsWith(prefix))
-      return { kind, lang: /** @type {'en'|'de'} */ (lang), exact: false };
+    if (norm.startsWith(prefix)) return { kind, lang, exact: false };
   }
   return null;
 }

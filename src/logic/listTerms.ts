@@ -1,6 +1,7 @@
 import { stem } from './stem.ts';
 import { tokenize } from './tokenize.ts';
-import { parseRefList } from './refListParse.js';
+import { parseRefList } from './refListParse.ts';
+import type { Lang } from './constants.ts';
 
 // ── MULTI-WORD TERMS TAKEN FROM THE REFERENCE LIST ──────────────────────────
 //
@@ -30,25 +31,33 @@ import { parseRefList } from './refListParse.js';
 // listed phrase could never match anything anyway.
 export const MAX_LIST_TERM_WORDS = 5;
 
-/**
- * @typedef {Object} ListTerm
- * @property {string[]} stems  Stemmed words, in written order ("control unit")
- * @property {string} key      stems.join(' ') — the same shape as a termStem
- * @property {string} term     Raw lowercased phrase, for display
- */
-/**
- * @typedef {Object} ListTermIndex
- * @property {Map<string, Map<string, ListTerm[]>>} byBase  Base (last) stem →
- *   preceding stem → phrases ending in those two words, longest first. Keying on
- *   the last TWO words (rather than the base noun alone) is what keeps the
- *   lookup O(1) on a list that names three hundred different "… element"s.
- * @property {ListTerm[]} all   Every phrase, in list order
- * @property {string} sig       Content signature: equal signatures ⇒ equal index
- * @property {number} size
- */
+/** One multi-word phrase the drafter's list spells out. */
+export interface ListTerm {
+  /** Stemmed words, in written order ("control unit"). */
+  stems: string[];
+  /** stems.join(' ') — the same shape as a termStem. */
+  key: string;
+  /** Raw lowercased phrase, for display. */
+  term: string;
+}
+
+export interface ListTermIndex {
+  /**
+   * Base (last) stem → preceding stem → phrases ending in those two words,
+   * longest first. Keying on the last TWO words (rather than the base noun
+   * alone) is what keeps the lookup O(1) on a list that names three hundred
+   * different "… element"s.
+   */
+  byBase: Map<string, Map<string, ListTerm[]>>;
+  /** Every phrase, in list order. */
+  all: ListTerm[];
+  /** Content signature: equal signatures ⇒ equal index. */
+  sig: string;
+  size: number;
+}
 
 /** Shared empty index, so "no list" costs no allocation and keeps one identity. */
-const EMPTY_INDEX = { byBase: new Map(), all: [], sig: '', size: 0 };
+const EMPTY_INDEX: ListTermIndex = { byBase: new Map(), all: [], sig: '', size: 0 };
 
 /**
  * Build the multi-word index from a drafter's reference-sign list.
@@ -57,22 +66,19 @@ const EMPTY_INDEX = { byBase: new Map(), all: [], sig: '', size: 0 };
  * suppress the ordinal auto-detection would be reading more into an abbreviated
  * list than it says.
  *
- * @param {string} listText
- * @param {'en'|'de'} lang
- * @returns {ListTermIndex}
  */
-export function listTermIndex(listText, lang) {
+export function listTermIndex(listText: string, lang: Lang): ListTermIndex {
   if (!listText || !listText.trim()) return EMPTY_INDEX;
   const { entries } = parseRefList(listText);
-  const byBase = new Map();
-  const all = [];
-  const seen = new Set();
+  const byBase = new Map<string, Map<string, ListTerm[]>>();
+  const all: ListTerm[] = [];
+  const seen = new Set<string>();
   for (const e of entries) {
     // Tokenizing (rather than splitting on whitespace) drops the punctuation a
     // real list carries — "housing, upper" / "cover (front)" — and uses exactly
     // the word boundaries the text side will be matched with. A stray number in
     // the term ("10 housing 12") is not part of the phrase.
-    const words = [];
+    const words: string[] = [];
     for (const tok of tokenize(e.term)) {
       if (/^\d/.test(tok.word)) continue;
       words.push(tok.word.toLowerCase());
@@ -82,10 +88,11 @@ export function listTermIndex(listText, lang) {
     const key = stems.join(' ');
     if (seen.has(key)) continue; // same phrase listed twice (or as a plural)
     seen.add(key);
-    const rec = { stems, key, term: words.join(' ') };
+    const rec: ListTerm = { stems, key, term: words.join(' ') };
     all.push(rec);
-    const base = stems[stems.length - 1];
-    const prev = stems[stems.length - 2];
+    // words.length >= 2 was checked above, so both of these exist.
+    const base = stems[stems.length - 1] ?? '';
+    const prev = stems[stems.length - 2] ?? '';
     let byPrev = byBase.get(base);
     if (!byPrev) byBase.set(base, (byPrev = new Map()));
     const at = byPrev.get(prev);
@@ -115,17 +122,20 @@ export function listTermIndex(listText, lang) {
  * collectTermToks), base noun last. Returns 0 when the list says nothing about
  * this term, so the caller can fall back to its own detection.
  *
- * @param {ListTermIndex} index
- * @param {{word: string}[]} toks
- * @param {string} baseStem  Stem of the last token (the caller already has it)
- * @param {'en'|'de'} lang
- * @returns {number}
+ * @param baseStem Stem of the last token (the caller already has it)
  */
-export function listExtra(index, toks, baseStem, lang) {
+export function listExtra(
+  index: ListTermIndex,
+  toks: { word: string }[],
+  baseStem: string,
+  lang: Lang
+): number {
   if (!index || !index.size || toks.length < 2) return 0;
   const byPrev = index.byBase.get(baseStem);
   if (!byPrev) return 0;
-  const recs = byPrev.get(stem(toks[toks.length - 2].word, lang));
+  // toks.length >= 2 was checked above.
+  const prevWord = toks[toks.length - 2]?.word ?? '';
+  const recs = byPrev.get(stem(prevWord, lang));
   if (!recs) return 0;
   for (const rec of recs) {
     const n = rec.stems.length;
@@ -134,7 +144,8 @@ export function listExtra(index, toks, baseStem, lang) {
     // only anything further left needs comparing.
     let ok = true;
     for (let k = n - 3; k >= 0; k--) {
-      if (stem(toks[toks.length - n + k].word, lang) !== rec.stems[k]) {
+      const word = toks[toks.length - n + k]?.word;
+      if (word === undefined || stem(word, lang) !== rec.stems[k]) {
         ok = false;
         break;
       }
@@ -149,13 +160,15 @@ export function listExtra(index, toks, baseStem, lang) {
  * i.e. where the extension took effect. A term the drafter has since reduced by
  * hand drops out of this list, which is what makes the panel's count honest.
  *
- * @param {ListTermIndex} index
- * @param {Object<string, unknown>} termData  From the extraction result
- * @returns {string[]} Raw phrases, in list order
+ * @param termData From the extraction result
+ * @returns Raw phrases, in list order
  */
-export function appliedListTerms(index, termData) {
+export function appliedListTerms(
+  index: ListTermIndex,
+  termData: Record<string, unknown> | null | undefined
+): string[] {
   if (!index || !index.size || !termData) return [];
-  const out = [];
+  const out: string[] = [];
   for (const rec of index.all) if (termData[rec.key]) out.push(rec.term);
   return out;
 }

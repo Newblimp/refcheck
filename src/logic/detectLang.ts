@@ -7,6 +7,7 @@
 // place to extend when another language is added.
 
 import { DE_ART, EXCL } from './constants.ts';
+import type { Lang } from './constants.ts';
 import { tokenize } from './tokenize.ts';
 
 // Unambiguously German function words drawn from the existing German half of
@@ -54,18 +55,14 @@ const EN_WORDS = new Set([
 // Characters that occur in German but not English.
 const UMLAUTS = new Set([...'äöüßÄÖÜ']);
 
-/**
- * Score text as English or German by function-word frequency.
- * @param {string} text
- * @returns {'en'|'de'}
- */
-export function detectLangFromText(text) {
+/** Score text as English or German by function-word frequency. */
+export function detectLangFromText(text: string): Lang {
   if (!text) return 'en';
   // Characters that only occur in German carry a lot of signal on their own.
   // Counted with a loop rather than text.match(…).length, which materialised an
   // array holding every umlaut in the document just to read its size.
   let umlauts = 0;
-  for (let i = 0; i < text.length; i++) if (UMLAUTS.has(text[i])) umlauts++;
+  for (let i = 0; i < text.length; i++) if (UMLAUTS.has(text[i] ?? '')) umlauts++;
   let de = umlauts * 2,
     en = 0;
   for (const tok of tokenize(text)) {
@@ -76,13 +73,18 @@ export function detectLangFromText(text) {
   return de > en ? 'de' : 'en';
 }
 
+/** Where the language came from — reported in the import banner. */
+export type LangSource = 'headings' | 'text';
+
 /**
  * Language for an imported document: heading-derived first, text second.
- * @param {{lang: 'en'|'de'|null}} split  Result of splitPatentDoc
- * @param {string} text                   Fallback body text
- * @returns {{lang: 'en'|'de', from: 'headings'|'text'}}
+ * @param split Result of splitPatentDoc (only its `lang` is read)
+ * @param text  Fallback body text
  */
-export function detectLang(split, text) {
+export function detectLang(
+  split: { lang: Lang | null } | null | undefined,
+  text: string
+): { lang: Lang; from: LangSource } {
   if (split?.lang) return { lang: split.lang, from: 'headings' };
   return { lang: detectLangFromText(text), from: 'text' };
 }

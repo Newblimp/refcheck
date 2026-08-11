@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { extractData } from './extract.js';
+import { extractData } from './extract.ts';
 import { computeCrossRef } from './crossref.js';
 
 const desc = (txt) => extractData(txt, 'en', {}, true, false);

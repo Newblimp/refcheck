@@ -1,12 +1,12 @@
 import { useState, useRef, useCallback, useEffect, useMemo } from 'react';
 import { T } from '../i18n.js';
-import { extractData, classify } from '../logic/extract.js';
+import { extractData, classify } from '../logic/extract.ts';
 import { getAllErrors, errorGroup } from '../logic/errorSpans.js';
 import { ERROR_KINDS, KIND_BY_ID, kindItems } from '../logic/errorKinds.js';
 import { buildHtml, findAtPos } from '../logic/buildHtml.js';
 import { computeCrossRef } from '../logic/crossref.js';
 import { reconcileRefList } from '../logic/reconcile.js';
-import { listTermIndex, appliedListTerms } from '../logic/listTerms.js';
+import { listTermIndex, appliedListTerms } from '../logic/listTerms.ts';
 import { claimStats } from '../logic/claimStats.js';
 import { compareSigns, disKey } from '../logic/constants.ts';
 import { ctxMenuItems } from '../logic/ctxMenuItems.js';
@@ -197,7 +197,7 @@ export function App() {
         );
         if (!termMatch) continue;
       }
-      (classify(sign, sData, termData, mode) === 'warn' ? err : ok).push([sign, sData]);
+      (classify(sData, termData, mode) === 'warn' ? err : ok).push([sign, sData]);
     }
     const byN = ([a], [b]) => compareSigns(a, b);
     return { errSigns: err.sort(byN), okSigns: ok.sort(byN) };

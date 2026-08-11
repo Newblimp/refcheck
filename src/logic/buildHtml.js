@@ -30,7 +30,7 @@ export const esc = escapeMarkup;
  * <mark> tags from the output must reproduce esc(text) exactly, or the backdrop
  * misaligns with the textarea (guarded by a test).
  * @param {string} text
- * @param {import('./extract.js').ExtractResult} res
+ * @param {import('./extract.ts').ExtractResult} res
  * @param {'description'|'claims'} mode
  * @param {Set<string>} dis       Dismissal keys
  * @param {string|null} focusSign Sign to mark with h-focus

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { detectLang, detectLangFromText } from './detectLang.js';
+import { detectLang, detectLangFromText } from './detectLang.ts';
 
 describe('detectLangFromText', () => {
   it('recognises German prose', () => {

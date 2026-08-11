@@ -1,10 +1,10 @@
 import { describe, it, expect } from 'vitest';
-import { extractData, classify, detectOrdStems } from './extract.js';
+import { extractData, classify, detectOrdStems } from './extract.ts';
 import { getAllErrors } from './errorSpans.js';
 import { tokenize } from './tokenize.ts';
 import { stem } from './stem.ts';
 import { compareSigns } from './constants.ts';
-import { listTermIndex } from './listTerms.js';
+import { listTermIndex } from './listTerms.ts';
 
 // Raw terms recorded for a given sign (across all its term stems).
 const rawTermsFor = (res, sign) =>
@@ -23,7 +23,7 @@ describe('extractData — consistency (description)', () => {
 
   it('classifies every sign as consistent', () => {
     for (const sign of Object.keys(res.signData)) {
-      expect(classify(sign, res.signData[sign], res.termData, 'description')).toBe('ok');
+      expect(classify(res.signData[sign], res.termData, 'description')).toBe('ok');
     }
   });
 });
@@ -33,14 +33,14 @@ describe('extractData — inconsistencies', () => {
     const res = extractData('The housing 12 is connected to the casing 12.', 'en');
     expect(Object.keys(res.signData['12'].terms).length).toBe(2);
     expect(rawTermsFor(res, '12').sort()).toEqual(['casing', 'housing']);
-    expect(classify('12', res.signData['12'], res.termData, 'description')).toBe('warn');
+    expect(classify(res.signData['12'], res.termData, 'description')).toBe('warn');
   });
 
   it('flags one term mapped to two different signs', () => {
     const res = extractData('The housing 12 is large. The housing 13 is small.', 'en');
     const stem = Object.keys(res.signData['12'].terms)[0];
     expect(Object.keys(res.termData[stem].signs).sort()).toEqual(['12', '13']);
-    expect(classify('12', res.signData['12'], res.termData, 'description')).toBe('warn');
+    expect(classify(res.signData['12'], res.termData, 'description')).toBe('warn');
   });
 });
 
@@ -48,8 +48,8 @@ describe('extractData — claims mode parentheses', () => {
   it('warns when a sign is not wrapped in parentheses', () => {
     const res = extractData('1. A device 10 comprising a housing (12).', 'en', {}, true, true);
     // 10 is bare (not in parens) → warn; 12 is in parens → ok
-    expect(classify('10', res.signData['10'], res.termData, 'claims')).toBe('warn');
-    expect(classify('12', res.signData['12'], res.termData, 'claims')).toBe('ok');
+    expect(classify(res.signData['10'], res.termData, 'claims')).toBe('warn');
+    expect(classify(res.signData['12'], res.termData, 'claims')).toBe('ok');
   });
 });
 
@@ -80,7 +80,7 @@ describe('extractData — parenthesised sign groups "(6, 12; 13)"', () => {
   it('a single-sign group (10) still counts as parenthesised', () => {
     const res = extractData('A device (10).', 'en', {}, true, true);
     expect(res.signData['10'].inPC).toBe(1);
-    expect(classify('10', res.signData['10'], res.termData, 'claims')).toBe('ok');
+    expect(classify(res.signData['10'], res.termData, 'claims')).toBe('ok');
   });
 });
 
@@ -103,7 +103,7 @@ describe('extractData — claim numbering', () => {
   it('every parenthesised sign is consistent in claims mode', () => {
     const res = extractData(claims, 'en', {}, true, true);
     for (const sign of Object.keys(res.signData)) {
-      expect(classify(sign, res.signData[sign], res.termData, 'claims')).toBe('ok');
+      expect(classify(res.signData[sign], res.termData, 'claims')).toBe('ok');
     }
   });
 
@@ -202,8 +202,8 @@ describe('detectOrdStems & multi-word terms', () => {
     ]);
     expect(Object.keys(res.signData['21'].terms)[0]).toContain(stem('bearing', 'en'));
     // The two bearings are distinct multi-word terms, so neither is an inconsistency.
-    expect(classify('20', res.signData['20'], res.termData, 'description')).toBe('ok');
-    expect(classify('21', res.signData['21'], res.termData, 'description')).toBe('ok');
+    expect(classify(res.signData['20'], res.termData, 'description')).toBe('ok');
+    expect(classify(res.signData['21'], res.termData, 'description')).toBe('ok');
   });
 
   it('honours a manual multi-word override (mwo)', () => {
@@ -447,7 +447,7 @@ describe('extractData — Roman-numeral step signs', () => {
   it('flags a Roman step used with two different terms as an inconsistency', () => {
     const res = extractData('The bracket II holds it. The clamp II holds it.', 'en');
     expect(Object.keys(res.signData['II'].terms).length).toBe(2);
-    expect(classify('II', res.signData['II'], res.termData, 'description')).toBe('warn');
+    expect(classify(res.signData['II'], res.termData, 'description')).toBe('warn');
   });
 
   it('does not misread a capitalised sentence-initial word as a Roman sign', () => {
@@ -643,7 +643,7 @@ describe('classify — claims parentheses', () => {
     const res = extractData('1. A housing (12) and a housing 12.', 'en', {}, true, true);
     expect(res.signData['12'].count).toBe(2);
     expect(res.signData['12'].inPC).toBe(1);
-    expect(classify('12', res.signData['12'], res.termData, 'claims')).toBe('warn');
+    expect(classify(res.signData['12'], res.termData, 'claims')).toBe('warn');
   });
 });
 

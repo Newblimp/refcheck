@@ -1,5 +1,5 @@
 import { memo } from 'react';
-import { classify } from '../logic/extract.js';
+import { classify } from '../logic/extract.ts';
 import { disKey } from '../logic/constants.ts';
 import { activatable } from './cardProps.js';
 
@@ -18,7 +18,7 @@ function SignCardImpl({
   onHover,
 }) {
   const isDis = dis.has(disKey.sign(sign));
-  const sev = isDis ? 'dim' : classify(sign, sData, termData, mode);
+  const sev = isDis ? 'dim' : classify(sData, termData, mode);
   const terms = Object.keys(sData.terms);
 
   const notes = [];

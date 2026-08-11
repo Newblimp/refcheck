@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { ctxMenuItems } from './ctxMenuItems.js';
-import { extractData } from './extract.js';
+import { extractData } from './extract.ts';
 import { findAtPos } from './buildHtml.js';
 import { disKey } from './constants.ts';
 import { T } from '../i18n.js';

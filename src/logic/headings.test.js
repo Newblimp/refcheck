@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { matchHeading, normalizeHeading, SECTION_KINDS, HEADINGS } from './headings.js';
+import { matchHeading, normalizeHeading, SECTION_KINDS, HEADINGS } from './headings.ts';
 
 const kindOf = (s) => matchHeading(s)?.kind ?? null;
 const langOf = (s) => matchHeading(s)?.lang ?? null;

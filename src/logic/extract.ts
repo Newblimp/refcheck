@@ -6,87 +6,134 @@ import {
   isSignToken,
   isClaimNumber,
   SIGN_RE,
-  disKey,
   CONNECTOR_ALT,
   RANGE_DASHES,
 } from './constants.ts';
 import { stem } from './stem.ts';
 import { tokenize } from './tokenize.ts';
-import { computeClaimGraph } from './claims.js';
-import { listExtra } from './listTerms.js';
+import { computeClaimGraph } from './claims.ts';
+import type { ClaimGraph, ClaimNumber, ClaimSpan, DepError } from './claims.ts';
+import type { ArticleType, Lang, Mode } from './constants.ts';
+import type { Token } from './tokenize.ts';
+import type { ListTermIndex } from './listTerms.ts';
+import { listExtra } from './listTerms.ts';
 
 // ── EXTRACTION ─────────────────────────────────────────────────────────────
 //
 // Shape of the extraction result (the app's core data structure):
 //
+/** One occurrence of a sign, and the term written in front of it. */
+export interface SignPosition {
+  /** Char span of the term words. */
+  termStart: number;
+  termEnd: number;
+  /** Char span of the sign itself. */
+  signStart: number;
+  signEnd: number;
+  /** Raw lowercased term ("control unit"). */
+  term: string;
+  /** Stemmed term key — the identity a term is tracked under. */
+  termStem: string;
+  /** Sign was written as "(12)". */
+  inParens: boolean;
+}
+
+/** Everything known about one reference sign. */
+export interface SignEntry {
+  /** termStem → occurrence count. */
+  terms: Record<string, number | undefined>;
+  /** One entry per occurrence. */
+  positions: SignPosition[];
+  /** Total occurrences. */
+  count: number;
+  /** Occurrences inside parentheses. */
+  inPC: number;
+}
+
+/** Everything known about one term. */
+export interface TermEntry {
+  /** sign → occurrence count. */
+  signs: Record<string, number | undefined>;
+  /** Raw spellings seen for this stem. */
+  rawTerms: Set<string>;
+}
+
 /**
- * @typedef {Object} SignPosition
- * @property {number} termStart  Char span of the term words
- * @property {number} termEnd
- * @property {number} signStart  Char span of the sign itself
- * @property {number} signEnd
- * @property {string} term       Raw lowercased term ("control unit")
- * @property {string} termStem   Stemmed term key ("control unit" → "control unit" stems)
- * @property {boolean} inParens  Sign was written as "(12)"
+ * One article occurrence in front of a sign-attached term — a candidate for the
+ * article check, before it has been judged.
  */
-/**
- * @typedef {Object} SignEntry
- * @property {Object<string, number>} terms  termStem → occurrence count
- * @property {SignPosition[]} positions      One entry per occurrence
- * @property {number} count                  Total occurrences
- * @property {number} inPC                   Occurrences inside parentheses
- */
-/**
- * @typedef {Object} TermEntry
- * @property {Object<string, number>} signs  sign → occurrence count
- * @property {Set<string>} rawTerms          Raw spellings seen for this stem
- */
-/**
- * @typedef {Object} ArtError
- * @property {string} article    The offending article, lowercased
- * @property {'def'|'indef'} type
- * @property {number} artStart   Char span of the article
- * @property {number} artEnd
- * @property {number} termStart  Start of the term the article belongs to
- * @property {number} signStart
- * @property {string} sign
- * @property {string} termStem
- * @property {'first-def'|'repeat-indef'|'de-gender'} errType
- * @property {string} [prevArt]  de-gender only: the earlier conflicting article
- */
-/**
- * @typedef {Object} BareTerm
- * @property {number} termStart  Char span of the sign-less term occurrence
- * @property {number} termEnd
- * @property {string} termStem
- * @property {string} term       Raw lowercased term
- * @property {string[]} signs    Signs this term is known under (the hint)
- */
-/**
- * @typedef {Object} NumError
- * @property {number} value      Claim number as written
- * @property {number} expected   Number that was expected at this position
- * @property {number} start      Char span of the written number
- * @property {number} end
- * @property {string} key        Edit-stable dismissal id ("value#ordinal")
- */
-/**
- * @typedef {Object} ExtractResult
- * @property {Object<string, SignEntry>} signData
- * @property {Object<string, TermEntry>} termData
- * @property {ArtError[]} artErrors
- * @property {BareTerm[]} bareTerms
- * @property {NumError[]} numErrors
- * @property {import('./claims.js').DepError[]} depErrors  Claims mode only
- * @property {Set<string>} noTermSigns  Signs seen only without a term
- * @property {ReturnType<import('./claims.js').computeClaimGraph>} claimGraph  Claims mode only
- */
+export interface ArtOccurrence {
+  /** The article, lowercased. */
+  article: string;
+  type: ArticleType;
+  /** Char span of the article. */
+  artStart: number;
+  artEnd: number;
+  /** Start of the term the article belongs to. */
+  termStart: number;
+  signStart: number;
+  sign: string;
+  termStem: string;
+}
+
+/** Which article rule was broken. */
+export type ArtErrorType = 'first-def' | 'repeat-indef' | 'de-gender';
+
+export interface ArtError extends ArtOccurrence {
+  errType: ArtErrorType;
+  /** de-gender only: the earlier conflicting article. */
+  prevArt?: string;
+}
+
+/** A term written without its reference sign nearby. */
+export interface BareTerm {
+  /** Char span of the sign-less term occurrence. */
+  termStart: number;
+  termEnd: number;
+  termStem: string;
+  /** Raw lowercased term. */
+  term: string;
+  /** Signs this term is known under (the hint shown on the card). */
+  signs: string[];
+}
+
+/** A claim number that breaks the 1, 2, 3… run. */
+export interface NumError {
+  /** Claim number as written. */
+  value: number;
+  /** Number that was expected at this position. */
+  expected: number;
+  /** Char span of the written number. */
+  start: number;
+  end: number;
+  /** Edit-stable dismissal id ("value#ordinal"). */
+  key: string;
+}
+
+/** Everything one pass over a buffer produces. */
+export interface ExtractResult {
+  signData: Record<string, SignEntry | undefined>;
+  termData: Record<string, TermEntry | undefined>;
+  artErrors: ArtError[];
+  bareTerms: BareTerm[];
+  numErrors: NumError[];
+  /** Claims mode only; empty otherwise. */
+  depErrors: DepError[];
+  /** Signs seen only without a term. */
+  noTermSigns: Set<string>;
+  /** Claims mode only; null otherwise. */
+  claimGraph: ClaimGraph | null;
+}
+
+/** How severe a sign's state is — drives its card and its highlight. */
+export type Severity = 'warn' | 'ok';
 
 // A number written in square brackets ([0012]) is a paragraph number, not a
 // reference sign — ignore it everywhere a sign could be detected. A bracket
 // directly on EITHER side counts, so every member of a bracketed group
 // ([0012]-[0015], [18, 20]) is caught, not just fully enclosed tokens.
-const isBracketed = (text, tok) => text[tok.start - 1] === '[' || text[tok.end] === ']';
+const isBracketed = (text: string, tok: Token): boolean =>
+  text[tok.start - 1] === '[' || text[tok.end] === ']';
 
 // Scanning regexes live at module scope: none of them depend on an argument, and
 // extractData runs twice per debounced keystroke, so rebuilding them per call was
@@ -119,11 +166,16 @@ const MAX_TERM_WORDS = 5;
 // Multiplier for packing a [start, end] character span into one number.
 const SPAN_KEY_STRIDE = 67108864; // 2^26
 
-export function detectOrdStems(tokens, lang, text, isClaims) {
-  const s = new Set();
+export function detectOrdStems(
+  tokens: Token[],
+  lang: Lang,
+  text: string,
+  isClaims: boolean
+): Set<string> {
+  const s = new Set<string>();
   for (let i = 2; i < tokens.length; i++) {
     const t = tokens[i];
-    if (!isSignToken(t.word)) continue;
+    if (!t || !isSignToken(t.word)) continue;
     if (isBracketed(text, t)) continue;
     if (isClaims && isClaimNumber(text, t)) continue;
     const p1 = tokens[i - 1],
@@ -138,12 +190,17 @@ export function detectOrdStems(tokens, lang, text, isClaims) {
 
 // Walk backwards from token index `i` collecting the term tokens (and a leading
 // article) that belong to the sign at `i`. Returns {allTT, artTok}.
-function collectTermToks(toks, i, lang) {
-  let j = i - 1,
-    artTok = null;
-  const allTT = [];
+function collectTermToks(
+  toks: Token[],
+  i: number,
+  lang: Lang
+): { allTT: Token[]; artTok: Token | null } {
+  let j = i - 1;
+  let artTok: Token | null = null;
+  const allTT: Token[] = [];
   while (j >= 0 && allTT.length < MAX_TERM_WORDS) {
     const t = toks[j];
+    if (!t) break;
     const lo = t.word.toLowerCase();
     if (/^\d/.test(t.word)) break;
     if (isArt(lo, lang)) {
@@ -170,19 +227,31 @@ function collectTermToks(toks, i, lang) {
  * "bearing"), which is why the index below is sorted longest-first and the loop
  * breaks on the first match.
  *
- * @returns {BareTerm[]}
  */
-function findBareTerms({ toks, text, termData, signData, lang, isClaims }) {
+function findBareTerms({
+  toks,
+  text,
+  termData,
+  signData,
+  lang,
+  isClaims,
+}: {
+  toks: Token[];
+  text: string;
+  termData: Record<string, TermEntry | undefined>;
+  signData: Record<string, SignEntry | undefined>;
+  lang: Lang;
+  isClaims: boolean;
+}): BareTerm[] {
   // Index: stem of the term's last word → [termStem, …], longest term first.
-  const baseToTerms = {};
+  const baseToTerms: Record<string, string[] | undefined> = {};
   for (const ts of Object.keys(termData)) {
     const parts = ts.split(' ');
-    const base = parts[parts.length - 1];
-    if (!baseToTerms[base]) baseToTerms[base] = [];
-    baseToTerms[base].push(ts);
+    const base = parts[parts.length - 1] ?? '';
+    (baseToTerms[base] ??= []).push(ts);
   }
-  for (const k of Object.keys(baseToTerms))
-    baseToTerms[k].sort((a, b) => b.split(' ').length - a.split(' ').length);
+  for (const list of Object.values(baseToTerms))
+    list?.sort((a, b) => b.split(' ').length - a.split(' ').length);
 
   const coveredByKnownRange = buildKnownRangeIndex(signData);
 
@@ -190,12 +259,13 @@ function findBareTerms({ toks, text, termData, signData, lang, isClaims }) {
   // this instead of re-stemming the same tokens for each overlapping term.
   const stems = toks.map((t) => stem(t.word, lang));
 
-  const bareTerms = [];
-  const bareSpans = new Set();
+  const bareTerms: BareTerm[] = [];
+  const bareSpans = new Set<number>();
   for (let i = 0; i < toks.length; i++) {
-    const s = stems[i];
-    if (!baseToTerms[s]) continue;
-    for (const ts of baseToTerms[s]) {
+    const s = stems[i] ?? '';
+    const candidates = baseToTerms[s];
+    if (!candidates) continue;
+    for (const ts of candidates) {
       const parts = ts.split(' ');
       const wc = parts.length;
       if (i < wc - 1) continue;
@@ -207,8 +277,9 @@ function findBareTerms({ toks, text, termData, signData, lang, isClaims }) {
         }
       }
       if (!match) continue;
-      const tStart = toks[i - (wc - 1)].start,
-        tEnd = toks[i].end;
+      // The word-count loop above already indexed these, so both exist.
+      const tStart = toks[i - (wc - 1)]?.start ?? 0,
+        tEnd = toks[i]?.end ?? 0;
       if (coveredByKnownRange(tStart, tEnd)) break;
       // Numeric span key: avoids a string allocation per candidate. Safe while
       // documents stay under SPAN_KEY_STRIDE characters, which is ~67M.
@@ -254,13 +325,15 @@ function findBareTerms({ toks, text, termData, signData, lang, isClaims }) {
  * (A coverage bitmap would be simpler still, but it would also treat two
  * adjacent ranges as covering a span that neither one contains.)
  */
-function buildKnownRangeIndex(signData) {
-  const ranges = [];
+function buildKnownRangeIndex(
+  signData: Record<string, SignEntry | undefined>
+): (tStart: number, tEnd: number) => boolean {
+  const ranges: [start: number, end: number][] = [];
   for (const sData of Object.values(signData))
-    for (const p of sData.positions) ranges.push([p.termStart, p.termEnd]);
+    for (const p of sData?.positions ?? []) ranges.push([p.termStart, p.termEnd]);
   ranges.sort((a, b) => a[0] - b[0]);
-  const rangeStarts = [];
-  const maxEndUpTo = [];
+  const rangeStarts: number[] = [];
+  const maxEndUpTo: number[] = [];
   let running = -1;
   for (const [ks, ke] of ranges) {
     rangeStarts.push(ks);
@@ -273,12 +346,12 @@ function buildKnownRangeIndex(signData) {
       idx = -1;
     while (lo <= hi) {
       const mid = (lo + hi) >> 1;
-      if (rangeStarts[mid] <= tStart) {
+      if ((rangeStarts[mid] ?? Infinity) <= tStart) {
         idx = mid;
         lo = mid + 1;
       } else hi = mid - 1;
     }
-    return idx >= 0 && maxEndUpTo[idx] >= tEnd;
+    return idx >= 0 && (maxEndUpTo[idx] ?? -1) >= tEnd;
   };
 }
 
@@ -286,15 +359,14 @@ function buildKnownRangeIndex(signData) {
  * Claim numbers must run 1, 2, 3… Each error carries an edit-stable key (value
  * plus its ordinal among errors with the same value) so a dismissal survives
  * edits elsewhere in the buffer.
- * @returns {NumError[]}
  */
-function computeNumberingErrors(claimNums) {
-  const numErrors = [];
-  const keyCount = {};
+function computeNumberingErrors(claimNums: ClaimNumber[]): NumError[] {
+  const numErrors: NumError[] = [];
+  const keyCount: Record<number, number | undefined> = {};
   let expected = 1;
   for (const cn of claimNums) {
     if (cn.value !== expected) {
-      const n = (keyCount[cn.value] = (keyCount[cn.value] || 0) + 1);
+      const n = (keyCount[cn.value] = (keyCount[cn.value] ?? 0) + 1);
       numErrors.push({
         value: cn.value,
         expected,
@@ -332,18 +404,26 @@ function computeArticleErrors({
   claimGraph,
   claimAt,
   lang,
-}) {
-  const artErrors = [];
+}: {
+  artByTerm: Record<string, ArtOccurrence[] | undefined>;
+  termPositions: Record<string, number[] | undefined>;
+  termFirstPos: Record<string, number | undefined>;
+  claimGraph: ClaimGraph | null;
+  claimAt: (pos: number) => ClaimSpan | null;
+  lang: Lang;
+}): ArtError[] {
+  const artErrors: ArtError[] = [];
   for (const [ts, occs] of Object.entries(artByTerm)) {
+    if (!occs) continue;
     occs.sort((a, b) => a.artStart - b.artStart);
     if (claimGraph) {
       const positions = termPositions[ts] || [];
       // Locate each position's claim ONCE rather than re-running the claimAt
       // binary search for every (occurrence, position) pair — that inner lookup
       // made a frequently-repeated term cost O(occurrences² · log claims).
-      const posClaimNum = new Array(positions.length);
+      const posClaimNum: (number | null)[] = new Array(positions.length);
       for (let i = 0; i < positions.length; i++) {
-        const pc = claimAt(positions[i]);
+        const pc = claimAt(positions[i] ?? 0);
         posClaimNum[i] = pc === null ? null : pc.num;
       }
       for (const occ of occs) {
@@ -351,9 +431,9 @@ function computeArticleErrors({
         const anc = c ? claimGraph.ancestors.get(c.num) : null;
         let introduced = false;
         for (let i = 0; i < positions.length; i++) {
-          const p = positions[i];
+          const p = positions[i] ?? 0;
           if (p === occ.termStart) continue;
-          const pcNum = posClaimNum[i];
+          const pcNum = posClaimNum[i] ?? null;
           const hit =
             pcNum === null
               ? true // preamble introduces globally
@@ -392,10 +472,10 @@ function computeArticleErrors({
  * definite article (der/die/das) across the document is a drafting slip. The
  * first article seen wins; every later conflicting one is reported against it.
  */
-function addGenderConflicts(occs, artErrors) {
+function addGenderConflicts(occs: ArtOccurrence[], artErrors: ArtError[]): void {
   const nomDef = occs.filter((o) => DE_NOM_DEF.has(o.article));
   if (new Set(nomDef.map((o) => o.article)).size <= 1) return;
-  const seen = new Set();
+  const seen = new Set<string>();
   for (const occ of nomDef) {
     if (!seen.size) {
       seen.add(occ.article);
@@ -418,15 +498,14 @@ function addGenderConflicts(occs, artErrors) {
  * holding any non-sign word ("(see 10)") does not qualify, so signs there stay
  * unparenthesised.
  *
- * @param {string} text
- * @returns {(start: number, end: number) => boolean}
  */
-function findSignGroups(text) {
-  const groups = [];
+function findSignGroups(text: string): (start: number, end: number) => boolean {
+  const groups: { start: number; end: number }[] = [];
   GROUP_RE.lastIndex = 0;
-  let m;
+  let m: RegExpExecArray | null;
   while ((m = GROUP_RE.exec(text)) !== null) {
-    const parts = m[1].split(GROUP_SPLIT_RE).filter(Boolean);
+    // Group 1 is the bracket interior and cannot be absent when exec matched.
+    const parts = (m[1] ?? '').split(GROUP_SPLIT_RE).filter(Boolean);
     if (parts.length && parts.every(isSignToken))
       groups.push({ start: m.index, end: m.index + m[0].length });
   }
@@ -438,11 +517,12 @@ function findSignGroups(text) {
   return (s, e) => {
     let lo = 0,
       hi = groups.length - 1,
-      cand = null;
+      cand: { start: number; end: number } | null = null;
     while (lo <= hi) {
       const mid = (lo + hi) >> 1;
-      if (groups[mid].start < s) {
-        cand = groups[mid];
+      const g = groups[mid];
+      if (g && g.start < s) {
+        cand = g;
         lo = mid + 1;
       } else hi = mid - 1;
     }
@@ -451,43 +531,53 @@ function findSignGroups(text) {
 }
 
 /**
- * @param {string} text
- * @param {'en'|'de'} lang
- * @param {Object<string, number>} mwo  Manual multi-word overrides: base stem →
- *   extra words. An entry wins outright over every automatic source, including
- *   an explicit 0 — that is what "Reduce term" writes, and without it a term the
- *   reference list or the ordinal detector extends could not be reduced at all.
- * @param {boolean} autoMW  Run the ordinal ("first bearing") detection
- * @param {boolean} isClaims
- * @param {import('./listTerms.js').ListTermIndex|null} [listIdx]  Multi-word terms
- *   read out of the drafter's reference list (see logic/listTerms.js)
- * @returns {ExtractResult}
+ * @param mwo  Manual multi-word overrides: base stem → extra words. An entry
+ *   wins outright over every automatic source, including an explicit 0 — that is
+ *   what "Reduce term" writes, and without it a term the reference list or the
+ *   ordinal detector extends could not be reduced at all.
+ * @param autoMW  Run the ordinal ("first bearing") detection
+ * @param listIdx  Multi-word terms read out of the drafter's reference list
+ *   (see logic/listTerms.ts)
  */
-export function extractData(text, lang, mwo = {}, autoMW = true, isClaims = false, listIdx = null) {
+export function extractData(
+  text: string,
+  lang: Lang,
+  mwo: Record<string, number | undefined> = {},
+  autoMW = true,
+  isClaims = false,
+  listIdx: ListTermIndex | null = null
+): ExtractResult {
   const toks = tokenize(text);
-  const ordStems = autoMW ? detectOrdStems(toks, lang, text, isClaims) : new Set();
-  /** @type {Object<string, SignEntry>} */
-  const signData = {};
-  /** @type {Object<string, TermEntry>} */
-  const termData = {};
-  const artByTerm = {},
-    termFirstPos = {};
-  const termPositions = {}; // termStem → [termStart, …] (every sign-attached occurrence)
-  const claimNums = [];
-  const noTermSigns = new Set();
+  const ordStems = autoMW ? detectOrdStems(toks, lang, text, isClaims) : new Set<string>();
+  const signData: Record<string, SignEntry | undefined> = {};
+  const termData: Record<string, TermEntry | undefined> = {};
+  const artByTerm: Record<string, ArtOccurrence[] | undefined> = {};
+  const termFirstPos: Record<string, number | undefined> = {};
+  /** termStem → [termStart, …] (every sign-attached occurrence) */
+  const termPositions: Record<string, number[] | undefined> = {};
+  const claimNums: ClaimNumber[] = [];
+  const noTermSigns = new Set<string>();
 
   // Record one occurrence of `sign` against the term described by `allTT`.
   // Shared by the main scan and range detection. Pass artTok=null to skip
   // article bookkeeping (range endpoints reuse the term's already-seen article).
-  function recordOccurrence(sign, signStart, signEnd, allTT, artTok, inParens) {
-    const baseW = allTT[allTT.length - 1].word;
+  function recordOccurrence(
+    sign: string,
+    signStart: number,
+    signEnd: number,
+    allTT: Token[],
+    artTok: Token | null,
+    inParens: boolean
+  ): void {
+    // Callers only reach here with a non-empty term.
+    const baseW = allTT[allTT.length - 1]?.word ?? '';
     const bs = stem(baseW, lang);
     // Two automatic sources extend the term leftwards from its base noun: the
     // ordinal pattern ("first bearing" / "second bearing") and the drafter's own
     // reference list, which spells its multi-word terms out. They do not stack —
     // the wider of the two wins.
     let autoExtra = 0;
-    if (ordStems.has(bs) && allTT.length >= 2 && isOrd(allTT[allTT.length - 2].word, lang))
+    if (ordStems.has(bs) && allTT.length >= 2 && isOrd(allTT[allTT.length - 2]?.word ?? '', lang))
       autoExtra = 1;
     if (listIdx) {
       const le = listExtra(listIdx, allTT, bs, lang);
@@ -504,14 +594,18 @@ export function extractData(text, lang, mwo = {}, autoMW = true, isClaims = fals
 
     const termStr = termToks.map((t) => t.word.toLowerCase()).join(' ');
     const termStem = termToks.map((t) => stem(t.word, lang)).join(' ');
-    const termStart = termToks[0].start,
-      termEnd = termToks[termToks.length - 1].end;
+    // termToks is a non-empty slice of a non-empty allTT.
+    const termStart = termToks[0]?.start ?? 0,
+      termEnd = termToks[termToks.length - 1]?.end ?? 0;
 
-    if (!signData[sign]) signData[sign] = { terms: {}, positions: [], count: 0, inPC: 0 };
-    signData[sign].terms[termStem] = (signData[sign].terms[termStem] || 0) + 1;
-    signData[sign].count++;
-    if (inParens) signData[sign].inPC++;
-    signData[sign].positions.push({
+    // Held in a local rather than re-indexed: the map lookup was repeated six
+    // times per occurrence, and the type now says out loud that the entry has
+    // to be created before it can be written to.
+    const sEntry = (signData[sign] ??= { terms: {}, positions: [], count: 0, inPC: 0 });
+    sEntry.terms[termStem] = (sEntry.terms[termStem] ?? 0) + 1;
+    sEntry.count++;
+    if (inParens) sEntry.inPC++;
+    sEntry.positions.push({
       termStart,
       termEnd,
       signStart,
@@ -521,18 +615,17 @@ export function extractData(text, lang, mwo = {}, autoMW = true, isClaims = fals
       inParens,
     });
 
-    if (!termData[termStem]) termData[termStem] = { signs: {}, rawTerms: new Set() };
-    termData[termStem].signs[sign] = (termData[termStem].signs[sign] || 0) + 1;
-    termData[termStem].rawTerms.add(termStr);
+    const tEntry = (termData[termStem] ??= { signs: {}, rawTerms: new Set() });
+    tEntry.signs[sign] = (tEntry.signs[sign] ?? 0) + 1;
+    tEntry.rawTerms.add(termStr);
 
-    if (termFirstPos[termStem] === undefined || termStart < termFirstPos[termStem])
-      termFirstPos[termStem] = termStart;
-    (termPositions[termStem] || (termPositions[termStem] = [])).push(termStart);
+    const firstPos = termFirstPos[termStem];
+    if (firstPos === undefined || termStart < firstPos) termFirstPos[termStem] = termStart;
+    (termPositions[termStem] ??= []).push(termStart);
 
     if (artTok && termToks.length === allTT.length) {
       const al = artTok.word.toLowerCase();
-      if (!artByTerm[termStem]) artByTerm[termStem] = [];
-      artByTerm[termStem].push({
+      (artByTerm[termStem] ??= []).push({
         article: al,
         type: artType(al),
         artStart: artTok.start,
@@ -549,7 +642,7 @@ export function extractData(text, lang, mwo = {}, autoMW = true, isClaims = fals
 
   for (let i = 0; i < toks.length; i++) {
     const tok = toks[i];
-    if (!isSignToken(tok.word)) continue;
+    if (!tok || !isSignToken(tok.word)) continue;
     if (isBracketed(text, tok)) continue; // [0012] — paragraph number, not a sign
     if (isClaims && isClaimNumber(text, tok)) {
       claimNums.push({ value: parseInt(tok.word, 10), start: tok.start, end: tok.end });
@@ -577,7 +670,7 @@ export function extractData(text, lang, mwo = {}, autoMW = true, isClaims = fals
   // numbers) keeps "a housing 12 and a cover 14" (distinct terms, with a word
   // between the connector and the second number) from being misread as a list.
   LIST_RE.lastIndex = 0;
-  let rm;
+  let rm: RegExpExecArray | null;
   // LIST_RE matches arrive in ascending rm.index and `toks` is sorted by start,
   // so the "first token at/after the list start" only ever moves forward. A
   // monotonic cursor makes the whole loop O(tokens + matches); the previous
@@ -591,13 +684,13 @@ export function extractData(text, lang, mwo = {}, autoMW = true, isClaims = fals
     if (text[rm.index - 1] === '[' && text[rm.index + rm[0].length] === ']') continue;
     // Index of the first token at/after the list start; the shared term is
     // whatever precedes it (works whether or not the endpoints tokenized).
-    while (listCur < toks.length && toks[listCur].start < rm.index) listCur++;
+    while (listCur < toks.length && (toks[listCur]?.start ?? Infinity) < rm.index) listCur++;
     const baseIdx = listCur;
     const { allTT } = collectTermToks(toks, baseIdx, lang);
     if (allTT.length === 0) continue; // no shared term (e.g. "claims 1, 2 and 3") → skip
     // Pull every sign out of the matched span (connector words carry no digits).
     NUM_RE.lastIndex = 0;
-    let nm;
+    let nm: RegExpExecArray | null;
     while ((nm = NUM_RE.exec(rm[0])) !== null) {
       const sign = nm[0];
       if (!isSignToken(sign)) continue;
@@ -620,16 +713,17 @@ export function extractData(text, lang, mwo = {}, autoMW = true, isClaims = fals
   const claimGraph = isClaims ? computeClaimGraph(text, claimNums) : null;
   const depErrors = claimGraph ? claimGraph.depErrors : [];
   // Claim spans are in document order → binary search by position.
-  const claimAt = (pos) => {
+  const claimAt = (pos: number): ClaimSpan | null => {
     if (!claimGraph) return null;
     const spans = claimGraph.claims;
     let lo = 0,
       hi = spans.length - 1,
-      found = null;
+      found: ClaimSpan | null = null;
     while (lo <= hi) {
       const mid = (lo + hi) >> 1;
-      if (spans[mid].start <= pos) {
-        found = spans[mid];
+      const span = spans[mid];
+      if (span && span.start <= pos) {
+        found = span;
         lo = mid + 1;
       } else hi = mid - 1;
     }
@@ -661,19 +755,28 @@ export function extractData(text, lang, mwo = {}, autoMW = true, isClaims = fals
 }
 
 // ── CLASSIFICATION ─────────────────────────────────────────────────────────
-export function classify(sign, sData, termData, mode) {
+/**
+ * Whether a sign has anything wrong with it.
+ *
+ * A sign warns when it is used outside parentheses in claims mode, when it
+ * carries more than one term, or when one of its terms is also used for another
+ * sign.
+ *
+ * Note there is no `sign` parameter: this used to take one and never read it,
+ * which `noUnusedParameters` surfaced during the TypeScript migration. Every
+ * call site already had to pass the matching `sData` alongside it, so the
+ * parameter could only ever agree or lie.
+ */
+export function classify(
+  sData: SignEntry,
+  termData: Record<string, TermEntry | undefined>,
+  mode: Mode
+): Severity {
   if (mode === 'claims' && sData.count > sData.inPC) return 'warn';
   if (Object.keys(sData.terms).length > 1) return 'warn';
   for (const t of Object.keys(sData.terms)) {
-    if (termData[t] && Object.keys(termData[t].signs).length > 1) return 'warn';
+    const entry = termData[t];
+    if (entry && Object.keys(entry.signs).length > 1) return 'warn';
   }
   return 'ok';
 }
-
-/**
- * Collect all active (non-dismissed) error positions, sorted by position, for
- * navigation and the backdrop.
- * @param {ExtractResult} res
- * @param {'description'|'claims'} mode
- * @param {Set<string>} dis  Dismissal keys (see disKey in constants.js)
- */

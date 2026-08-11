@@ -24,27 +24,37 @@ const SEP_RE = /^[).:]?[\s\t]*[-–—:.]?[\s\t]*/;
 // A trailing sign in parentheses, e.g. "housing (10)" in inverted lists.
 const LEADING_SIGN_RE = /^(\S+?)(?=[).:\s\t]|$)/;
 
-/**
- * @typedef {Object} RefListEntry
- * @property {string} sign
- * @property {string} term   Raw term as written, trimmed
- * @property {number} line   0-based source line, for reporting
- */
+/** One row of a drafter's reference-sign list. */
+export interface RefListEntry {
+  sign: string;
+  /** Raw term as written, trimmed. */
+  term: string;
+  /** 0-based source line, for reporting. */
+  line: number;
+}
 
-/**
- * Parse reference-list text into entries.
- * @param {string} text
- * @returns {{entries: RefListEntry[], duplicates: {sign: string, terms: string[]}[]}}
- */
-export function parseRefList(text) {
-  const entries = [];
+/** A sign the list gives more than one name. */
+export interface RefListDuplicate {
+  sign: string;
+  terms: string[];
+}
+
+export interface ParsedRefList {
+  entries: RefListEntry[];
+  duplicates: RefListDuplicate[];
+}
+
+/** Parse reference-list text into entries. */
+export function parseRefList(text: string): ParsedRefList {
+  const entries: RefListEntry[] = [];
   const lines = String(text || '').split('\n');
   lines.forEach((raw, line) => {
     const trimmed = raw.trim();
     if (!trimmed) return;
     const m = LEADING_SIGN_RE.exec(trimmed);
     if (!m) return;
-    const sign = m[1];
+    // Group 1 is the whole leading run and cannot be absent when exec matched.
+    const sign = m[1] ?? '';
     if (!isSignToken(sign)) return; // not a list row — prose, a heading, a note
     const rest = trimmed.slice(sign.length).replace(SEP_RE, '').trim();
     if (!rest) return; // a bare sign with no term tells us nothing
@@ -53,13 +63,13 @@ export function parseRefList(text) {
 
   // The same sign listed twice with different terms is itself a defect worth
   // reporting, so it is surfaced rather than silently deduplicated.
-  const bySign = new Map();
+  const bySign = new Map<string, string[]>();
   for (const e of entries) {
     const list = bySign.get(e.sign);
     if (list) list.push(e.term);
     else bySign.set(e.sign, [e.term]);
   }
-  const duplicates = [];
+  const duplicates: RefListDuplicate[] = [];
   for (const [sign, terms] of bySign) {
     const distinct = [...new Set(terms.map((t) => t.toLowerCase()))];
     if (distinct.length > 1) duplicates.push({ sign, terms: [...new Set(terms)] });

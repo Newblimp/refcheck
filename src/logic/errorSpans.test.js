@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
-import { extractData } from './extract.js';
+import { extractData } from './extract.ts';
 import { eachErrorSpan, getAllErrors, errorGroup } from './errorSpans.js';
 import { HL } from './buildHtml.js';
 import { disKey } from './constants.ts';

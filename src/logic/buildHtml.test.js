@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { extractData } from './extract.js';
+import { extractData } from './extract.ts';
 import { buildHtml, esc, findAtPos } from './buildHtml.js';
 
 const EMPTY = {

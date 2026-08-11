@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { ERROR_KINDS, KIND_BY_ID, kindItems } from './errorKinds.js';
-import { extractData } from './extract.js';
+import { extractData } from './extract.ts';
 import { T } from '../i18n.js';
 
 // A result carrying at least one error of every category.

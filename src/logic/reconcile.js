@@ -1,7 +1,7 @@
 import { compareSigns } from './constants.ts';
 import { stem } from './stem.ts';
 import { buildRefList } from './reflist.js';
-import { parseRefList } from './refListParse.js';
+import { parseRefList } from './refListParse.ts';
 
 // ── REFERENCE-LIST RECONCILIATION ────────────────────────────────────────────
 // Compares the drafter's own reference-sign list against the signs actually used
@@ -32,7 +32,7 @@ import { parseRefList } from './refListParse.js';
 
 /**
  * @param {string} listText  Raw reference-list text (pasted or imported)
- * @param {import('./extract.js').ExtractResult} result  Extraction of the text to check
+ * @param {import('./extract.ts').ExtractResult} result  Extraction of the text to check
  * @param {'en'|'de'} lang
  * @returns {ReconcileResult|null} null when there is nothing to compare
  */

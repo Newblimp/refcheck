@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { extractData } from './extract.js';
-import { listTermIndex } from './listTerms.js';
+import { extractData } from './extract.ts';
+import { listTermIndex } from './listTerms.ts';
 
 // Regression guards against accidentally quadratic behaviour. Each corpus below
 // targets a specific hot path; the budgets are generous enough to absorb a slow

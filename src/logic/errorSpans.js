@@ -1,4 +1,4 @@
-import { classify } from './extract.js';
+import { classify } from './extract.ts';
 import { disKey } from './constants.ts';
 import { ERROR_KINDS, KIND_BY_ID, kindItems } from './errorKinds.js';
 
@@ -70,7 +70,7 @@ import { ERROR_KINDS, KIND_BY_ID, kindItems } from './errorKinds.js';
  * four error categories are reported only when not dismissed, which is what both
  * consumers want.
  *
- * @param {import('./extract.js').ExtractResult} res
+ * @param {import('./extract.ts').ExtractResult} res
  * @param {'description'|'claims'} mode
  * @param {Set<string>} dis
  * @param {(span: ErrorSpan) => void} visit
@@ -79,7 +79,7 @@ export function eachErrorSpan(res, mode, dis, visit) {
   const { signData, termData } = res;
 
   for (const [sign, sData] of Object.entries(signData)) {
-    const sev = dis.has(disKey.sign(sign)) ? 'dis' : classify(sign, sData, termData, mode);
+    const sev = dis.has(disKey.sign(sign)) ? 'dis' : classify(sData, termData, mode);
     for (const p of sData.positions) {
       visit({ kind: 'sign', start: p.signStart, end: p.signEnd, sign, sev, term: p.termStem });
       // The term a warned sign is attached to is highlighted alongside it.
@@ -115,7 +115,7 @@ export function eachErrorSpan(res, mode, dis, visit) {
  * Dismissed signs and dismissed errors are excluded; consistent signs are not
  * errors and are excluded too.
  *
- * @param {import('./extract.js').ExtractResult} res
+ * @param {import('./extract.ts').ExtractResult} res
  * @param {'description'|'claims'} mode
  * @param {Set<string>} dis
  */
