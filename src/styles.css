@@ -131,7 +131,7 @@ body,
   display: flex;
   align-items: center;
   gap: 14px;
-  padding: 0 18px;
+  padding: 9px 18px;
   min-height: 52px;
   background: var(--surface);
   border-bottom: 1px solid var(--border);
@@ -181,6 +181,13 @@ body,
 }
 .pill-toggle button:hover:not(.active) {
   color: var(--text);
+}
+/* Keeps the language toggle and the help button as one flex item in .topbar,
+   so a wrap moves the pair together instead of splitting them across lines. */
+.lang-help {
+  display: flex;
+  align-items: center;
+  gap: 14px;
 }
 .lang-toggle {
   display: flex;
