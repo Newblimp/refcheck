@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { act, renderHook, waitFor } from '@testing-library/react';
+import { act, renderHook, waitFor } from '@testing-library/preact';
 import { usePersistentState, jsonCodec, setCodec, oneOf } from './usePersistentState.js';
 
 describe('usePersistentState', () => {

@@ -19,17 +19,62 @@ const CACHE_NAME = `refcheck-shell-${BUILD_ID}`;
 // forever.
 const UNHASHED = new Set([`${BASE}manifest.webmanifest`, `${BASE}icon.svg`]);
 
+// Options for every cache lookup in this file.
+//
+// ignoreVary is load-bearing, not defensive. Static hosts (GitHub Pages, and
+// Vite's own preview server) send "Vary: Origin" on assets. Entries put there at
+// install time were requested without an Origin header, while the page's own
+// module-script requests are CORS-mode and DO send one — so Vary matching
+// rejects the precached entry and every asset misses the cache offline. The page
+// then fails to boot despite a fully populated cache, which is exactly what an
+// end-to-end offline test caught here. These URLs are content-hashed, so their
+// bytes cannot legitimately vary by request header.
+//
+// ignoreSearch keeps a query string (?utm_source=…) from missing the shell.
+const MATCH_OPTS = { ignoreVary: true, ignoreSearch: true };
+
 // Precache the whole shell up front. The worker registers after the page has
 // already fetched its assets, so those requests never reach the fetch handler;
 // without this the cache would still be empty after a first visit and the app
 // would only work offline from the second visit onwards.
-self.addEventListener('install', (event) => {
-  event.waitUntil(
-    caches
-      .open(CACHE_NAME)
-      .then((c) => c.addAll(PRECACHE))
-      .then(() => self.skipWaiting())
+//
+// This is cache.addAll with one addition: a content-hashed URL that a PREVIOUS
+// deploy's cache already holds is copied across instead of refetched. Because
+// the cache name carries the build id, every deploy opens an empty cache, so an
+// app-code-only change used to re-download the unchanged vendor chunk (140 KB)
+// along with it. Copying is safe precisely because the URL is content-hashed —
+// same URL cannot mean different bytes.
+//
+// The all-or-nothing behaviour of addAll is preserved deliberately: a non-2xx
+// rejects the whole install, because a half-filled cache that reports success is
+// exactly the failure this precaching exists to prevent.
+async function precacheAll() {
+  const cache = await caches.open(CACHE_NAME);
+  await Promise.all(
+    PRECACHE.map(async (url) => {
+      if (!mustRefetch(url)) {
+        // caches.match with no cache name searches every cache in the origin,
+        // which at install time still includes the outgoing build's.
+        const carried = await caches.match(url, MATCH_OPTS);
+        if (carried) return cache.put(url, carried);
+      }
+      const res = await fetch(url, { credentials: 'same-origin' });
+      if (!res.ok) throw new Error(`precache failed for ${url}: ${res.status}`);
+      return cache.put(url, res);
+    })
   );
+}
+
+// Whether a precache URL must come from the network rather than from an older
+// cache. Only content-hashed URLs may be carried over; anything whose bytes can
+// change under a stable URL has to be fetched, or a deploy would pin the old
+// icon, manifest or index document forever.
+function mustRefetch(url) {
+  return url === BASE || UNHASHED.has(url);
+}
+
+self.addEventListener('install', (event) => {
+  event.waitUntil(precacheAll().then(() => self.skipWaiting()));
 });
 
 self.addEventListener('activate', (event) => {
@@ -48,20 +93,6 @@ self.addEventListener('activate', (event) => {
 function cachePut(event, request, response) {
   event.waitUntil(caches.open(CACHE_NAME).then((c) => c.put(request, response)));
 }
-
-// Options for every cache lookup below.
-//
-// ignoreVary is load-bearing, not defensive. Static hosts (GitHub Pages, and
-// Vite's own preview server) send "Vary: Origin" on assets. Entries put there by
-// cache.addAll at install time were requested without an Origin header, while
-// the page's own module-script and stylesheet requests are CORS-mode and DO send
-// one — so Vary matching rejects the precached entry and every asset misses the
-// cache offline. The page then fails to boot despite a fully populated cache,
-// which is exactly what an end-to-end offline test caught here. These URLs are
-// content-hashed, so their bytes cannot legitimately vary by request header.
-//
-// ignoreSearch keeps a query string (?utm_source=…) from missing the shell.
-const MATCH_OPTS = { ignoreVary: true, ignoreSearch: true };
 
 self.addEventListener('fetch', (event) => {
   const { request } = event;

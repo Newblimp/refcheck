@@ -4,6 +4,12 @@ _What makes os8088.com feel instant, which of those techniques apply here, and w
 measurements turned up. Offline capability is a hard constraint throughout: nothing in this plan
 weakens the guarantee that the tool works after one visit with the network off._
 
+> **Status: Phases 1 and 2 are implemented.** Critical path **176.6 KB → 42.6 KB** across
+> **9 requests → 3**, and a restored two-buffer session shows its document in **227 ms instead of
+> 4199 ms**. Two steps did not survive contact with a browser and were dropped rather than shipped
+> on the strength of the reasoning below — see **§ What the measurements overturned**. Phase 3 is
+> untouched. The analysis is kept as written, including the parts that turned out to be wrong.
+
 ## Verdict
 
 The tool's **compute** is already fast — the quadratic scans are gone and extraction sits well
@@ -304,33 +310,106 @@ visible, because two independently-laid-out layers must agree line for line.
 - **Do not add preconnect/dns-prefetch.** There are no third-party origins — fonts are self-hosted,
   the bee is vendored, there is no analytics. On this axis the tool already matches os8088.
 
+## What the measurements overturned
+
+Two steps above were built, measured, and then removed. Both are recorded here because the
+reasoning that produced them was sound and would produce them again.
+
+### 1.3 The static app shell — built, measured, removed
+
+The shell was built exactly as described (top bar + three-column frame at the app's real
+geometry, verified pixel-identical to the mounted app: no layout shift at all). It was then A/B'd
+against the empty `#root` in Chromium under CPU throttling:
+
+| First contentful paint | empty `#root` | static shell |
+| ---------------------- | ------------- | ------------ |
+| Fast 3G, 4× CPU        | 228 ms        | 244 ms       |
+| Slow 3G, 4× CPU        | 544 ms        | 568 ms       |
+
+**Consistently ~20 ms slower**, on both profiles. The shell adds DOM to parse and lay out before
+the paint it was supposed to bring forward, and the window it aimed at had already closed: with
+the CSS inlined and the bundle down to ~37 KB gzipped, the modulepreloaded chunks arrive and
+execute in the same frame the shell would have painted in. It was removed, and `index.html`
+carries a comment saying not to add one back without re-running that measurement — it costs a
+standing obligation to keep the markup in sync with `TopBar.jsx` and `App.jsx`.
+
+The general lesson is worth keeping: **a static shell is a fix for a slow bundle.** Fix the
+bundle and it has nothing left to do.
+
+### 2.2 The boot deferral — much bigger than predicted
+
+The plan estimated "~150 ms, realistically 400–600 ms on a mid-range laptop", extrapolated from
+77 ms per buffer of pure-logic work measured in node. In a real browser with two 112 KB buffers
+restored and a 4× CPU throttle:
+
+|                                     | editor shows the document | highlights complete |
+| ----------------------------------- | ------------------------- | ------------------- |
+| before (first render extracts both) | **4199 ms**               | 4199 ms             |
+| after (deferred past first paint)   | **227 ms**                | 2785 ms             |
+
+Nothing at all appeared for 4.2 seconds. The node measurement missed the larger half of the cost:
+reconciling 11,704 `<mark>` elements and 1,088 sidebar cards, which only happens in a DOM. The
+editor is now usable in 227 ms and the highlights fill in behind it.
+
+That remaining 2785 ms is **Phase 3.1** — the backdrop — and it is now the largest single number
+left in the app.
+
+### A note on FCP as a metric here
+
+First contentful paint turned out to be the wrong instrument for the boot case: it fires on the
+top bar, which paints early in both variants, and says nothing about when the user's document
+appears. The table above polls for the editor's value and the backdrop's mark count instead. An
+earlier run of that harness was bimodal and briefly suggested the deferral did nothing — the app's
+own debounced `localStorage` save (`SAVE_MS = 400`) was overwriting the seeded buffers before the
+reload. Worth knowing before re-running any of this.
+
 ## Sequencing
 
-| Phase | Work                                                                               | Risk   | Expected result                                       |
-| ----- | ---------------------------------------------------------------------------------- | ------ | ----------------------------------------------------- |
-| **1** | 1.1–1.7: fonts, inline CSS, static shell, preload, defer bee, vendor split, budget | Low    | 176.6 KB → ~87 KB, 9 → 3 requests, paint from HTML    |
-| **2** | 2.1 Preact spike (gated on 668 tests) · 2.2 deferred boot extraction               | Medium | ~87 KB → ~47 KB; −150 ms before first paint           |
-| **3** | 3.1 windowed backdrop · 3.2 sidebar cap · 3.3 integer units                        | Higher | Typing in a 100 KB document stops being the slow case |
+| Phase | Work                                                                                       | Risk   | Expected result                                        |
+| ----- | ------------------------------------------------------------------------------------------ | ------ | ------------------------------------------------------ |
+| **1** | 1.1–1.7: fonts, inline CSS, ~~static shell~~, ~~preload~~, defer bee, vendor split, budget | Low    | **done** — 176.6 KB → 60 KB, 9 → 3 requests            |
+| **2** | 2.1 Preact (gated on the suite) · 2.2 deferred boot extraction                             | Medium | **done** — 60 KB → 42.6 KB; document visible in 227 ms |
+| **3** | 3.1 windowed backdrop · 3.2 sidebar cap · 3.3 integer units                                | Higher | Typing in a 100 KB document stops being the slow case  |
 
 Phase 1 is worth doing on its own merits whatever happens to 2 and 3. Every step is independently
 revertible, and none of them touch `logic/` or the `.docx` pipeline.
+
+### Delivered (Phases 1 and 2)
+
+| Measure                       | Before         | After       |
+| ----------------------------- | -------------- | ----------- |
+| Critical-path transfer        | 176.6 KB       | **42.6 KB** |
+| Requests before render        | 9              | **3**       |
+| Web fonts                     | 6 files, 96 KB | **0**       |
+| Framework (gzipped)           | 45.23 KB       | **7.64 KB** |
+| Whole precached shell         | ~191 KB        | **58.1 KB** |
+| Restored doc visible (4× CPU) | 4199 ms        | **227 ms**  |
+| Tests                         | 668            | **692**     |
+
+Verified in Chromium, not merely built: the app mounts and extracts on Preact with **zero font
+requests** and 4 requests on a cold load; the textarea and backdrop still resolve to an identical
+computed font, line-height and `scrollHeight` (the invariant the monospace swap could have broken);
+and a **first-ever visit followed by an offline reload** boots the app, restores the buffer and
+renders highlights, with the `.docx` and bee chunks both present in the precache.
+
+`logic/` and the `.docx` pipeline were not touched.
 
 ## Offline guarantee — how each step interacts with it
 
 The constraint is that the tool works after one visit with the network off. Checked step by step:
 
-| Step                    | Effect on offline                                                                                                                                   |
-| ----------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 1.1 fewer/smaller fonts | Strictly better — less to precache                                                                                                                  |
-| 1.2 inline CSS          | Better — one fewer entry that can miss                                                                                                              |
-| 1.3 static shell        | Neutral; the shell is inside the precached `index.html`                                                                                             |
-| 1.4 preload             | Neutral                                                                                                                                             |
-| 1.5 defer bee           | **Requires** keeping the chunk + svg in `PRECACHE` — same rule as `.docx`                                                                           |
-| 1.6 vendor split        | Both chunks must enter `PRECACHE`; `swPrecache.js` derives it from the emitted asset list, so this is automatic — assert it in `swPrecache.test.js` |
-| 1.7 budget              | Neutral                                                                                                                                             |
-| 2.1 Preact              | Neutral (smaller bundle)                                                                                                                            |
-| 2.2 deferred extraction | Neutral — runtime only, no new network work                                                                                                         |
-| 3.1 windowed backdrop   | Neutral — runtime only                                                                                                                              |
+| Step                    | Effect on offline                                                                                                                                |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 1.1 fewer/smaller fonts | Strictly better — less to precache                                                                                                               |
+| 1.2 inline CSS          | Better — one fewer entry that can miss                                                                                                           |
+| 1.3 static shell        | _Dropped_ — measured slower (see above)                                                                                                          |
+| 1.4 preload             | _Dropped_ — there are no fonts left to preload                                                                                                   |
+| 1.5 defer bee           | **Requires** keeping the chunk + svg in `PRECACHE` — same rule as `.docx`                                                                        |
+| 1.6 vendor split        | Both chunks must enter `PRECACHE`; `swPrecache.js` derives it from the emitted asset list, so this is automatic — covered by `swInstall.test.js` |
+| 1.7 budget              | Neutral                                                                                                                                          |
+| 2.1 Preact              | Neutral (smaller bundle)                                                                                                                         |
+| 2.2 deferred extraction | Neutral — runtime only, no new network work                                                                                                      |
+| 3.1 windowed backdrop   | Neutral — runtime only                                                                                                                           |
 
 The one rule to hold onto: **anything lazily loaded stays in the precache list.** That is what
 makes deferral safe here, and it is already the documented reason the `.docx` chunk is listed.

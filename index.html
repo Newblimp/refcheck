@@ -25,6 +25,22 @@
     </script>
   </head>
   <body>
+    <!--
+      #root is deliberately empty. A static shell (top bar + three-column frame,
+      at the geometry the app produces) was built here and MEASURED against this
+      empty root, and it was consistently ~20 ms SLOWER to first contentful paint
+      on both Fast 3G and Slow 3G with a 4x CPU throttle — it adds DOM to parse
+      and lay out before the paint it was supposed to bring forward.
+
+      The reason is that the gap it aimed at no longer exists: with the CSS
+      inlined below and the bundle down to ~37 KB gzipped, the modulepreloaded
+      chunks arrive and execute in the same window the shell would have painted
+      in. A shell earns its place when the JS is big or slow to arrive; here the
+      payload work already closed that window.
+
+      So: do not add one back without re-running that measurement. It costs a
+      standing obligation to keep this markup in sync with TopBar.jsx and App.jsx.
+    -->
     <div id="root"></div>
     <script type="module" src="/src/main.jsx"></script>
   </body>

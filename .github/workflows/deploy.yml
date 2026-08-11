@@ -36,6 +36,12 @@ jobs:
       - run: npm run typecheck
       - run: npm test
       - run: npm run build
+      # Payload budget. The test suite guards how long extraction takes; nothing
+      # guarded how much the app ships, which is where the real cost turned out
+      # to be — 95.8 KB of web font, more than the framework and the application
+      # together, invisible to every test. Fails the build if the critical path
+      # or the precached shell grows past its ceiling.
+      - run: npm run budget
 
   # Build and publish to GitHub Pages from main. workflow_dispatch deploys too,
   # so a deployment the Pages queue dropped can be retried from the Actions tab

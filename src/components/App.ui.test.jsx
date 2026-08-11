@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/preact';
 import { App } from './App.jsx';
 import { makeDocx, para, DE_BODY } from '../logic/docx/fixture.js';
 import { readDocx } from '../logic/docx/read.js';

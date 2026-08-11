@@ -21,7 +21,9 @@ Patent documents must maintain strict consistency between reference signs (numer
 
 ## Architecture
 
-A React 18 + Vite project. The UI (JSX components) is separated from the pure
+A Preact + Vite project, written against the React API (`preact/compat`, aliased in
+`vite.config.js` — components import from `react` and stay portable). The UI (JSX
+components) is separated from the pure
 parsing/validation logic so the logic can be unit-tested in Node with no DOM. That seam is
 real and worth keeping real: nothing outside `logic/` imports fflate or touches OOXML,
 which is why the whole suite runs in about ten seconds.
@@ -37,6 +39,12 @@ build/
   swPrecache.js         Vite plugin: injects the built asset list + a build id into
                         dist/sw.js. Without it the worker precaches nothing and the
                         offline guarantee does not hold (see Offline Support)
+  inlineCss.js          Vite plugin: folds the stylesheet into index.html and drops
+                        the .css asset, so the page needs no second request to style
+                        itself. Must run BEFORE swPrecache reads the bundle keys
+  budget.js             Payload budget (npm run budget, run in CI after the build).
+                        The suite guards how long extraction takes; this guards how
+                        much the app ships — the axis nothing was watching
 public/
   sw.js                 Hand-rolled service worker: caches the app shell so the
                         tool keeps working offline after the first load
@@ -44,9 +52,10 @@ public/
   icon.svg              App icon, reused as favicon + manifest icon
 src/
   main.jsx              Mounts <App/>, imports styles.css, registers sw.js (prod only)
-  styles.css            All styles + self-hosted @font-face declarations
-  fonts/                 Space Grotesk / JetBrains Mono .woff2 files (self-hosted,
-                        no CDN dependency — bundled + hashed by Vite like any asset)
+  styles.css            All styles. NO web fonts: --font-ui and --font-mono are
+                        system stacks (see Fonts below). Six self-hosted .woff2
+                        files used to live in src/fonts/ and were 54% of everything
+                        the first visit fetched
   assets/bee.svg        Noto Color Emoji bee (Google, Apache-2.0), vendored so the
                         easter egg needs no CDN either
   i18n.js               English/German UI strings (T)
@@ -526,6 +535,27 @@ use `xmlFault` (`docx/fixture.js`) for that.
 - **English (EN)**: English article rules (a/an vs the)
 - **German (DE)**: German article rules with gender consistency checking (der/die/das)
 
+### Fonts
+
+- **There are no web fonts.** Both faces are system stacks defined once in `styles.css` as
+  `--font-ui` and `--font-mono`. Six self-hosted `.woff2` files (Space Grotesk ×4, JetBrains
+  Mono ×2) were **95.8 KB — 54% of the critical path**, more than the framework and the whole
+  application put together, and the app now fetches no font at all
+- **The two stacks are not interchangeable, and that is the thing to get right.** `--font-mono`
+  backs the editor, where the textarea and the highlight backdrop are two separately laid-out
+  layers that must agree character for character; a proportional face there slides the
+  highlights off the text under them. `--font-ui` backs everything else and is deliberately
+  proportional. Applying the mono stack to something that was proportional turns the UI into
+  code, which is why the replacement was done per-variable rather than globally
+- The alignment invariant is "**same font on both layers**", not "same font on every machine" —
+  both layers read `var(--font-mono)`, so they stay locked to each other wherever they render.
+  Verified in Chromium: identical computed `font`, `line-height` and `scrollHeight` across the
+  two layers
+- Each stack is ordered most-native-first and ends in the generic keyword, so every platform
+  lands on the face it draws UI (or code) with rather than on a browser default. Weights are
+  synthesized from the one system family, which is why the four Space Grotesk weight files were
+  not replaced by anything
+
 ### Theme
 
 - **Light / Dark / System**: Theme preference stored in `localStorage` (`rsc_theme`)
@@ -646,10 +676,18 @@ three are now in place:
   original `refcheck-shell-v1`) meant the cleanup never matched anything and every
   deploy's hashed bundles accumulated in one cache indefinitely.
 
-Supporting pieces: the UI fonts are **self-hosted** (`src/fonts/`, `@font-face` with
-relative `url()`s in `styles.css`), so Vite hashes and bundles them like any other asset
-and no CDN request remains; the bee sprite is vendored for the same reason; and
-`public/manifest.webmanifest` + `public/icon.svg` make the page installable.
+Supporting pieces: there are **no web fonts at all** (see Fonts), so no font request can
+remain to fail; the stylesheet is **inlined into `index.html`**, so styling cannot miss the
+cache separately from the document; the bee sprite is vendored rather than fetched from a
+CDN; and `public/manifest.webmanifest` + `public/icon.svg` make the page installable.
+
+The install handler is `cache.addAll` with one addition: a **content-hashed URL an older
+cache already holds is copied across rather than refetched**, since the same URL cannot mean
+different bytes. Only hashed URLs — the navigation, the manifest and the icon are always
+refetched, or a deploy would pin the old one forever. It keeps `addAll`'s all-or-nothing
+behaviour: a non-2xx rejects the whole install, because a half-filled cache that reports
+success is exactly the failure precaching exists to prevent (`build/swInstall.test.js` runs
+the shipped worker against a fake CacheStorage to hold all of this).
 
 The lazily-loaded `.docx` chunk (see Word import/export) is in the precache list too, so
 a user who imports or exports for the first time while offline still gets it.
@@ -834,8 +872,32 @@ All access goes through `hooks/usePersistentState.js`.
 - [x] `Sidebar` and the card components are `React.memo`'d, with memoized list props and
       `useCallback`'d handlers. Note the ordering: memo alone skips **nothing** until the
       props are stable identities, so all three go together or none do
-- [x] The `.docx` pipeline (and fflate) is lazily imported: 227KB → 214KB initial JS,
-      77KB → 70KB gzipped. Safe only because the service worker precaches the chunk
+- [x] The `.docx` pipeline (and fflate) is lazily imported. Safe only because the service
+      worker precaches the chunk — the rule for anything deferred here
+- [x] **The easter-egg bee is lazily imported too** (`components/LazyBee.jsx`), by the same
+      rule and with its chunk precached the same way. A plain dynamic import, not
+      `React.lazy` — there is no Suspense boundary anywhere in this app
+- [x] **No web fonts.** Six self-hosted `.woff2` files were 95.8 KB, 54% of the critical path
+      and more than the framework and application code combined. Both faces are system
+      stacks now (see Fonts). The mono stack backs the editor only; it must never be
+      applied to what was proportional, or the UI turns monospace
+- [x] **The stylesheet is inlined into `index.html`** (`build/inlineCss.js`), removing a
+      render-blocking request. The CSS asset is deleted from the bundle so the service
+      worker does not precache a file nothing requests
+- [x] **Preact via `preact/compat`** replaced React + ReactDOM: 45.23 KB gzipped → 7.64 KB.
+      Viable because the API surface here is plain — the standard hooks plus `createRoot`
+      and `StrictMode`, no portals, no Suspense, no `React.lazy`, no `flushSync`, no
+      concurrent features. The whole suite runs through the same aliases, so it is the gate
+- [x] **Framework and app code are separate chunks**, and `sw.js`'s install carries an
+      unchanged hashed chunk over from the previous build's cache instead of refetching it
+      (the cache name carries the build id, so every deploy otherwise starts empty)
+- [x] **The first extraction of a restored buffer is deferred past first paint**
+      (`useDebounced`'s third argument). Both buffers came back from `localStorage` full and
+      were extracted inside the very first render: measured in Chromium at 4× CPU throttle
+      with two 112 KB buffers, the document appeared after **4199 ms**; deferred, it appears
+      after **227 ms** and the highlights fill in behind it
+- [x] A **payload budget** runs in CI (`npm run budget`): critical path 42.6 KB / 50 KB,
+      whole precached shell 58.1 KB / 70 KB
 - [x] Editor hover hit-testing is throttled to one `elementFromPoint` per animation frame
 - [x] The reference list's multi-word terms cost one Map hit per sign occurrence: the
       index is keyed on the term's **last two words**, so a list naming three hundred
@@ -922,6 +984,7 @@ npm test           # run the Vitest unit tests
 npm run typecheck  # checkJs over src/logic/ + build/ (see jsconfig.json)
 npm run format     # prettier --write . (CI runs format:check before the tests)
 npm run build    # production bundle → dist/
+npm run budget   # payload budget over dist/ (CI runs it after the build)
 npm run preview  # serve the production build locally
 ```
 
@@ -936,15 +999,17 @@ Actions"** in Settings → Pages. The Vite `base` is `/refcheck/` (project-site 
 
 ### Dependencies
 
-- React / ReactDOM 18.3.1 (bundled, not CDN)
+- Preact 10 + `preact/compat` (bundled, not CDN). Components import from `react`; the
+  alias lives in `vite.config.js`, so the app stays portable back to React
 - fflate (zip read/write for `.docx`; bundled, ~8KB gzipped — the only non-React runtime dep)
-- Vite + @vitejs/plugin-react (build)
-- Vitest (tests); jsdom + @testing-library/react + user-event + jest-dom (UI tests)
-- Space Grotesk, JetBrains Mono — self-hosted `.woff2` in `src/fonts/`, no CDN (see Offline Support)
+- Vite + @preact/preset-vite (build)
+- Vitest (tests); jsdom + @testing-library/preact + user-event + jest-dom (UI tests),
+  preact-render-to-string (the server-render smoke test)
+- No font dependency of any kind — both faces are system stacks (see Fonts)
 
 ### Testing
 
-Run with `npm test` (currently **668 tests**). Logic tests run under the fast `node`
+Run with `npm test` (currently **692 tests**). Logic tests run under the fast `node`
 environment; only `*.ui.test.jsx` files run under `jsdom` (scoped via
 `environmentMatchGlobs` in `vite.config.js`, with `src/test/setup.js` providing the
 jest-dom matchers and `matchMedia`/`clipboard` stubs). The `include` glob covers
@@ -1012,6 +1077,9 @@ Coverage by area:
 | `listTerms.test.js`              | `listTermIndex` (multi-word entries only, punctuation and stray signs dropped, stemmed duplicates collapsed, over-long phrases ignored, DE, and that layout-only edits keep the same `sig` while a real term change does not), `listExtra` (match, longest-wins, a different modifier, inflections, phrase longer than the words available) and `appliedListTerms` (list order, and a hand-reduced term dropping out)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
 | `claimStats.test.js`             | independent/dependent counts, multiple dependency, a range counting as ONE multiply-dependent claim, depends-on-multiple, chain depth, each DPMA/EPO threshold at and past its boundary, the two offices reported independently, and that **no USPTO threshold is ever emitted**                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
 | `swPrecache.test.js`             | precache list contents (base URL included, sw.js excluded, unhashed assets added, lazy chunk covered), build-id stability, and that a missing placeholder **throws** rather than shipping a worker that caches nothing                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| `swInstall.test.js`              | the SHIPPED `public/sw.js` install handler, rendered through the build substitution and run against a fake CacheStorage: a first-ever install fetches the whole shell, a second deploy carries the unchanged hashed chunk over instead of refetching it (and the new cache really holds it), the navigation/manifest/icon are always refetched, and a non-2xx rejects the install rather than reporting a half-filled cache                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| `inlineCss.test.js`              | `inlineStylesheets`: the link becomes an inline `<style>` in the same position (cascade order), which hrefs were consumed so the caller can drop those assets, a link the bundle does not own is left alone rather than silently dropped, and `rel="icon"` is not mistaken for a stylesheet                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| `useDebounced.ui.test.jsx`       | pass-through at delay 0 with no extra render, the debounce itself, and the **deferred first render**: the placeholder on the first render of a big value, the handover on the first effect rather than after the delay, no deferral when the value is small enough to pass through, and ordinary debouncing afterwards                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
 | `usePersistentState.ui.test.jsx` | init/fallback, immediate vs debounced writes, burst coalescing, flush on pagehide and visibilitychange, quota failure reported not swallowed, private-mode degradation, all three codecs                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
 | `useHotkeys.ui.test.jsx`         | mod/Cmd equivalence, firing from inside the editor, suppression of unmodified bindings while typing, named keys, case-insensitivity, disable, handler swap without re-binding, unmount cleanup                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
 | `useFileDrop.ui.test.jsx`        | nested dragenter/dragleave balancing, **dragleave with types hidden**, **dragend on an abandoned drag**, drop delivers the file, dragover preventDefault                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
