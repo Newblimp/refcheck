@@ -700,6 +700,12 @@ mark.h-hover {
   padding: 3px 6px;
   border-bottom: 1px solid var(--border);
 }
+/* The Count column's cells are right-aligned (.rl-count below), so its header
+   has to be too — otherwise the label sits over the left edge of a column of
+   right-aligned numbers. */
+.reflist-table th:last-child {
+  text-align: right;
+}
 .reflist-table td {
   padding: 3px 6px;
   border-bottom: 1px solid var(--border);
