@@ -36,10 +36,17 @@ export function useEditorSync({ html, text }) {
   // styles.css turns the rubber-band off, and the overshoot the geometry still
   // reports (iOS Safari puts it in scrollTop) is applied as a translation,
   // which the backdrop's scrollTop cannot express. See logic/scrollSync.js.
+  // Whether the editor has ever scrolled. Every path into syncScroll implies it
+  // has: the textarea's own onScroll event, scrollTo (which just moved it), and
+  // the effect below, which is gated on this flag. See the effect for why the
+  // flag is tracked rather than measured.
+  const scrolled = useRef(false);
+
   const syncScroll = useCallback(() => {
     const ta = taRef.current,
       bd = bdRef.current;
     if (!ta || !bd) return;
+    scrolled.current = true;
     const { top, shift } = backdropScroll(ta.scrollTop, ta.scrollHeight, ta.clientHeight);
     bd.scrollTop = top;
     const tf = shift ? `translateY(${-shift}px)` : '';
@@ -52,8 +59,21 @@ export function useEditorSync({ html, text }) {
   // event that fired synced against stale, short content and clamped, leaving
   // the highlights shifted until the next manual scroll. Re-syncing after the
   // content commits realigns the two layers before the browser paints.
+  //
+  // Skipped until the editor has actually scrolled, which is the whole of the
+  // mount case: both layers sit at offset 0 with no transform, so there is
+  // nothing to mirror. Asking the DOM to confirm that is what costs — the read
+  // of scrollTop/scrollHeight/clientHeight forces the app's ENTIRE first layout
+  // synchronously inside the mount task (46 ms of a 78 ms task, in a Lighthouse
+  // trace of the deployed site, and the largest main-thread group in it). The
+  // layout still has to happen; gating on a flag we already know lets the
+  // browser do it in its own rendering step instead of inside our JS.
+  //
+  // The paste case is unaffected, because its ordering is the premise of the
+  // bug above: the textarea scrolls to the caret BEFORE the debounced html
+  // commits, so the flag is set by the time this effect needs it.
   useIsoLayoutEffect(() => {
-    syncScroll();
+    if (scrolled.current) syncScroll();
   }, [html, syncScroll]);
 
   // Editor hover → sidebar-card highlight. elementFromPoint forces a synchronous

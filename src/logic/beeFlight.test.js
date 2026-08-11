@@ -1,13 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import {
-  spawnBee,
-  stepBee,
-  beeGone,
-  pickTarget,
-  countBees,
-  LIFESPAN,
-  MAX_AGE,
-} from './beeFlight.js';
+import { spawnBee, stepBee, beeGone, pickTarget, LIFESPAN, MAX_AGE } from './beeFlight.js';
+import { countBees } from './beeCount.js';
 
 const W = 1200,
   H = 800;

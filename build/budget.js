@@ -29,8 +29,14 @@ export const BUDGETS = {
   total: 70 * 1024,
 };
 
-/** Files that are fetched on demand, not part of the initial render path. */
-const LAZY = /^assets\/(importDoc|Bee)-|\.svg$/;
+/**
+ * Files that are fetched on demand, not part of the initial render path.
+ *
+ * Deferring a chunk without adding it here reports the win as a LOSS — the
+ * bytes leave the entry chunk and are counted against `critical` again under
+ * their own name, plus the chunk's own overhead.
+ */
+const LAZY = /^assets\/(importDoc|Bee|HelpDialog)-|\.svg$/;
 
 /**
  * Compare a measured bundle against the budgets.

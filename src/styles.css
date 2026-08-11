@@ -42,6 +42,10 @@
   --text-muted: #c6b89f;
   --text-dim: #ada197;
   --accent: #f59b4a;
+  /* Text drawn ON --accent, which is a fill rather than a surface: white over
+     this orange is 2.17:1. The token matrix below cannot derive this pair, so
+     palette.test.js checks it explicitly. */
+  --on-accent: #282828;
   --accent-glow: rgba(245, 155, 74, 0.15);
   --warn: #fabd2f;
   --warn-bg: rgba(250, 189, 47, 0.13);
@@ -79,6 +83,7 @@
   --text-muted: #332f2b;
   --text-dim: #5e5854;
   --accent: #8f4d03;
+  --on-accent: #ffffff;
   --accent-glow: rgba(143, 77, 3, 0.15);
   --warn: #8a3c0c;
   --warn-bg: rgba(138, 60, 12, 0.13);
@@ -199,7 +204,7 @@ body,
 }
 .lang-toggle button.active {
   background: var(--accent);
-  color: #fff;
+  color: var(--on-accent);
 }
 .theme-toggle {
   display: flex;
@@ -794,17 +799,22 @@ mark.h-hover {
   background: var(--surface2);
   border: 1px solid var(--border2);
   border-radius: 6px;
+  /* No opacity here. It used to be 0.7, which composited both the text and the
+     surface under it against --bg and took this pair from 4.59:1 to 3.05:1 —
+     a WCAG AA failure that the token-vs-surface matrix in palette.test.js is
+     structurally unable to see. --text-dim is the muted look on its own. */
   color: var(--text-dim);
   cursor: pointer;
   padding: 5px 10px;
   transition: all 0.15s;
   z-index: 100;
-  opacity: 0.7;
 }
 .reset-btn:hover {
-  border-color: #e05252;
-  color: #e05252;
-  opacity: 1;
+  /* --bare rather than a hardcoded #e05252, which failed AA in both themes
+     (3.04 dark / 2.82 light) and, not being a token, was invisible to the
+     palette guard. */
+  border-color: var(--bare);
+  color: var(--bare);
 }
 
 /* OVERVIEW */

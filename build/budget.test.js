@@ -9,6 +9,7 @@ const files = [
   // Fetched on demand, so outside the critical path but inside the shell.
   { name: 'assets/importDoc-ghi.js', gzip: 13 * K },
   { name: 'assets/Bee-jkl.js', gzip: 1 * K },
+  { name: 'assets/HelpDialog-pqr.js', gzip: 2 * K },
   { name: 'assets/bee-mno.svg', gzip: 2 * K },
 ];
 
@@ -20,7 +21,7 @@ describe('checkBudget', () => {
 
   it('counts everything toward the shell budget', () => {
     const { total } = checkBudget(files, BUDGETS);
-    expect(total).toBe(60 * K);
+    expect(total).toBe(62 * K);
   });
 
   it('passes a bundle inside both budgets', () => {
@@ -43,6 +44,16 @@ describe('checkBudget', () => {
     const { failures } = checkBudget(fat, { critical: 50 * K, total: 70 * K });
     expect(failures).toHaveLength(1);
     expect(failures[0]).toMatch(/total shell/);
+  });
+
+  it('keeps every on-demand chunk off the critical path', () => {
+    // Deferring a chunk and forgetting to list it here reports the win as a
+    // loss: the bytes leave the entry chunk and are counted again under their
+    // own name. Each of these is reached only by a user action.
+    for (const name of ['assets/importDoc-x.js', 'assets/Bee-x.js', 'assets/HelpDialog-x.js']) {
+      const { critical } = checkBudget([...files, { name, gzip: 9 * K }], BUDGETS);
+      expect(critical, name).toBe(44 * K);
+    }
   });
 
   it('reports both budgets when both are blown', () => {

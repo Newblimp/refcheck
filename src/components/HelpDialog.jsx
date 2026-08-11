@@ -1,8 +1,14 @@
 import { useEffect, useRef } from 'react';
+import { HELP } from '../helpText.js';
 
 // ── HELP ────────────────────────────────────────────────────────────────────
 // A short usage guide and the keyboard shortcuts. Until this existed the only
 // discoverable shortcuts were the two named in the status-bar tooltips.
+//
+// Reached through LazyHelpDialog, so this module and its strings are a chunk of
+// their own. It therefore takes `lang` and reads helpText.js itself rather than
+// taking the resolved `t` — passing `t` in would have kept the strings on the
+// critical path, which is the entire point of the split.
 
 // The modifier key, written the way the user's machine writes it. Ctrl is
 // "Strg" in German, and a Mac shows ⌘ — useHotkeys treats Ctrl and Meta alike,
@@ -29,7 +35,8 @@ export const BINDINGS = [
   { keys: ['Esc'], desc: 'keyEsc' },
 ];
 
-export function HelpDialog({ t, lang, onClose }) {
+export function HelpDialog({ lang, onClose }) {
+  const t = HELP[lang] || HELP.en;
   const boxRef = useRef(null);
   const closeRef = useRef(null);
   const returnFocusRef = useRef(null);

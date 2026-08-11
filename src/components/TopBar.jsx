@@ -35,6 +35,7 @@ function TopBarImpl({
   onImportClick,
   onExport,
   onHelp,
+  onHelpHover,
 }) {
   return (
     <div className="topbar">
@@ -112,7 +113,17 @@ function TopBarImpl({
           DE
         </button>
       </div>
-      <button className="help-btn" onClick={onHelp} title={t.helpBtn} aria-label={t.helpBtn}>
+      {/* The dialog is a lazy chunk (LazyHelpDialog); starting its fetch on
+          hover or keyboard focus means the click almost always lands on an
+          import that has already resolved. */}
+      <button
+        className="help-btn"
+        onClick={onHelp}
+        onMouseEnter={onHelpHover}
+        onFocus={onHelpHover}
+        title={t.helpBtn}
+        aria-label={t.helpBtn}
+      >
         ?
       </button>
     </div>

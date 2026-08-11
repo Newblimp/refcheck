@@ -828,8 +828,10 @@ describe('App (keyboard shortcuts and help)', () => {
     const dialog = await screen.findByRole('dialog');
     expect(dialog).toHaveAttribute('aria-modal', 'true');
     // Named by its own heading, and focus starts inside rather than behind it.
+    // Awaited because the dialog is a lazy chunk (LazyHelpDialog): it is in the
+    // DOM one commit before its focus effect runs.
     expect(dialog).toHaveAccessibleName();
-    expect(dialog.contains(document.activeElement)).toBe(true);
+    await waitFor(() => expect(dialog.contains(document.activeElement)).toBe(true));
     // Every shortcut the app binds is listed — the point of the screen. Exact
     // strings, since "Next error" is a prefix of the same-term binding's row.
     expect(within(dialog).getByText('Next error')).toBeInTheDocument();

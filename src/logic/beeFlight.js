@@ -128,20 +128,7 @@ export function beeGone(b, w, h) {
   return b.x < -GONE_MARGIN || b.x > w + GONE_MARGIN || b.y < -GONE_MARGIN || b.y > h + GONE_MARGIN;
 }
 
-/**
- * How many times the trigger word appears (the typed trigger).
- *
- * "bee" always counts; "Biene"/"Bienen" counts as well when German is the
- * active language. Word boundaries keep compounds out — "beetle" and
- * "Bienenstock" are not the user asking for a bee.
- *
- * @param {string} text
- * @param {'en'|'de'} [lang]
- */
-export function countBees(text, lang) {
-  if (!text) return 0;
-  const s = String(text);
-  let n = (s.match(/\bbees?\b/gi) || []).length;
-  if (lang === 'de') n += (s.match(/\bbienen?\b/gi) || []).length;
-  return n;
-}
+// countBees lives in beeCount.js, not here: useBee imports it on every settled
+// keystroke, and this module is otherwise reached only through the lazily
+// imported Bee component. Sharing a file made the eager side pull in the whole
+// motion model. Do not move it back.

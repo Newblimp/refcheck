@@ -4,11 +4,15 @@ _What makes os8088.com feel instant, which of those techniques apply here, and w
 measurements turned up. Offline capability is a hard constraint throughout: nothing in this plan
 weakens the guarantee that the tool works after one visit with the network off._
 
-> **Status: Phases 1 and 2 are implemented.** Critical path **176.6 KB → 42.6 KB** across
+> **Status: Phases 1, 2 and 4 are implemented.** Critical path **176.6 KB → 42.6 KB** across
 > **9 requests → 3**, and a restored two-buffer session shows its document in **227 ms instead of
 > 4199 ms**. Two steps did not survive contact with a browser and were dropped rather than shipped
 > on the strength of the reasoning below — see **§ What the measurements overturned**. Phase 3 is
 > untouched. The analysis is kept as written, including the parts that turned out to be wrong.
+>
+> **Phase 4** is the follow-up to a Lighthouse run against the deployed site, which scores
+> **performance 100** — so it is deliberately a small phase: one main-thread defect, ~2 KB off the
+> critical chunk, and two contrast bugs the palette guard was structurally unable to see.
 
 ## Verdict
 
@@ -290,6 +294,156 @@ os8088 derives every metric from one unit. `styles.css` is not far off this alre
 that pins the editor's `line-height` and the card metrics to integer pixel values would remove
 sub-pixel reflow between the two editor layers — the place where a fractional line-height is most
 visible, because two independently-laid-out layers must agree line for line.
+
+---
+
+## Phase 4 — the Lighthouse follow-up (desktop PSI run against the Cloudflare Pages deploy)
+
+A Lighthouse 13.4.1 run against `nicos-refcheck.pages.dev` scores **performance 100**, and that is
+itself the finding: the load axis is finished. FCP = LCP = **386 ms observed**, TBT **0 ms**,
+CLS **0**, **3 requests**, **45 KiB** total, zero fonts, zero stylesheets, TTFB ~2 ms. Every
+opportunity audit is empty — no render-blocking resources, no unused CSS, no legacy or duplicated
+JavaScript, no image or font work, no redirects, no preconnect candidates.
+
+What the trace still shows, in the order it happens:
+
+| Phase                                                       | Window                                        |
+| ----------------------------------------------------------- | --------------------------------------------- |
+| document (6.9 KB gz)                                        | 1 → 120 ms                                    |
+| `index.js` (29.0 KB gz) + `vendor.js` (7.5 KB gz), parallel | 135 → 251 ms                                  |
+| mount task                                                  | 263 → 341 ms (**77.9 ms**, only task > 50 ms) |
+| first content painted                                       | 386 ms                                        |
+
+LCP decomposes into 2.2 ms time-to-first-byte and **384 ms element render delay**, on the
+textarea's placeholder. That is the shape of a client-rendered app, and §1.3 already settled what
+to do about it — nothing, on measured grounds.
+
+Three things are worth acting on. All three are small; the honest summary of this report is that
+there is no large loading win left to take.
+
+### 4.1 The forced reflow at mount — 46.2 ms inside the 77.9 ms task
+
+Lighthouse reports exactly one forced reflow, at `index-TZU0mzVT.js:14:7589`. The deployed bundle
+is byte-identical to a local `npm run build` (same content hash), so that location maps precisely:
+it is the `ta.scrollTop` / `scrollHeight` / `clientHeight` read inside `syncScroll`, reached from
+the layout effect in `hooks/useEditorSync.js` that re-mirrors the scroll offset whenever the
+backdrop's html commits. Style & Layout (50 ms) is consequently the largest main-thread group in
+the profile, ahead of script evaluation (41 ms).
+
+At mount that call has nothing to do: the textarea is at offset 0, the backdrop is at 0, and there
+is no transform to clear. But reading the geometry forces the app's entire first layout
+synchronously **inside the JS task**, rather than letting it happen in the browser's own rendering
+step immediately afterwards.
+
+**Be precise about the saving.** The layout has to happen either way; not forcing it does not
+delete 46 ms of work, it moves it out of the long task. On this machine (benchmarkIndex 669) TBT
+is already 0 and the visible win is near zero. The reason to do it anyway is that the 77.9 ms task
+is the thing that scales on slower hardware — at 4× CPU throttle it is the difference between a
+task that registers as blocking and one that does not — and the fix is four lines.
+
+**The fix:** the effect only has work to do if the editor has ever scrolled. Track that in a ref
+set by `syncScroll` itself (it runs as the textarea's `onScroll` handler and from `scrollTo`), and
+gate the layout effect on it. The large-paste case the effect exists for is unaffected: a paste
+scrolls the textarea to the caret _before_ the debounced html commits — that ordering is the
+premise of the bug the effect fixes — so the ref is set by the time it matters.
+
+### 4.2 What sits on the critical path that first paint cannot use
+
+48% of the app chunk goes unused during load (39.4 KB of 82.8 KB raw). Attributing bundle bytes
+back through a sourcemap build, two things in the eager chunk are reachable only by explicit user
+action:
+
+| Module                                                       | Raw bytes | Why it is not needed to paint                                                                            |
+| ------------------------------------------------------------ | --------- | -------------------------------------------------------------------------------------------------------- |
+| `HelpDialog.jsx` + its `help*` / `key*` strings in `i18n.js` | ~4.8 KB   | Opened by a click on the `?` button                                                                      |
+| `logic/beeFlight.js`                                         | 1.5 KB    | The flight model belongs to the already-lazy `Bee` chunk; only `countBees` is eager, and it is six lines |
+
+Both follow §1.5's rule exactly, precache obligation included. Expect roughly **2 KB gzipped, ~7%
+of the app chunk** — small, and worth stating as small rather than dressing up.
+
+### 4.3 Two contrast failures, and the hole in the guard that missed them
+
+The run's accessibility score is 0.95, from two WCAG AA failures — the only outright bugs in the
+report:
+
+| Element                      | Rendered pair                                        | Ratio    |
+| ---------------------------- | ---------------------------------------------------- | -------- |
+| `.lang-toggle button.active` | `#fff` on `--accent` (dark)                          | **2.17** |
+| `.reset-btn`                 | `--text-dim` on `--surface2`, through `opacity: 0.7` | **3.05** |
+
+`logic/palette.test.js` passes both, and the reason is worth recording because it generalises:
+it compares **raw tokens** against `--bg` / `--surface` / `--surface2`. It therefore cannot see
+
+1. a foreground that is not a token (`#fff`) on a background that is not a surface (`--accent`), or
+2. **`opacity` compositing** — the token pair `--text-dim` on `--surface2` really does clear AA at
+   4.59, and `opacity: 0.7` composites both against `--bg` and drops it to 3.10. Reproducing axe's
+   numbers from the stylesheet confirms the model: 3.10 computed against 3.05 measured.
+
+The same opacity bug is worse in the light theme (**2.79**), where the run never looked, and the
+button's `:hover` red `#e05252` is a hardcoded hex that fails in both themes (3.04 / 2.82) while
+the existing `--bare` token would pass in both (4.75 / 6.13).
+
+**The fixes:** add an `--on-accent` token (`--bg` on dark, `#fff` on light — 6.79 and 6.50) and use
+it for the active language pill; drop the reset button's `opacity` and let `--text-dim` carry the
+softness on its own (4.59 / 5.16); replace the hover hex with `var(--bare)`.
+
+**The guard matters more than the fixes.** Two additions to `palette.test.js`:
+
+- a small **composite table** for pairs the token matrix cannot express by construction (text on a
+  coloured fill), and
+- a **stylesheet scan** that fails any rule setting both a text `color:` and an `opacity:` below 1.
+  That is the general form of the second bug rather than this instance of it, and after the fix
+  `.reset-btn` is the only rule in the file that would have tripped it. Decorative opacity
+  (`.buf-dot`, `.ov-empty svg`) sets no `color:` and is naturally out of scope.
+
+### Delivered (Phase 4) — measured in Chromium at 4× CPU throttle
+
+Nine runs per variant against the built bundle over a local server, cold context, empty buffers —
+the case Lighthouse measured. Medians:
+
+| Measure                             | Before   | After        |
+| ----------------------------------- | -------- | ------------ |
+| Critical path (gzipped)             | 42.6 KB  | **40.6 KB**  |
+| App chunk (gzipped)                 | 29.74 KB | **27.68 KB** |
+| Longest main-thread task            | 145 ms   | **138 ms**   |
+| Total blocking time                 | 95 ms    | **88 ms**    |
+| FCP / LCP                           | 276 ms   | **252 ms**   |
+| `LayoutDuration` (renderer counter) | 64.6 ms  | **56.3 ms**  |
+| Tests                               | 692      | **705**      |
+
+Isolating the two changes against each other (11 runs, byte trim held constant) puts the reflow
+gate at −5 ms of longest task, −5 ms TBT and −8 ms FCP on its own, with the rest coming from the
+smaller chunk. Two details are worth keeping:
+
+- **`LayoutCount` is 2 before and 2 after.** The layout was never wasted work and the fix does not
+  remove it — it moves it out of the JS task, exactly as predicted above. Anyone re-measuring this
+  and finding "no layout was saved" has confirmed the change, not refuted it.
+- **The byte win is understated here**, because the harness serves uncompressed over localhost.
+  What it measures is parse and execute; the transfer saving is on top and only shows on a real
+  network.
+
+Verified in the browser rather than reasoned about: the help chunk is **not** fetched before an
+interaction (only `index` and `vendor` load), the dialog opens with focus inside it, both fixed
+colours composite to the values the palette test asserts (`#282828` on `#f59b4a`, and `#ada197` on
+`#3c3836` at opacity 1) — and, the constraint that governs everything here, an **offline reload
+still boots the app, runs extraction, and opens the deferred help screen from the precache**.
+
+### What this phase deliberately leaves alone
+
+- **Splitting `i18n.js` by language.** It is the largest module in the critical chunk (16.1 KB,
+  19% of it) and half is the language the reader will never see — but the only way to stop shipping
+  it is a dynamic import, and the strings are needed by the first render. That trades ~2 KB gzipped
+  for a round trip before paint on a page whose whole JS payload is 37 KB. It is a straight loss.
+- **Deferring the analysis layer.** `extract`, `stem`, `claims`, `crossref`, `reconcile` and the
+  rest total ~21 KB raw of the eager chunk, and first paint needs none of it — the boot extraction
+  is already deferred past paint by §2.2. Splitting it into another _statically imported_ chunk
+  moves the same bytes across two parallel requests and wins nothing; the byte win needs a
+  **dynamic** import, which makes extraction async and turns App's `useMemo` results into state.
+  That is a real restructuring of the data flow for ~6 KB gzipped, and it should be gated on a
+  throttled measurement rather than done on the strength of the byte count.
+- **`network-dependency-tree-insight`, which scores 0.** Its own reported LCP saving is **0 ms**
+  and it says "no additional origins are good candidates for preconnecting". It fires on the mere
+  existence of a document → JS chain. There is nothing here.
 
 ---
 

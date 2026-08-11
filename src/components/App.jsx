@@ -20,7 +20,7 @@ import { useDocumentIO } from '../hooks/useDocumentIO.js';
 import { CtxMenu } from './CtxMenu.jsx';
 import { Sidebar } from './Sidebar.jsx';
 import { RefPane } from './RefPane.jsx';
-import { HelpDialog } from './HelpDialog.jsx';
+import { LazyHelpDialog, preloadHelpDialog } from './LazyHelpDialog.jsx';
 import { DropOverlay } from './DropOverlay.jsx';
 import { ImportBanner } from './ImportBanner.jsx';
 import { TopBar } from './TopBar.jsx';
@@ -524,9 +524,10 @@ export function App() {
         onImportClick={openPicker}
         onExport={doExport}
         onHelp={openHelp}
+        onHelpHover={preloadHelpDialog}
       />
 
-      {helpOpen && <HelpDialog t={t} lang={lang} onClose={() => setHelpOpen(false)} />}
+      {helpOpen && <LazyHelpDialog lang={lang} onClose={() => setHelpOpen(false)} />}
 
       <ImportBanner
         report={report}

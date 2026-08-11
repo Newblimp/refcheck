@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { countBees } from '../logic/beeFlight.js';
+import { countBees } from '../logic/beeCount.js';
 import { useDebounced } from './useDebounced.js';
 
 // Decides WHEN a bee shows up. Two triggers:
