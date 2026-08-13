@@ -5,7 +5,6 @@ import {
   isClaimNumber,
   isArt,
   isOrd,
-  isNumOrd,
   EN_ORD,
   DE_ORD,
   artType,
@@ -157,119 +156,110 @@ describe('article helpers', () => {
     expect(isArt('der', 'de')).toBe(true);
     expect(isArt('the', 'de')).toBe(false);
   });
-  it('isOrd recognises ordinals/adjectives', () => {
-    expect(isOrd('first', 'en')).toBe(true);
-    expect(isOrd('zweite', 'de')).toBe(true);
+  // ONE vocabulary: numberings and qualifiers alike widen a term and may alike be
+  // dropped on a later reference to the same sign (logic/cumulative.ts). The two
+  // halves are spelled out here so a word added to EN_ORD/DE_ORD has to be added
+  // to CLAUDE.md's table as well — the list is what a drafter has to be able to
+  // look up when the tool silently reads two words as one term.
+  const EN_NUMBERINGS = [
+    'first',
+    'second',
+    'third',
+    'fourth',
+    'fifth',
+    'sixth',
+    'seventh',
+    'eighth',
+    'ninth',
+    'tenth',
+    'eleventh',
+    'twelfth',
+  ];
+  const EN_QUALIFIERS = [
+    'further',
+    'other',
+    'another',
+    'next',
+    'upper',
+    'lower',
+    'inner',
+    'outer',
+    'front',
+    'rear',
+    'left',
+    'right',
+    'top',
+    'bottom',
+    'primary',
+    'secondary',
+    'main',
+    'auxiliary',
+    'additional',
+  ];
+  const DE_QUALIFIERS = [
+    'weitere',
+    'weiteren',
+    'weiterer',
+    'zusätzliche',
+    'zusätzlichen',
+    'primäre',
+    'primären',
+    'sekundäre',
+    'sekundären',
+    'obere',
+    'oberen',
+    'untere',
+    'unteren',
+    'innere',
+    'inneren',
+    'äußere',
+    'äußeren',
+    'vordere',
+    'vorderen',
+    'hintere',
+    'hinteren',
+    'linke',
+    'linken',
+    'rechte',
+    'rechten',
+    'andere',
+    'anderen',
+    'anderer',
+  ];
+
+  it('isOrd accepts numberings and qualifiers alike, in both languages', () => {
+    for (const w of [...EN_NUMBERINGS, ...EN_QUALIFIERS]) expect(isOrd(w, 'en')).toBe(true);
+    for (const w of DE_QUALIFIERS) expect(isOrd(w, 'de')).toBe(true);
+    expect(isOrd('Zweite', 'de')).toBe(true); // matched on the raw word, case-folded
     expect(isOrd('banana', 'en')).toBe(false);
-  });
-  // Only a numbering opens a term to the cumulative-reference rule, because only
-  // a numbering is certain to be droppable ("die Wellen 10, 20"); a lost "upper"
-  // is a lost qualifier. The two sets are NOT nested either way — see the
-  // partition test below and the vocabulary table in CLAUDE.md.
-  it('isNumOrd recognises numberings in both languages', () => {
-    for (const w of ['first', 'Second', 'third', 'tenth', 'twelfth'])
-      expect(isNumOrd(w, 'en')).toBe(true);
-    for (const w of ['erste', 'ersten', 'erster', 'erstes', 'erstem', 'zweite', 'dritten', 'achte'])
-      expect(isNumOrd(w, 'de')).toBe(true);
-  });
-  it('isNumOrd rejects the positional qualifiers isOrd accepts', () => {
-    for (const w of ['upper', 'lower', 'main', 'additional', 'other', 'further']) {
-      expect(isOrd(w, 'en')).toBe(true);
-      expect(isNumOrd(w, 'en')).toBe(false);
-    }
-    for (const w of ['obere', 'untere', 'weitere', 'andere']) {
-      expect(isOrd(w, 'de')).toBe(true);
-      expect(isNumOrd(w, 'de')).toBe(false);
-    }
-  });
-  it('isNumOrd rejects cardinals, nouns and the other language', () => {
-    expect(isNumOrd('acht', 'de')).toBe(false); // the cardinal, not "achte"
-    expect(isNumOrd('welle', 'de')).toBe(false);
-    expect(isNumOrd('banana', 'en')).toBe(false);
-    expect(isNumOrd('first', 'de')).toBe(false);
-    expect(isNumOrd('erste', 'en')).toBe(false);
+    expect(isOrd('first', 'de')).toBe(false); // language-specific
   });
 
-  // The vocabulary that widens a term, split by what the split MEANS: a
-  // numbering may be dropped on a later reference (logic/cumulative.ts), a
-  // qualifier may not. Which bucket a word belongs in is a decision, not a fact
-  // about the word, so both halves are pinned here and tabulated in CLAUDE.md.
-  // Adding a word to EN_ORD/DE_ORD fails this test until it has been classified
-  // and the table updated — which is the point.
-  it('splits the ordinal vocabulary into numberings and qualifiers', () => {
-    expect([...EN_ORD].filter((w) => !isNumOrd(w, 'en')).sort()).toEqual(
-      [
-        'additional',
-        'another',
-        'auxiliary',
-        'bottom',
-        'front',
-        'further',
-        'inner',
-        'left',
-        'lower',
-        'main',
-        'next',
-        'other',
-        'outer',
-        'primary',
-        'rear',
-        'right',
-        'secondary',
-        'top',
-        'upper',
-      ].sort()
-    );
-    expect([...DE_ORD].filter((w) => !isNumOrd(w, 'de')).sort()).toEqual(
-      [
-        'andere',
-        'anderen',
-        'anderer',
-        'äußere',
-        'äußeren',
-        'hintere',
-        'hinteren',
-        'innere',
-        'inneren',
-        'linke',
-        'linken',
-        'obere',
-        'oberen',
-        'primäre',
-        'primären',
-        'rechte',
-        'rechten',
-        'sekundäre',
-        'sekundären',
-        'untere',
-        'unteren',
-        'vordere',
-        'vorderen',
-        'weitere',
-        'weiteren',
-        'weiterer',
-        'zusätzliche',
-        'zusätzlichen',
-      ].sort()
-    );
+  it('carries every German ordinal inflection up to twelfth', () => {
+    // German ordinals inflect five ways and a draft uses all of them ("der
+    // dritte", "des dritten", "einem dritten"). Missing one silently drops a
+    // term back to its base noun, which is a wrong term rather than no term.
+    for (const st of ['erst', 'zweit', 'dritt', 'viert', 'fünft', 'acht', 'zwölft'])
+      for (const e of ['e', 'en', 'er', 'es', 'em']) expect(isOrd(st + e, 'de')).toBe(true);
+    expect(isOrd('acht', 'de')).toBe(false); // the cardinal is not an ordinal
   });
 
-  it('knows numberings the ordinal detector does not widen on its own', () => {
-    // The numbering sets reach past the ORD sets — every German inflection of
-    // every ordinal up to twelfth. Those forms cannot widen a term by
-    // themselves, so they only matter once the reference list or a manual
-    // override has already made the term multi-word; then the numbering is
-    // still droppable. This is why neither set contains the other.
-    for (const [w, lang] of [
-      ['eleventh', 'en'],
-      ['fünfte', 'de'],
-      ['dritter', 'de'],
-      ['zwölftem', 'de'],
-    ] as [string, 'en' | 'de'][]) {
-      expect(isNumOrd(w, lang)).toBe(true);
-      expect(isOrd(w, lang)).toBe(false);
-    }
+  it('holds exactly the vocabulary CLAUDE.md tabulates', () => {
+    // Pinned in both directions: an addition fails here until the table says
+    // which half it joins, and a deletion fails too.
+    const de = [
+      ...['erst', 'zweit', 'dritt', 'viert', 'fünft', 'sechst', 'siebt', 'siebent'].flatMap((st) =>
+        ['e', 'en', 'er', 'es', 'em'].map((e) => st + e)
+      ),
+      ...['acht', 'neunt', 'zehnt', 'elft', 'zwölft'].flatMap((st) =>
+        ['e', 'en', 'er', 'es', 'em'].map((e) => st + e)
+      ),
+      ...DE_QUALIFIERS,
+    ];
+    expect([...EN_ORD].sort()).toEqual([...EN_NUMBERINGS, ...EN_QUALIFIERS].sort());
+    expect([...DE_ORD].sort()).toEqual(de.sort());
   });
+
   it('artType classifies definite vs indefinite', () => {
     expect(artType('the')).toBe('def');
     expect(artType('a')).toBe('indef');

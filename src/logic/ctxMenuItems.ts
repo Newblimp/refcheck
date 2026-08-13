@@ -1,13 +1,14 @@
 import { disKey } from './constants.ts';
 import { stem } from './stem.ts';
+import { suggestSign } from './signFix.ts';
 import type { AtPos } from './buildHtml.ts';
-import type { BareTerm } from './extract.ts';
+import type { BareTerm, SignPosition, TermEntry } from './extract.ts';
 import type { Lang } from './constants.ts';
 import type { Strings } from '../i18n.ts';
 
 /** What App's handleCtxAction dispatches on. */
 export type CtxAction =
-  'extend' | 'reduce' | 'toggle-dis' | 'insert-sign' | 'dis-all' | 'restore-all';
+  'extend' | 'reduce' | 'toggle-dis' | 'insert-sign' | 'fix-sign' | 'dis-all' | 'restore-all';
 
 /** The term the extend/reduce actions operate on, and its width as displayed. */
 export interface CtxTermData {
@@ -33,12 +34,17 @@ export type CtxMenuItem =
   | { label: string; a: 'reduce'; d: CtxTermData }
   | { label: string; a: 'toggle-dis'; d: { key: string } }
   | { label: string; a: 'insert-sign'; d: { bt: BareTerm; sign: string } }
+  | { label: string; a: 'fix-sign'; d: { pos: SignPosition; from: string; to: string } }
   | { label: string; a: 'dis-all'; v: 'warn' }
   | { label: string; a: 'restore-all' };
 
 /** The payload an action carries, if any. App's dispatcher narrows on the action. */
 export type CtxActionData =
-  CtxTermData | { key: string } | { bt: BareTerm; sign: string } | undefined;
+  | CtxTermData
+  | { key: string }
+  | { bt: BareTerm; sign: string }
+  | { pos: SignPosition; from: string; to: string }
+  | undefined;
 
 export interface CtxMenu {
   label: string;
@@ -77,7 +83,12 @@ function termItems(rawTerm: string, lang: Lang, t: Strings): CtxMenuItem[] {
 /** @returns null when the caret is on nothing the menu can act on. */
 export function ctxMenuItems(
   found: AtPos | null,
-  { t, lang, dis }: { t: Strings; lang: Lang; dis: Set<string> }
+  {
+    t,
+    lang,
+    dis,
+    termData = {},
+  }: { t: Strings; lang: Lang; dis: Set<string>; termData?: Record<string, TermEntry> }
 ): CtxMenu | null {
   if (!found) return null;
   const disCt = dis.size;
@@ -88,6 +99,18 @@ export function ctxMenuItems(
     const { sign, pos: p } = found;
     label = `Sign ${sign}`;
     items.push(...termItems(p.term, lang, t));
+    // "Begriff 1 / Begriff 2 / Begriff 1": the odd occurrence out is a mistyped
+    // sign, and the term's own frequencies say which one. Offered only where
+    // that majority is unambiguous — see logic/signFix.ts.
+    const fix = suggestSign(p.termStem, sign, termData);
+    if (fix) {
+      items.push({ sep: true });
+      items.push({
+        label: t.fixSign(sign, fix.sign, fix.count),
+        a: 'fix-sign',
+        d: { pos: p, from: sign, to: fix.sign },
+      });
+    }
     items.push({ sep: true });
     const key = disKey.sign(sign);
     items.push({

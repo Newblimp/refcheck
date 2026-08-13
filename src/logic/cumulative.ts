@@ -1,11 +1,11 @@
-import { isNumOrd } from './constants.ts';
+import { isOrd } from './constants.ts';
 import type { Lang } from './constants.ts';
 
 // ── CUMULATIVE REFERENCES ────────────────────────────────────────────────────
 //
 // A drafter who has introduced "eine erste Welle 10", "eine zweite Welle 20" and
 // "eine dritte Welle 30" goes on to refer to them together, dropping the
-// numbering that only ever served to tell them apart:
+// modifier that only ever served to tell them apart:
 //
 //     die Wellen 10, 20 und 30 sind koaxial zueinander
 //
@@ -14,21 +14,29 @@ import type { Lang } from './constants.ts';
 // definite article introduces a term that was never introduced. All three are
 // artefacts of a correct draft, and they are the noise this module removes.
 //
+// The same happens with a qualifier in place of a numbering — "das obere
+// Gehäuse 12" written later as "das Gehäuse 12" — and it is the same case: the
+// modifier distinguished siblings, and the sign has since taken over that job.
+//
 // The rule is narrow on purpose — it fires only where the shortened form is
-// certain to mean the numbered one:
+// certain to mean the widened one:
 //
 //   • SAME SIGN. The sign is the identity: "die Welle 10" can only be the thing
 //     "erste Welle 10" is. That is what carries the whole rule, and it is why no
 //     proximity, plural or list heuristic is needed on top of it.
-//   • EXACTLY THE NUMBERING DROPPED. The shortened term must be the numbered one
+//   • EXACTLY THE MODIFIER DROPPED. The shortened term must be the widened one
 //     minus its first word, stem for stem ("erst well" → "well"). A term that
 //     lost something else, or gained something, is left alone.
-//   • A NUMBERING, not any qualifier. "erste"/"first", not "obere"/"upper" —
-//     see isNumOrd in constants.ts.
+//   • THE DROPPED WORD IS A MODIFIER (isOrd — a numbering or a qualifier), not
+//     any first word. A term the reference list spells out as "control unit" is
+//     the drafter's own declared vocabulary, so writing "the unit 30" is a
+//     departure from it rather than a shorthand for it.
 //   • ONE candidate. A sign written as both "erste Welle 10" and "zweite Welle
-//     10" is itself the inconsistency the tool exists to report; with two
-//     numbered forms there is no single term to fold into, so nothing is folded
-//     and the error stays visible.
+//     10" — or as "das obere Gehäuse 12" and "das untere Gehäuse 12" — is itself
+//     the inconsistency the tool exists to report; with two widened forms there
+//     is no single term to fold into, so nothing is folded and the error stays
+//     visible. A CHANGED modifier is therefore still caught; only a DROPPED one
+//     is forgiven.
 //
 // Everything else about the shortened occurrence is untouched: it is still an
 // occurrence of the sign, still counted, and in claims mode still required to be
@@ -57,7 +65,7 @@ export const cumKey = (sign: string, termStem: string): string => `${sign}\n${te
 /**
  * Which shortened terms are back-references, and to what.
  *
- * @returns cumKey(sign, shortened stem) → the numbered stem it belongs to. A
+ * @returns cumKey(sign, shortened stem) → the widened stem it belongs to. A
  *   sign/term pair absent from the map is an ordinary occurrence.
  */
 export function canonicalCumulativeTerms(
@@ -65,10 +73,10 @@ export function canonicalCumulativeTerms(
   lang: Lang
 ): Map<string, string> {
   const out = new Map<string, string>();
-  // sign → shortened stem → the numbered stems that shorten to it. Nested rather
+  // sign → shortened stem → the widened stems that shorten to it. Nested rather
   // than keyed on cumKey because the ambiguity check below asks "how many
-  // numbered forms does THIS sign have for THIS base", which is that inner set.
-  const numbered = new Map<string, Map<string, Set<string>>>();
+  // widened forms does THIS sign have for THIS base", which is that inner set.
+  const widened = new Map<string, Map<string, Set<string>>>();
   // Every (sign, term) pair actually written, so a fold is offered only for a
   // shortened form that exists.
   const written = new Set<string>();
@@ -78,23 +86,23 @@ export function canonicalCumulativeTerms(
     const words = o.term.split(' ');
     const stems = o.termStem.split(' ');
     // The raw term and its stem are built word for word from the same tokens, so
-    // the lengths always agree; checking it is what makes reading the numbering
+    // the lengths always agree; checking it is what makes reading the modifier
     // off `words` and the base off `stems` safe rather than merely likely.
     if (words.length < 2 || words.length !== stems.length) continue;
-    if (!isNumOrd(words[0] ?? '', lang)) continue;
+    if (!isOrd(words[0] ?? '', lang)) continue;
     const base = stems.slice(1).join(' ');
-    let byBase = numbered.get(o.sign);
-    if (!byBase) numbered.set(o.sign, (byBase = new Map()));
+    let byBase = widened.get(o.sign);
+    if (!byBase) widened.set(o.sign, (byBase = new Map()));
     const at = byBase.get(base);
     if (at) at.add(o.termStem);
     else byBase.set(base, new Set([o.termStem]));
   }
 
-  for (const [sign, byBase] of numbered) {
+  for (const [sign, byBase] of widened) {
     for (const [base, cands] of byBase) {
       if (cands.size !== 1) continue; // ambiguous — leave the inconsistency visible
       const key = cumKey(sign, base);
-      if (!written.has(key)) continue; // the numbering was never dropped
+      if (!written.has(key)) continue; // the modifier was never dropped
       const [canonical] = cands;
       if (canonical !== undefined) out.set(key, canonical);
     }

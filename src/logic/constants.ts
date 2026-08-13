@@ -190,52 +190,51 @@ export const DE_ART = new Set([
   'einem',
   'einen',
 ]);
-export const EN_ORD = new Set([
-  'first',
-  'second',
-  'third',
-  'fourth',
-  'fifth',
-  'sixth',
-  'seventh',
-  'eighth',
-  'ninth',
-  'tenth',
-  'further',
-  'other',
-  'another',
-  'next',
-  'upper',
-  'lower',
-  'inner',
-  'outer',
-  'front',
-  'rear',
-  'left',
-  'right',
-  'top',
-  'bottom',
-  'primary',
-  'secondary',
-  'main',
-  'auxiliary',
-  'additional',
-]);
-export const DE_ORD = new Set([
-  'erste',
-  'ersten',
-  'erstem',
-  'erster',
-  'erstes',
-  'zweite',
-  'zweiten',
-  'zweitem',
-  'zweiter',
-  'zweites',
-  'dritte',
-  'dritten',
-  'vierte',
-  'vierten',
+// ── DISTINGUISHING MODIFIERS ─────────────────────────────────────────────────
+// The words that may stand between the article and the base noun to tell
+// siblings apart: numberings ("first" / "erste") and qualifiers ("upper" /
+// "obere") alike. ONE vocabulary, because the two do the same job and the tool
+// treats them the same way in both places it matters:
+//
+//   • detectOrdStems widens the term to include the modifier, so "the first
+//     bearing 20" and "the second bearing 21" are two terms rather than one
+//     "bearing" used for two signs.
+//   • logic/cumulative.ts folds a later reference that drops the modifier back
+//     into the widened term, PROVIDED the reference sign is the same. The sign
+//     is the identity, so "the housing 12" after "the upper housing 12" can
+//     only be that housing — exactly as "die Welle 10" can only be "die erste
+//     Welle 10".
+//
+// These two were split for a while, with only numberings droppable, on the
+// theory that a lost qualifier might be a drafting slip. But a slip cannot be
+// told from a deliberate shorthand, the sign settles the reference either way,
+// and a drafter drops "obere" exactly as readily as "erste" — so the split cost
+// a maintained table and bought nothing. What still catches a real slip is the
+// pair of guards that survived: a CHANGED modifier ("upper" → "lower") is two
+// widened terms under one sign, and folding is refused where two of them exist.
+//
+// German ordinals inflect (erste/erster/erstes/erstem/ersten), so their half is
+// built from stem × ending rather than spelled out sixty-five times.
+const DE_NUM_STEMS = [
+  'erst',
+  'zweit',
+  'dritt',
+  'viert',
+  'fünft',
+  'sechst',
+  'siebt',
+  'siebent',
+  'acht',
+  'neunt',
+  'zehnt',
+  'elft',
+  'zwölft',
+];
+const DE_NUM_ENDINGS = ['e', 'en', 'er', 'es', 'em'];
+/** Numberings: erste … zwölfte, every inflection (the cardinal "acht" is not one). */
+const DE_NUM = DE_NUM_STEMS.flatMap((st) => DE_NUM_ENDINGS.map((e) => st + e));
+/** Qualifiers: position, rank and "another one of the same". */
+const DE_QUAL = [
   'weitere',
   'weiteren',
   'weiterer',
@@ -264,47 +263,8 @@ export const DE_ORD = new Set([
   'andere',
   'anderen',
   'anderer',
-]);
-
-export const isArt = (w: string, l: Lang) => (l === 'de' ? DE_ART : EN_ART).has(w.toLowerCase());
-export const isOrd = (w: string, l: Lang) => (l === 'de' ? DE_ORD : EN_ORD).has(w.toLowerCase());
-
-// ── ORDINAL NUMBERINGS ───────────────────────────────────────────────────────
-// A NUMBERING ("first" / "erste"), as opposed to the positions and qualifiers
-// that also open a multi-word term ("upper", "vordere", "additional"). The
-// distinction exists for exactly one rule: a term introduced with a numbering
-// may be referred back to without it (logic/cumulative.ts). "the upper housing
-// 12" later written "the housing 12" is NOT that case — the drafter may simply
-// have lost the qualifier — so the ORD sets above are deliberately not reused.
-//
-// German ordinals inflect (erste/erster/erstes/erstem/ersten), so the set is
-// built from stem × ending rather than spelled out sixty times.
-//
-// Neither set contains the other, and that is deliberate. These sets reach past
-// the ORD ones (eleventh/twelfth; dritter/drittes, fünfte…zwölfte in every
-// ending) because widening the ORD sets changes how EVERY term in every
-// document is read, while widening these only changes what may be folded — and
-// a form that is not in DE_ORD can still reach a multi-word term through the
-// reference list or a manual override. constants.test.ts pins the split, and
-// CLAUDE.md tabulates it under The Qualifier Vocabulary.
-const DE_ORD_STEMS = [
-  'erst',
-  'zweit',
-  'dritt',
-  'viert',
-  'fünft',
-  'sechst',
-  'siebt',
-  'siebent',
-  'acht',
-  'neunt',
-  'zehnt',
-  'elft',
-  'zwölft',
 ];
-const DE_ORD_ENDINGS = ['e', 'en', 'er', 'es', 'em'];
-export const DE_NUM_ORD = new Set(DE_ORD_STEMS.flatMap((s) => DE_ORD_ENDINGS.map((e) => s + e)));
-export const EN_NUM_ORD = new Set([
+const EN_NUM = [
   'first',
   'second',
   'third',
@@ -317,10 +277,35 @@ export const EN_NUM_ORD = new Set([
   'tenth',
   'eleventh',
   'twelfth',
-]);
-/** Is this word an ordinal NUMBERING (a subset of isOrd — see above)? */
-export const isNumOrd = (w: string, l: Lang) =>
-  (l === 'de' ? DE_NUM_ORD : EN_NUM_ORD).has(w.toLowerCase());
+];
+const EN_QUAL = [
+  'further',
+  'other',
+  'another',
+  'next',
+  'upper',
+  'lower',
+  'inner',
+  'outer',
+  'front',
+  'rear',
+  'left',
+  'right',
+  'top',
+  'bottom',
+  'primary',
+  'secondary',
+  'main',
+  'auxiliary',
+  'additional',
+];
+export const EN_ORD = new Set([...EN_NUM, ...EN_QUAL]);
+export const DE_ORD = new Set([...DE_NUM, ...DE_QUAL]);
+
+export const isArt = (w: string, l: Lang) => (l === 'de' ? DE_ART : EN_ART).has(w.toLowerCase());
+/** Is this word a distinguishing modifier — a numbering or a qualifier? */
+export const isOrd = (w: string, l: Lang) => (l === 'de' ? DE_ORD : EN_ORD).has(w.toLowerCase());
+
 // Indefinite articles, EN + DE. A module-level Set: artType runs once per
 // article occurrence, and the array literal was rebuilt on every call.
 const INDEF_ARTS = new Set(['a', 'an', 'ein', 'eine', 'einer', 'eines', 'einem', 'einen']);

@@ -29,7 +29,7 @@ import { StatusBar } from './StatusBar.tsx';
 import { LazyBee } from './LazyBee.tsx';
 import type { ErrorKindId, ErrorRecord, Focus } from '../logic/errorKinds.ts';
 import type { CtxAction, CtxActionData, CtxMenu as CtxMenuData } from '../logic/ctxMenuItems.ts';
-import type { BareTerm, ExtractResult, SignEntry } from '../logic/extract.ts';
+import type { BareTerm, ExtractResult, SignEntry, SignPosition } from '../logic/extract.ts';
 import type { ErrorEntry } from '../logic/errorSpans.ts';
 import type { Lang, Mode } from '../logic/constants.ts';
 import type { IOBuffers } from '../hooks/useDocumentIO.ts';
@@ -475,6 +475,7 @@ export function App() {
       t,
       lang,
       dis,
+      termData,
     });
     if (!menu) return;
     setCtx({ x: e.clientX, y: e.clientY, ...menu });
@@ -499,6 +500,22 @@ export function App() {
     setCaretAfterCommit(bt.termEnd + ins.length);
   }
 
+  /**
+   * Replace a mistyped reference sign with the one its term usually carries.
+   *
+   * Only the sign's own characters are rewritten, so a claims-mode "(2)" keeps
+   * its brackets and the surrounding sentence is untouched.
+   */
+  function fixSign(p: SignPosition, from: string, to: string) {
+    // Same guard as insertSign: the span comes from the (debounced) extraction,
+    // so make sure the sign is still the one that was offered before splicing.
+    if (text.slice(p.signStart, p.signEnd) !== from) return;
+    const next = text.slice(0, p.signStart) + to + text.slice(p.signEnd);
+    (mode === 'description' ? setDescText : setClaimsText)(next);
+    setFocus(null);
+    setCaretAfterCommit(p.signStart + to.length);
+  }
+
   function handleCtxAction(a: CtxAction, d: CtxActionData) {
     // Both write an ABSOLUTE width (extra words beyond the base noun) measured
     // from what is on screen, so the override lands where the drafter expects
@@ -509,6 +526,7 @@ export function App() {
     else if (a === 'reduce' && d && 'bs' in d)
       setMwo((m) => ({ ...m, [d.bs]: Math.max(0, d.cur - 2) }));
     else if (a === 'insert-sign' && d && 'bt' in d) insertSign(d.bt, d.sign);
+    else if (a === 'fix-sign' && d && 'pos' in d) fixSign(d.pos, d.from, d.to);
     else if (a === 'toggle-dis' && d && 'key' in d) toggleDis(d.key);
     else if (a === 'dis-all') disAll();
     else if (a === 'restore-all') restoreAll();

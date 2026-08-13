@@ -347,6 +347,54 @@ describe('App (interactive)', () => {
     expect(JSON.parse(must(localStorage.getItem('rsc_mwo')))).toHaveProperty('unit', 1);
   });
 
+  // A mistyped sign reads as a term-to-sign inconsistency. The term's own
+  // frequencies say which occurrence is the slip, so the menu offers to correct
+  // it in place. See logic/signFix.ts.
+  describe('correcting a mistyped sign from the context menu', () => {
+    const TYPO = 'Der Begriff 1 ist da.\nDer Begriff 2 ist da.\nDer Begriff 1 ist da.';
+    const openOnSecond = async (container: ParentNode) => {
+      fireEvent.click(screen.getByText('DE'));
+      typeInto(TYPO);
+      await sidebar(container).findByText('2');
+      const ed = editor();
+      const pos = ed.value.indexOf('Begriff 2') + 2; // on the term, as a reader would
+      ed.setSelectionRange(pos, pos);
+      fireEvent.contextMenu(ed, { clientX: 50, clientY: 50 });
+      return screen.findByRole('menu');
+    };
+
+    it('rewrites the sign and clears the inconsistency', async () => {
+      const { container } = render(<App />);
+      const menu = await openOnSecond(container);
+      fireEvent.click(within(menu).getByText(/Bezugszeichen 2 → 1 korrigieren/));
+      await waitFor(() =>
+        expect(editor().value).toBe(
+          'Der Begriff 1 ist da.\nDer Begriff 1 ist da.\nDer Begriff 1 ist da.'
+        )
+      );
+      // Sign 2 is gone from the document, and 1 is no longer inconsistent.
+      await waitFor(() => expect(sidebar(container).queryByText('2')).not.toBeInTheDocument());
+      // The caret is left just after the sign it rewrote — the one on line 2,
+      // not the first "Begriff 1" in the document.
+      const v = editor().value;
+      const corrected = v.indexOf('Begriff 1', v.indexOf('\n'));
+      expect(editor().selectionStart).toBe(corrected + 'Begriff 1'.length);
+    });
+
+    it('does not offer it on the occurrences that agree', async () => {
+      const { container } = render(<App />);
+      fireEvent.click(screen.getByText('DE'));
+      typeInto(TYPO);
+      await sidebar(container).findByText('2');
+      const ed = editor();
+      const pos = ed.value.indexOf('Begriff 1') + 2;
+      ed.setSelectionRange(pos, pos);
+      fireEvent.contextMenu(ed, { clientX: 50, clientY: 50 });
+      const menu = await screen.findByRole('menu');
+      expect(within(menu).queryByText(/korrigieren/)).not.toBeInTheDocument();
+    });
+  });
+
   // A term written without its sign is highlighted, but until now the editor's
   // context menu only knew about signs and articles — so the very occurrence the
   // tool complains about was the one that could not be acted on.

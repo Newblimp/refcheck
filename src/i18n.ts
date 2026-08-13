@@ -59,6 +59,8 @@ const en = {
   disAll: 'Dismiss all errors',
   ctxTermLbl: (t: string) => `Term: "${t}"`,
   insertSign: (s: string) => `Insert reference sign ${s} here`,
+  fixSign: (from: string, to: string, n: number) =>
+    `Correct reference sign ${from} → ${to} (${n}× elsewhere)`,
   wdCt: (n: number) => `${n}w`,
   gBare: 'Missing Signs',
   bareLbl: 'Missing',
@@ -212,6 +214,7 @@ const de: Strings = {
   disAll: 'Alle Fehler ausblenden',
   ctxTermLbl: (t) => `Begriff: „${t}"`,
   insertSign: (s) => `Bezugszeichen ${s} hier einfügen`,
+  fixSign: (from, to, n) => `Bezugszeichen ${from} → ${to} korrigieren (sonst ${n}×)`,
   wdCt: (n) => `${n}W`,
   gBare: 'Fehlende Zeichen',
   bareLbl: 'Fehlend',

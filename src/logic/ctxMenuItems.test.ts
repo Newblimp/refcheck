@@ -22,7 +22,14 @@ const at = (text: string, pos: number, opts: AtOpts = {}): CtxMenu | null => {
   const res = extractData(text, lang, {}, true, !!opts.claims);
   // Not `must`: a caret on nothing actionable is a case this file asserts.
   const found = findAtPos(pos, res.signData, res.artErrors, res.bareTerms);
-  return ctxMenuItems(found, { t, lang, dis: opts.dis ?? new Set() });
+  // termData is passed exactly as App passes it, so the sign-correction offer
+  // is exercised by every case here rather than only by the ones about it.
+  return ctxMenuItems(found, {
+    t: opts.lang === 'de' ? T.de : t,
+    lang,
+    dis: opts.dis ?? new Set(),
+    termData: res.termData,
+  });
 };
 /** `at` for the cases that go on to read the menu. */
 const menuAt = (text: string, pos: number, opts: AtOpts = {}) => must(at(text, pos, opts), 'menu');
@@ -96,6 +103,37 @@ describe('ctxMenuItems', () => {
     const menu = menuAt(TEXT, TEXT.indexOf('12'), { dis });
     expect(action(menu, 'dis-all')).toBeDefined();
     expect(must(action(menu, 'restore-all')).label).toContain('(1)');
+  });
+
+  // A mistyped sign looks exactly like a term-to-sign inconsistency; the term's
+  // own frequencies say which occurrence is the slip. See logic/signFix.ts.
+  it('offers to correct a sign the term is usually written without', () => {
+    const text = 'Begriff 1\nBegriff 2\nBegriff 1';
+    const menu = menuAt(text, text.indexOf('2'), { lang: 'de' });
+    const fix = must(action(menu, 'fix-sign'));
+    expect(fix.d.from).toBe('2');
+    expect(fix.d.to).toBe('1');
+    expect(fix.d.pos.signStart).toBe(text.indexOf('2'));
+    expect(fix.label).toBe(T.de.fixSign('2', '1', 2));
+  });
+
+  it('offers it from the term as well as from the sign', () => {
+    // findAtPos covers the term span, which is where a drafter reading the
+    // sentence actually right-clicks.
+    const text = 'Begriff 1\nBegriff 2\nBegriff 1';
+    const menu = menuAt(text, text.indexOf('Begriff 2'), { lang: 'de' });
+    expect(must(action(menu, 'fix-sign')).d.to).toBe('1');
+  });
+
+  it('does not offer it on the occurrence that already carries the usual sign', () => {
+    const text = 'Begriff 1\nBegriff 2\nBegriff 1';
+    expect(action(menuAt(text, text.indexOf('1'), { lang: 'de' }), 'fix-sign')).toBeUndefined();
+  });
+
+  it('does not offer it on an even split, or on a term with one sign', () => {
+    const even = 'Begriff 1\nBegriff 2';
+    expect(action(menuAt(even, even.indexOf('2'), { lang: 'de' }), 'fix-sign')).toBeUndefined();
+    expect(action(menuAt(TEXT, TEXT.indexOf('12')), 'fix-sign')).toBeUndefined();
   });
 
   it('labels in the language it is handed', () => {

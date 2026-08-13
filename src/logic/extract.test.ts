@@ -387,7 +387,7 @@ describe('extractData — cumulative references (numbering dropped)', () => {
     'The apparatus comprises a first shaft 10, a second shaft 20 and a third shaft 30.\n' +
     'The shafts 10, 20 and 30 are coaxial.';
 
-  it('keeps the numbered term as the sign’s only term (DE)', () => {
+  it('keeps the widened term as the sign’s only term (DE)', () => {
     const res = extractData(DE, 'de');
     const numbered = [stem('erste', 'de'), stem('Welle', 'de')].join(' ');
     expect(Object.keys(res.signData['10'].terms)).toEqual([numbered]);
@@ -475,7 +475,20 @@ describe('extractData — cumulative references (numbering dropped)', () => {
     expect(classify(res.signData['10'], res.termData, 'claims')).toBe('warn');
   });
 
-  it('takes the numbering from the drafter’s reference list too', () => {
+  it('folds a dropped qualifier exactly like a dropped numbering', () => {
+    // The vocabulary is one list: "upper"/"obere" behaves as "first"/"erste".
+    const en = extractData('The upper housing 12 is shown. The housing 12 is metal.', 'en');
+    expect(Object.keys(en.signData['12'].terms)).toEqual(['upper hous']);
+    expect(classify(en.signData['12'], en.termData, 'description')).toBe('ok');
+    const de = extractData(
+      'Ein oberes Gehäuse 12 ist gezeigt. Das Gehäuse 12 besteht aus Metall.',
+      'de'
+    );
+    expect(Object.keys(de.signData['12'].terms)).toHaveLength(1);
+    expect(classify(de.signData['12'], de.termData, 'description')).toBe('ok');
+  });
+
+  it('takes the modifier from the drafter’s reference list too', () => {
     // Here nothing in the text makes "erste Welle" two words — the list does.
     const idx = listTermIndex('10 erste Welle', 'de');
     const res = extractData(
@@ -494,13 +507,35 @@ describe('extractData — cumulative references (numbering dropped)', () => {
 });
 
 describe('extractData — cumulative references, cases that stay errors', () => {
-  it('flags a dropped qualifier that is not a numbering', () => {
-    const res = extractData('The upper housing 12 is shown. The housing 12 is metal.', 'en');
-    expect(Object.keys(res.signData['12'].terms).length).toBe(2);
+  it('flags a CHANGED modifier — only a dropped one is forgiven', () => {
+    // "das obere Gehäuse 12" and "das untere Gehäuse 12" cannot both be sign 12,
+    // so there is no single term to fold the bare "Gehäuse 12" into either.
+    const res = extractData(
+      'Das obere Gehäuse 12 ist gezeigt. Das untere Gehäuse 12 ist unten. Das Gehäuse 12 ist aus Metall.',
+      'de'
+    );
+    expect(Object.keys(res.signData['12'].terms).length).toBe(3);
     expect(classify(res.signData['12'], res.termData, 'description')).toBe('warn');
   });
 
-  it('flags a sign carrying two numberings rather than folding one of them', () => {
+  it('flags a shortened term the reference list spells out itself', () => {
+    // "control unit" is two words because the drafter's own list says so, not
+    // because a modifier widened it — writing "the unit 30" departs from the
+    // declared vocabulary rather than abbreviating it.
+    const idx = listTermIndex('30 control unit', 'en');
+    const res = extractData(
+      'The control unit 30 is mounted. The unit 30 fails.',
+      'en',
+      {},
+      true,
+      false,
+      idx
+    );
+    expect(Object.keys(res.signData['30'].terms).sort()).toEqual(['control unit', 'unit']);
+    expect(classify(res.signData['30'], res.termData, 'description')).toBe('warn');
+  });
+
+  it('flags a sign carrying two modifiers rather than folding one of them', () => {
     const res = extractData(
       'A first shaft 10 and a second shaft 10 are shown. The shaft 10 rotates.',
       'en'
@@ -518,7 +553,7 @@ describe('extractData — cumulative references, cases that stay errors', () => 
     expect(classify(res.signData['10'], res.termData, 'description')).toBe('warn');
   });
 
-  it('leaves a bare noun under a sign that was never numbered alone', () => {
+  it('leaves a bare noun under a sign that never carried a modifier alone', () => {
     // Sign 30 is not "a third shaft" anywhere, so its "shaft" is its own term.
     const res = extractData('A first shaft 10 is shown. The shaft 30 is separate.', 'en');
     expect(Object.keys(res.signData['30'].terms)).toEqual(['shaft']);
