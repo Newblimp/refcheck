@@ -7,6 +7,7 @@ import {
   isOrd,
   EN_ORD,
   DE_ORD,
+  EXCL,
   artType,
   isSignToken,
   compareSigns,
@@ -196,68 +197,86 @@ describe('article helpers', () => {
     'auxiliary',
     'additional',
   ];
-  const DE_QUALIFIERS = [
-    'weitere',
-    'weiteren',
-    'weiterer',
-    'zusätzliche',
-    'zusätzlichen',
-    'primäre',
-    'primären',
-    'sekundäre',
-    'sekundären',
-    'obere',
-    'oberen',
-    'untere',
-    'unteren',
-    'innere',
-    'inneren',
-    'äußere',
-    'äußeren',
-    'vordere',
-    'vorderen',
-    'hintere',
-    'hinteren',
-    'linke',
-    'linken',
-    'rechte',
-    'rechten',
-    'andere',
-    'anderen',
-    'anderer',
+  // Stems, because the forms are generated: every stem below × the five endings
+  // -e -en -er -es -em, which is what German actually declines through.
+  const DE_NUMBERING_STEMS = [
+    'erst',
+    'zweit',
+    'dritt',
+    'viert',
+    'fünft',
+    'sechst',
+    'siebt',
+    'siebent',
+    'acht',
+    'neunt',
+    'zehnt',
+    'elft',
+    'zwölft',
   ];
+  const DE_QUALIFIER_STEMS = [
+    'weiter',
+    'zusätzlich',
+    'primär',
+    'sekundär',
+    'ober',
+    'unter',
+    'inner',
+    'äußer',
+    'vorder',
+    'hinter',
+    'link',
+    'recht',
+    'ander',
+  ];
+  const ENDINGS = ['e', 'en', 'er', 'es', 'em'];
 
   it('isOrd accepts numberings and qualifiers alike, in both languages', () => {
     for (const w of [...EN_NUMBERINGS, ...EN_QUALIFIERS]) expect(isOrd(w, 'en')).toBe(true);
-    for (const w of DE_QUALIFIERS) expect(isOrd(w, 'de')).toBe(true);
+    for (const st of DE_QUALIFIER_STEMS) expect(isOrd(st + 'e', 'de')).toBe(true);
     expect(isOrd('Zweite', 'de')).toBe(true); // matched on the raw word, case-folded
     expect(isOrd('banana', 'en')).toBe(false);
     expect(isOrd('first', 'de')).toBe(false); // language-specific
   });
 
+  // Spelled out rather than generated: this is the case the generation exists
+  // for, and asserting it against the same cross-product the source builds would
+  // assert nothing. "obere"/"oberen" were once the only two forms present.
+  it('carries every inflection of a German qualifier, not just -e and -en', () => {
+    for (const w of ['obere', 'oberen', 'oberer', 'oberes', 'oberem'])
+      expect(isOrd(w, 'de')).toBe(true);
+    for (const w of ['linke', 'linken', 'linker', 'linkes', 'linkem'])
+      expect(isOrd(w, 'de')).toBe(true);
+    for (const w of ['andere', 'anderen', 'anderer', 'anderes', 'anderem'])
+      expect(isOrd(w, 'de')).toBe(true);
+    for (const w of ['zusätzliche', 'zusätzlichen', 'zusätzlicher', 'zusätzliches', 'zusätzlichem'])
+      expect(isOrd(w, 'de')).toBe(true);
+  });
+
   it('carries every German ordinal inflection up to twelfth', () => {
-    // German ordinals inflect five ways and a draft uses all of them ("der
-    // dritte", "des dritten", "einem dritten"). Missing one silently drops a
-    // term back to its base noun, which is a wrong term rather than no term.
+    // A draft uses all of them ("der dritte", "des dritten", "einem dritten").
     for (const st of ['erst', 'zweit', 'dritt', 'viert', 'fünft', 'acht', 'zwölft'])
-      for (const e of ['e', 'en', 'er', 'es', 'em']) expect(isOrd(st + e, 'de')).toBe(true);
+      for (const e of ENDINGS) expect(isOrd(st + e, 'de')).toBe(true);
     expect(isOrd('acht', 'de')).toBe(false); // the cardinal is not an ordinal
   });
 
   it('holds exactly the vocabulary CLAUDE.md tabulates', () => {
     // Pinned in both directions: an addition fails here until the table says
     // which half it joins, and a deletion fails too.
-    const de = [
-      ...['erst', 'zweit', 'dritt', 'viert', 'fünft', 'sechst', 'siebt', 'siebent'].flatMap((st) =>
-        ['e', 'en', 'er', 'es', 'em'].map((e) => st + e)
-      ),
-      ...['acht', 'neunt', 'zehnt', 'elft', 'zwölft'].flatMap((st) =>
-        ['e', 'en', 'er', 'es', 'em'].map((e) => st + e)
-      ),
-      ...DE_QUALIFIERS,
-    ];
+    const de = [...DE_NUMBERING_STEMS, ...DE_QUALIFIER_STEMS].flatMap((st) =>
+      ENDINGS.map((e) => st + e)
+    );
     expect([...EN_ORD].sort()).toEqual([...EN_NUMBERINGS, ...EN_QUALIFIERS].sort());
     expect([...DE_ORD].sort()).toEqual(de.sort());
+  });
+
+  it('keeps every modifier out of EXCL', () => {
+    // collectTermToks stops the backward walk at an EXCL word, so a modifier
+    // that is also excluded could never widen a term — the vocabulary entry
+    // would be dead and nothing else would say so. ("unter" is in EXCL as a
+    // preposition; "untere" and its inflections are the modifier.)
+    expect([...DE_ORD].filter((w) => EXCL.has(w))).toEqual([]);
+    expect([...EN_ORD].filter((w) => EXCL.has(w))).toEqual(['further']);
   });
 
   it('artType classifies definite vs indefinite', () => {

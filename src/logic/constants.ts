@@ -213,8 +213,17 @@ export const DE_ART = new Set([
 // pair of guards that survived: a CHANGED modifier ("upper" → "lower") is two
 // widened terms under one sign, and folding is refused where two of them exist.
 //
-// German ordinals inflect (erste/erster/erstes/erstem/ersten), so their half is
-// built from stem × ending rather than spelled out sixty-five times.
+// German declines both halves five ways, and a draft uses all five: "das obere
+// Gehäuse", "des oberen Gehäuses", "ein oberes Gehäuse", "mit oberem Gehäuse",
+// "einer oberer Welle". So both halves are GENERATED from stem × ending rather
+// than spelled out — hand-listing is how the qualifiers ended up carrying only
+// "obere"/"oberen" while "oberer"/"oberes"/"oberem" were missing. A missing
+// inflection is not a missing feature: the term silently drops back to its base
+// noun, and a wrong term reads as an inconsistency the drafter never wrote.
+const DE_ADJ_ENDINGS = ['e', 'en', 'er', 'es', 'em'];
+const decline = (stems: string[]) => stems.flatMap((st) => DE_ADJ_ENDINGS.map((e) => st + e));
+
+/** Numberings: erste … zwölfte (the bare cardinal "acht" is not one). */
 const DE_NUM_STEMS = [
   'erst',
   'zweit',
@@ -230,39 +239,21 @@ const DE_NUM_STEMS = [
   'elft',
   'zwölft',
 ];
-const DE_NUM_ENDINGS = ['e', 'en', 'er', 'es', 'em'];
-/** Numberings: erste … zwölfte, every inflection (the cardinal "acht" is not one). */
-const DE_NUM = DE_NUM_STEMS.flatMap((st) => DE_NUM_ENDINGS.map((e) => st + e));
 /** Qualifiers: position, rank and "another one of the same". */
-const DE_QUAL = [
-  'weitere',
-  'weiteren',
-  'weiterer',
-  'zusätzliche',
-  'zusätzlichen',
-  'primäre',
-  'primären',
-  'sekundäre',
-  'sekundären',
-  'obere',
-  'oberen',
-  'untere',
-  'unteren',
-  'innere',
-  'inneren',
-  'äußere',
-  'äußeren',
-  'vordere',
-  'vorderen',
-  'hintere',
-  'hinteren',
-  'linke',
-  'linken',
-  'rechte',
-  'rechten',
-  'andere',
-  'anderen',
-  'anderer',
+const DE_QUAL_STEMS = [
+  'weiter',
+  'zusätzlich',
+  'primär',
+  'sekundär',
+  'ober',
+  'unter',
+  'inner',
+  'äußer',
+  'vorder',
+  'hinter',
+  'link',
+  'recht',
+  'ander',
 ];
 const EN_NUM = [
   'first',
@@ -300,7 +291,7 @@ const EN_QUAL = [
   'additional',
 ];
 export const EN_ORD = new Set([...EN_NUM, ...EN_QUAL]);
-export const DE_ORD = new Set([...DE_NUM, ...DE_QUAL]);
+export const DE_ORD = new Set([...decline(DE_NUM_STEMS), ...decline(DE_QUAL_STEMS)]);
 
 export const isArt = (w: string, l: Lang) => (l === 'de' ? DE_ART : EN_ART).has(w.toLowerCase());
 /** Is this word a distinguishing modifier — a numbering or a qualifier? */
