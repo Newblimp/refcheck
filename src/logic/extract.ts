@@ -11,6 +11,7 @@ import {
 } from './constants.ts';
 import { stem } from './stem.ts';
 import { tokenize } from './tokenize.ts';
+import { canonicalCumulativeTerms, cumKey } from './cumulative.ts';
 import { computeClaimGraph } from './claims.ts';
 import type { ClaimGraph, ClaimNumber, ClaimSpan, DepError } from './claims.ts';
 import type { ArticleType, Lang, Mode } from './constants.ts';
@@ -36,6 +37,13 @@ export interface SignPosition {
   termStem: string;
   /** Sign was written as "(12)". */
   inParens: boolean;
+  /**
+   * The term was written without the numbering it was introduced with ("die
+   * Wellen 10" for "erste Welle 10"), so `termStem` is the numbered term this
+   * occurrence refers back to rather than the words under [termStart, termEnd).
+   * Absent on an ordinary occurrence — see logic/cumulative.ts.
+   */
+  cumulative?: true;
 }
 
 /** Everything known about one reference sign. */
@@ -165,6 +173,28 @@ const MAX_TERM_WORDS = 5;
 
 // Multiplier for packing a [start, end] character span into one number.
 const SPAN_KEY_STRIDE = 67108864; // 2^26
+
+/**
+ * One sign occurrence with its term already resolved, before the extraction
+ * structures are built from it.
+ *
+ * The scans collect these and a second pass turns them into signData/termData/…,
+ * because the cumulative-reference rule needs the whole document before it can
+ * say which term a shortened occurrence belongs to: the numbered form it refers
+ * back to may be written after it.
+ */
+interface PendingOcc {
+  sign: string;
+  signStart: number;
+  signEnd: number;
+  inParens: boolean;
+  term: string;
+  termStem: string;
+  termStart: number;
+  termEnd: number;
+  /** The article in front of the WHOLE term, where the occurrence had one. */
+  artTok: Token | null;
+}
 
 export function detectOrdStems(
   tokens: Token[],
@@ -561,11 +591,16 @@ export function extractData(
   const termPositions: Record<string, number[]> = {};
   const claimNums: ClaimNumber[] = [];
   const noTermSigns = new Set<string>();
+  const occs: PendingOcc[] = [];
+  // Which signs the scans have already produced an occurrence for. The range
+  // scan below reads this to leave an already-known sign alone; it used to ask
+  // signData, which is no longer filled until the second pass.
+  const seenSigns = new Set<string>();
 
-  // Record one occurrence of `sign` against the term described by `allTT`.
-  // Shared by the main scan and range detection. Pass artTok=null to skip
+  // Resolve the term described by `allTT` and hold the occurrence for the second
+  // pass. Shared by the main scan and range detection. Pass artTok=null to skip
   // article bookkeeping (range endpoints reuse the term's already-seen article).
-  function recordOccurrence(
+  function collectOccurrence(
     sign: string,
     signStart: number,
     signEnd: number,
@@ -602,43 +637,81 @@ export function extractData(
     const termStart = termToks[0]?.start ?? 0,
       termEnd = termToks[termToks.length - 1]?.end ?? 0;
 
-    // Held in a local rather than re-indexed: the map lookup was repeated six
-    // times per occurrence, and the type now says out loud that the entry has
-    // to be created before it can be written to.
-    const sEntry = (signData[sign] ??= { terms: {}, positions: [], count: 0, inPC: 0 });
-    sEntry.terms[termStem] = (sEntry.terms[termStem] ?? 0) + 1;
-    sEntry.count++;
-    if (inParens) sEntry.inPC++;
-    sEntry.positions.push({
-      termStart,
-      termEnd,
+    occs.push({
+      sign,
       signStart,
       signEnd,
+      inParens,
       term: termStr,
       termStem,
-      inParens,
+      termStart,
+      termEnd,
+      // An article only belongs to this term when the term is the whole phrase
+      // walked back to it; a reduced term leaves the article in front of words
+      // that are no longer part of it.
+      artTok: artTok && termToks.length === allTT.length ? artTok : null,
     });
+    seenSigns.add(sign);
+  }
 
-    const tEntry = (termData[termStem] ??= { signs: {}, rawTerms: new Set() });
-    tEntry.signs[sign] = (tEntry.signs[sign] ?? 0) + 1;
-    tEntry.rawTerms.add(termStr);
+  /**
+   * Turn the collected occurrences into the extraction structures, folding
+   * cumulative back-references into the numbered term they refer to.
+   */
+  function buildFromOccurrences(): void {
+    const canonical = canonicalCumulativeTerms(occs, lang);
+    for (const o of occs) {
+      const canon = canonical.get(cumKey(o.sign, o.termStem));
+      const termStem = canon ?? o.termStem;
 
-    const firstPos = termFirstPos[termStem];
-    if (firstPos === undefined || termStart < firstPos) termFirstPos[termStem] = termStart;
-    (termPositions[termStem] ??= []).push(termStart);
-
-    if (artTok && termToks.length === allTT.length) {
-      const al = artTok.word.toLowerCase();
-      (artByTerm[termStem] ??= []).push({
-        article: al,
-        type: artType(al),
-        artStart: artTok.start,
-        artEnd: artTok.end,
-        termStart,
-        signStart,
-        sign,
+      // Held in a local rather than re-indexed: the map lookup was repeated six
+      // times per occurrence, and the type now says out loud that the entry has
+      // to be created before it can be written to.
+      const sEntry = (signData[o.sign] ??= { terms: {}, positions: [], count: 0, inPC: 0 });
+      sEntry.terms[termStem] = (sEntry.terms[termStem] ?? 0) + 1;
+      sEntry.count++;
+      if (o.inParens) sEntry.inPC++;
+      const pos: SignPosition = {
+        termStart: o.termStart,
+        termEnd: o.termEnd,
+        signStart: o.signStart,
+        signEnd: o.signEnd,
+        term: o.term,
         termStem,
-      });
+        inParens: o.inParens,
+      };
+      if (canon !== undefined) pos.cumulative = true;
+      sEntry.positions.push(pos);
+
+      const tEntry = (termData[termStem] ??= { signs: {}, rawTerms: new Set() });
+      tEntry.signs[o.sign] = (tEntry.signs[o.sign] ?? 0) + 1;
+
+      // A cumulative occurrence is a back-reference, not a spelling of the term
+      // and not an introduction of it, so it stays out of three things: the raw
+      // spellings (the numbered form is what the reference list must print,
+      // however often the short one is written), the article check (a plural
+      // back-reference takes "die" whatever gender the singular has, which would
+      // read as a der/die/das conflict), and the positions that check reads as
+      // evidence of a term having been introduced.
+      if (canon === undefined) {
+        tEntry.rawTerms.add(o.term);
+        const firstPos = termFirstPos[termStem];
+        if (firstPos === undefined || o.termStart < firstPos) termFirstPos[termStem] = o.termStart;
+        (termPositions[termStem] ??= []).push(o.termStart);
+        if (o.artTok) {
+          const al = o.artTok.word.toLowerCase();
+          (artByTerm[termStem] ??= []).push({
+            article: al,
+            type: artType(al),
+            artStart: o.artTok.start,
+            artEnd: o.artTok.end,
+            termStart: o.termStart,
+            signStart: o.signStart,
+            sign: o.sign,
+            termStem,
+          });
+        }
+      }
     }
   }
 
@@ -662,7 +735,7 @@ export function extractData(
       noTermSigns.add(sign);
       continue;
     }
-    recordOccurrence(sign, signStart, signEnd, allTT, artTok, inParens);
+    collectOccurrence(sign, signStart, signEnd, allTT, artTok, inParens);
   }
 
   // ── Sign ranges / lists ──
@@ -699,8 +772,8 @@ export function extractData(
       const sign = nm[0];
       if (!isSignToken(sign)) continue;
       const start = rm.index + nm.index;
-      if (!signData[sign])
-        recordOccurrence(
+      if (!seenSigns.has(sign))
+        collectOccurrence(
           sign,
           start,
           start + sign.length,
@@ -710,6 +783,10 @@ export function extractData(
         );
     }
   }
+
+  // Every occurrence is in hand, so the terms can be settled — see
+  // buildFromOccurrences and logic/cumulative.ts.
+  buildFromOccurrences();
 
   // ── Claim graph (claims mode) ──
   // Dependencies drive both the depErrors category and per-claim antecedent

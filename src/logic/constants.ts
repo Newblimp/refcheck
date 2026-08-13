@@ -268,6 +268,54 @@ export const DE_ORD = new Set([
 
 export const isArt = (w: string, l: Lang) => (l === 'de' ? DE_ART : EN_ART).has(w.toLowerCase());
 export const isOrd = (w: string, l: Lang) => (l === 'de' ? DE_ORD : EN_ORD).has(w.toLowerCase());
+
+// ── ORDINAL NUMBERINGS ───────────────────────────────────────────────────────
+// A NUMBERING ("first" / "erste"), as opposed to the positions and qualifiers
+// that also open a multi-word term ("upper", "vordere", "additional"). The
+// distinction exists for exactly one rule: a term introduced with a numbering
+// may be referred back to without it (logic/cumulative.ts). "the upper housing
+// 12" later written "the housing 12" is NOT that case — the drafter may simply
+// have lost the qualifier — so the ORD sets above are deliberately not reused.
+//
+// German ordinals inflect (erste/erster/erstes/erstem/ersten), so the set is
+// built from stem × ending rather than spelled out sixty times. It covers more
+// forms than DE_ORD does: DE_ORD drives multi-word detection, where a wrong
+// guess changes every term, while this set only ever applies to a term already
+// recorded as multi-word, under a sign that also carries its shortened form.
+const DE_ORD_STEMS = [
+  'erst',
+  'zweit',
+  'dritt',
+  'viert',
+  'fünft',
+  'sechst',
+  'siebt',
+  'siebent',
+  'acht',
+  'neunt',
+  'zehnt',
+  'elft',
+  'zwölft',
+];
+const DE_ORD_ENDINGS = ['e', 'en', 'er', 'es', 'em'];
+export const DE_NUM_ORD = new Set(DE_ORD_STEMS.flatMap((s) => DE_ORD_ENDINGS.map((e) => s + e)));
+export const EN_NUM_ORD = new Set([
+  'first',
+  'second',
+  'third',
+  'fourth',
+  'fifth',
+  'sixth',
+  'seventh',
+  'eighth',
+  'ninth',
+  'tenth',
+  'eleventh',
+  'twelfth',
+]);
+/** Is this word an ordinal NUMBERING (a subset of isOrd — see above)? */
+export const isNumOrd = (w: string, l: Lang) =>
+  (l === 'de' ? DE_NUM_ORD : EN_NUM_ORD).has(w.toLowerCase());
 // Indefinite articles, EN + DE. A module-level Set: artType runs once per
 // article occurrence, and the array literal was rebuilt on every call.
 const INDEF_ARTS = new Set(['a', 'an', 'ein', 'eine', 'einer', 'eines', 'einem', 'einen']);

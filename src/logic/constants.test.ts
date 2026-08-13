@@ -5,6 +5,7 @@ import {
   isClaimNumber,
   isArt,
   isOrd,
+  isNumOrd,
   artType,
   isSignToken,
   compareSigns,
@@ -158,6 +159,32 @@ describe('article helpers', () => {
     expect(isOrd('first', 'en')).toBe(true);
     expect(isOrd('zweite', 'de')).toBe(true);
     expect(isOrd('banana', 'en')).toBe(false);
+  });
+  // isNumOrd is a STRICT subset of isOrd: only a numbering opens a term to the
+  // cumulative-reference rule, because only a numbering is certain to be
+  // droppable ("die Wellen 10, 20"). A lost "upper" is a lost qualifier.
+  it('isNumOrd recognises numberings in both languages', () => {
+    for (const w of ['first', 'Second', 'third', 'tenth', 'twelfth'])
+      expect(isNumOrd(w, 'en')).toBe(true);
+    for (const w of ['erste', 'ersten', 'erster', 'erstes', 'erstem', 'zweite', 'dritten', 'achte'])
+      expect(isNumOrd(w, 'de')).toBe(true);
+  });
+  it('isNumOrd rejects the positional qualifiers isOrd accepts', () => {
+    for (const w of ['upper', 'lower', 'main', 'additional', 'other', 'further']) {
+      expect(isOrd(w, 'en')).toBe(true);
+      expect(isNumOrd(w, 'en')).toBe(false);
+    }
+    for (const w of ['obere', 'untere', 'weitere', 'andere']) {
+      expect(isOrd(w, 'de')).toBe(true);
+      expect(isNumOrd(w, 'de')).toBe(false);
+    }
+  });
+  it('isNumOrd rejects cardinals, nouns and the other language', () => {
+    expect(isNumOrd('acht', 'de')).toBe(false); // the cardinal, not "achte"
+    expect(isNumOrd('welle', 'de')).toBe(false);
+    expect(isNumOrd('banana', 'en')).toBe(false);
+    expect(isNumOrd('first', 'de')).toBe(false);
+    expect(isNumOrd('erste', 'en')).toBe(false);
   });
   it('artType classifies definite vs indefinite', () => {
     expect(artType('the')).toBe('def');

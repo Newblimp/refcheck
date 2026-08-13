@@ -375,6 +375,168 @@ describe('multi-word terms from the reference list', () => {
   });
 });
 
+// A term introduced with a numbering is commonly referred back to without it:
+// "eine erste Welle 10 … die Wellen 10, 20 und 30". Read literally that is an
+// inconsistent sign, an over-used term and an unintroduced definite article, all
+// three of them artefacts. See logic/cumulative.ts for the rule and its limits.
+describe('extractData — cumulative references (numbering dropped)', () => {
+  const DE =
+    'Die Vorrichtung umfasst eine erste Welle 10, eine zweite Welle 20 und eine dritte Welle 30.\n' +
+    'Die Wellen 10, 20 und 30 sind koaxial zueinander angeordnet.';
+  const EN =
+    'The apparatus comprises a first shaft 10, a second shaft 20 and a third shaft 30.\n' +
+    'The shafts 10, 20 and 30 are coaxial.';
+
+  it('keeps the numbered term as the sign’s only term (DE)', () => {
+    const res = extractData(DE, 'de');
+    const numbered = [stem('erste', 'de'), stem('Welle', 'de')].join(' ');
+    expect(Object.keys(res.signData['10'].terms)).toEqual([numbered]);
+    expect(classify(res.signData['10'], res.termData, 'description')).toBe('ok');
+  });
+
+  it('leaves the shortened form out of termData, so the noun keeps one sign', () => {
+    const res = extractData(DE, 'de');
+    // Without the rule, "well" would be a term of its own carrying sign 10 while
+    // "erst well", "zweit well" and "dritt well" carry 10, 20 and 30.
+    expect(res.termData[stem('Welle', 'de')]).toBeUndefined();
+    expect(
+      Object.keys(res.termData[[stem('erste', 'de'), stem('Welle', 'de')].join(' ')].signs)
+    ).toEqual(['10']);
+  });
+
+  it('reports no error at all for the whole passage (DE and EN)', () => {
+    for (const [text, lang] of [
+      [DE, 'de'],
+      [EN, 'en'],
+    ] as [string, Lang][]) {
+      const res = extractData(text, lang);
+      expect(getAllErrors(res, 'description', new Set())).toEqual([]);
+      expect(res.artErrors).toEqual([]);
+      expect(res.bareTerms).toEqual([]);
+    }
+  });
+
+  it('still counts the shortened occurrence, under the numbered term', () => {
+    const res = extractData(EN, 'en');
+    const s10 = res.signData['10'];
+    expect(s10.count).toBe(2);
+    const back = must(s10.positions.find((p) => p.term === 'shafts'));
+    expect(back.termStem).toBe('first shaft'); // navigation and highlighting group it here
+    expect(back.cumulative).toBe(true);
+    expect(s10.positions.filter((p) => p.cumulative).length).toBe(1);
+  });
+
+  it('folds a back-reference written before the numbered introduction', () => {
+    // The rule looks at the whole document, not at what has been read so far.
+    const res = extractData(
+      'The shafts 10, 20 are coaxial. A first shaft 10 and a second shaft 20 are provided.',
+      'en'
+    );
+    expect(Object.keys(res.signData['10'].terms)).toEqual(['first shaft']);
+    expect(getAllErrors(res, 'description', new Set())).toEqual([]);
+  });
+
+  it('does not let a plural back-reference read as a der/die/das conflict', () => {
+    // German plurals take "die" whatever the singular's gender is, so folding
+    // the occurrence WITHOUT keeping it out of the article check would invent a
+    // gender conflict on every masculine or neuter term.
+    const res = extractData(
+      'Der erste Stab 10 ist lang. Der zweite Stab 20 ist kurz. Die Stäbe 10, 20 sind parallel.',
+      'de'
+    );
+    expect(res.artErrors.filter((a) => a.errType === 'de-gender')).toEqual([]);
+  });
+
+  it('checks antecedent basis against the numbered term in claims mode', () => {
+    const res = extractData(
+      '1. An apparatus comprising a first shaft (10), a second shaft (20) and a third shaft (30).\n' +
+        '2. The apparatus of claim 1, wherein the shafts (10), (20) and (30) are coaxial.',
+      'en',
+      {},
+      true,
+      true
+    );
+    expect(res.artErrors).toEqual([]);
+    expect(classify(res.signData['10'], res.termData, 'claims')).toBe('ok');
+  });
+
+  it('still requires the shortened occurrence to be parenthesised in claims mode', () => {
+    // The numbering rule says what the term IS, not how the sign may be written.
+    const res = extractData(
+      '1. An apparatus comprising a first shaft (10) and a second shaft (20).\n' +
+        '2. The apparatus of claim 1, wherein the shafts 10, 20 are coaxial.',
+      'en',
+      {},
+      true,
+      true
+    );
+    expect(res.signData['10'].count).toBe(2);
+    expect(res.signData['10'].inPC).toBe(1);
+    expect(classify(res.signData['10'], res.termData, 'claims')).toBe('warn');
+  });
+
+  it('takes the numbering from the drafter’s reference list too', () => {
+    // Here nothing in the text makes "erste Welle" two words — the list does.
+    const idx = listTermIndex('10 erste Welle', 'de');
+    const res = extractData(
+      'Die erste Welle 10 ist gelagert. Die Welle 10 rotiert.',
+      'de',
+      {},
+      true,
+      false,
+      idx
+    );
+    expect(Object.keys(res.signData['10'].terms)).toEqual([
+      [stem('erste', 'de'), stem('Welle', 'de')].join(' '),
+    ]);
+    expect(classify(res.signData['10'], res.termData, 'description')).toBe('ok');
+  });
+});
+
+describe('extractData — cumulative references, cases that stay errors', () => {
+  it('flags a dropped qualifier that is not a numbering', () => {
+    const res = extractData('The upper housing 12 is shown. The housing 12 is metal.', 'en');
+    expect(Object.keys(res.signData['12'].terms).length).toBe(2);
+    expect(classify(res.signData['12'], res.termData, 'description')).toBe('warn');
+  });
+
+  it('flags a sign carrying two numberings rather than folding one of them', () => {
+    const res = extractData(
+      'A first shaft 10 and a second shaft 10 are shown. The shaft 10 rotates.',
+      'en'
+    );
+    expect(Object.keys(res.signData['10'].terms).sort()).toEqual([
+      'first shaft',
+      'second shaft',
+      'shaft',
+    ]);
+    expect(classify(res.signData['10'], res.termData, 'description')).toBe('warn');
+  });
+
+  it('flags a genuinely different term under the same sign', () => {
+    const res = extractData('A first shaft 10 is shown. The housing 10 is metal.', 'en');
+    expect(classify(res.signData['10'], res.termData, 'description')).toBe('warn');
+  });
+
+  it('leaves a bare noun under a sign that was never numbered alone', () => {
+    // Sign 30 is not "a third shaft" anywhere, so its "shaft" is its own term.
+    const res = extractData('A first shaft 10 is shown. The shaft 30 is separate.', 'en');
+    expect(Object.keys(res.signData['30'].terms)).toEqual(['shaft']);
+    expect(Object.keys(res.signData['10'].terms)).toEqual(['first shaft']);
+  });
+
+  it('lets a manual reduction win over the rule, conflicts and all', () => {
+    // "Reduce term" takes the numbering off every occurrence, so there is no
+    // numbered form left to fold into and the signs really do share one term.
+    const text = 'A first shaft 10, a second shaft 20. The shafts 10, 20 are coaxial.';
+    expect(Object.keys(extractData(text, 'en').signData['10'].terms)).toEqual(['first shaft']);
+    const res = extractData(text, 'en', { [stem('shaft', 'en')]: 0 });
+    expect(Object.keys(res.signData['10'].terms)).toEqual(['shaft']);
+    expect(Object.keys(res.termData['shaft'].signs).sort()).toEqual(['10', '20']);
+    expect(classify(res.signData['10'], res.termData, 'description')).toBe('warn');
+  });
+});
+
 describe('extractData — trailing-letter & standalone signs', () => {
   it('keeps 12a and 12b as distinct signs', () => {
     const res = extractData('The cover 12a is here. The cover 12b is there.', 'en');

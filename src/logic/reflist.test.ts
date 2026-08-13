@@ -24,13 +24,29 @@ describe('buildRefList', () => {
   });
 
   it('prefers the wider (more qualified) term on a count tie', () => {
+    // "upper" is a qualifier, not a numbering, so the two spellings stay two
+    // terms and the tie-break is what decides the row.
+    const r = desc('The bearing 20 is here. The upper bearing 20 is shown.');
+    const row = must(buildRefList(r.signData, r.termData).find((x) => x.sign === '20'));
+    expect(row.term).toBe('upper bearing'); // 1× each, but the wider form wins
+    expect(row.count).toBe(2);
+  });
+
+  it('lists the numbered form of a term the text also refers to without it', () => {
+    // A numbered term dropped on a cumulative back-reference stays the sign's
+    // term (logic/cumulative.ts), so the list names it that way — no tie-break
+    // involved, and the short form winning on count is exactly what must not
+    // happen: a reference list saying "10 Wellen" is wrong for three shafts.
     const r = extractData(
-      'Planetenradsatz 10\nzweiter Planetenradsatz 20\nerster Planetenradsatz 10',
+      'Eine erste Welle 10, eine zweite Welle 20 und eine dritte Welle 30 sind vorgesehen.\n' +
+        'Die Wellen 10, 20 und 30 sind koaxial.\n' +
+        'Die Wellen 10, 20 und 30 rotieren.\n' +
+        'Die Wellen 10, 20 und 30 sind gelagert.',
       'de'
     );
     const row = must(buildRefList(r.signData, r.termData).find((x) => x.sign === '10'));
-    expect(row.term).toBe('erster planetenradsatz'); // 1× each, but the ordinal-qualified form wins
-    expect(row.count).toBe(2);
+    expect(row.term).toBe('erste welle'); // 3× "Wellen" against 1× "erste Welle"
+    expect(row.count).toBe(4); // every occurrence still counts
   });
 
   it('sorts primed signs after their bare number', () => {

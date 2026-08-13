@@ -104,6 +104,21 @@ describe('reconcileRefList', () => {
     expect(r.matched).toBe(3);
   });
 
+  it('does not flag a term the text also refers to without its numbering', () => {
+    // The drafter lists "erste Welle" and writes "die Wellen 10, 20 und 30"
+    // more often than the numbered form. The list is right, and reporting it as
+    // a mismatch would push the drafter into changing a correct entry.
+    const de = extractData(
+      'Eine erste Welle 10 und eine zweite Welle 20 sind vorgesehen.\n' +
+        'Die Wellen 10, 20 sind koaxial.\nDie Wellen 10, 20 rotieren.',
+      'de'
+    );
+    const r = must(reconcileRefList('10 erste Welle\n20 zweite Welle', de, 'de'));
+    expect(r.termMismatch).toEqual([]);
+    expect(r.matched).toBe(2);
+    expect(r.hasAny).toBe(false);
+  });
+
   it('ignores case differences', () => {
     const r = must(reconcileRefList('10 Housing\n12 COVER\n14 shaft', res(), 'en'));
     expect(r.termMismatch).toEqual([]);

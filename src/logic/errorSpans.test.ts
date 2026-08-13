@@ -89,6 +89,24 @@ describe('getAllErrors', () => {
     expect(getAllErrors(res, 'description', new Set())).toEqual([]);
   });
 
+  it('excludes a cumulative back-reference and highlights it as the numbered term', () => {
+    // "die Wellen 10, 20 und 30" after three numbered introductions: nothing to
+    // step through, and the shortened occurrence still renders as an occurrence
+    // of the term it refers back to (logic/cumulative.ts).
+    const res = extractData(
+      'Eine erste Welle 10, eine zweite Welle 20 und eine dritte Welle 30 sind vorgesehen.\n' +
+        'Die Wellen 10, 20 und 30 sind koaxial.',
+      'de'
+    );
+    expect(getAllErrors(res, 'description', new Set())).toEqual([]);
+    const spans = collect(res, 'description').filter(
+      (s): s is SignSpan => s.kind === 'sign' && s.sign === '10'
+    );
+    expect(spans).toHaveLength(2);
+    expect(spans.every((s) => s.sev === 'ok')).toBe(true);
+    expect(new Set(spans.map((s) => s.term)).size).toBe(1); // both under the numbered term
+  });
+
   it('carries each category under its historical property name', () => {
     const res = extractData('The housing 12 comprises a housing 12.');
     const errs = getAllErrors(res, 'description', new Set());
