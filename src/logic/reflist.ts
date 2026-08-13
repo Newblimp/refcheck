@@ -14,7 +14,9 @@ export interface RefListRow {
 // reused by the RefList component for copy-to-clipboard.
 
 // Pick the dominant term for a sign: the term stem with the highest occurrence
-// count, tie-broken by earliest appearance, resolved to a human-readable raw
+// count, tie-broken by word count (the more qualified phrasing — "erster
+// planetenradsatz" over a bare "planetenradsatz" written just as often for the
+// same sign) and then by earliest appearance, resolved to a human-readable raw
 // term (matching how SignCard displays the first raw term).
 function dominantTerm(sData: SignEntry, termData: Record<string, TermEntry>): string {
   const stems = Object.keys(sData.terms);
@@ -27,6 +29,7 @@ function dominantTerm(sData: SignEntry, termData: Record<string, TermEntry>): st
   const best = stems.sort(
     (a, b) =>
       (sData.terms[b] ?? 0) - (sData.terms[a] ?? 0) ||
+      b.split(' ').length - a.split(' ').length ||
       (firstPos[a] ?? Infinity) - (firstPos[b] ?? Infinity)
   )[0];
   if (best === undefined) return '';

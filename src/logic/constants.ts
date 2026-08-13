@@ -170,6 +170,9 @@ export const EXCL = new Set([
   'hierbei',
   'hierdurch',
   'hierzu',
+  'bzw',
+  'beziehungsweise',
+  'usw',
 ]);
 
 export const EN_ART = new Set(['a', 'an', 'the']);

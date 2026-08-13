@@ -23,6 +23,16 @@ describe('buildRefList', () => {
     expect(row.term).toBe('housing'); // 2× housing beats 1× casing
   });
 
+  it('prefers the wider (more qualified) term on a count tie', () => {
+    const r = extractData(
+      'Planetenradsatz 10\nzweiter Planetenradsatz 20\nerster Planetenradsatz 10',
+      'de'
+    );
+    const row = must(buildRefList(r.signData, r.termData).find((x) => x.sign === '10'));
+    expect(row.term).toBe('erster planetenradsatz'); // 1× each, but the ordinal-qualified form wins
+    expect(row.count).toBe(2);
+  });
+
   it('sorts primed signs after their bare number', () => {
     const r = desc("The arm 10 and the arm 10' differ.");
     expect(buildRefList(r.signData, r.termData).map((x) => x.sign)).toEqual(['10', "10'"]);

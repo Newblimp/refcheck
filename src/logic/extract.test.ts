@@ -566,6 +566,15 @@ describe('extractData — sign ranges (endpoints only)', () => {
     ]);
     expect(Object.keys(extractData('Siehe Absatz 10 für Details.', 'de').signData)).toEqual(['10']);
   });
+  it('does NOT register "bzw"/"beziehungsweise"/"usw" as terms (German, excluded)', () => {
+    expect(Object.keys(extractData('Der Hebel bzw. 10 ist da.', 'de').signData)).toEqual([]);
+    expect(Object.keys(extractData('Der Hebel beziehungsweise 10 ist da.', 'de').signData)).toEqual(
+      []
+    );
+    expect(Object.keys(extractData('Schrauben, Muttern usw. 10 sind da.', 'de').signData)).toEqual(
+      []
+    );
+  });
 
   it('registers all elements of a 3+ element comma list with a conjunction', () => {
     expect(endpointsOnly('The screws 18, 20 and 22 hold the plate.')).toEqual(['18', '20', '22']);
