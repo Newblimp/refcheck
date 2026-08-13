@@ -278,10 +278,15 @@ export const isOrd = (w: string, l: Lang) => (l === 'de' ? DE_ORD : EN_ORD).has(
 // have lost the qualifier — so the ORD sets above are deliberately not reused.
 //
 // German ordinals inflect (erste/erster/erstes/erstem/ersten), so the set is
-// built from stem × ending rather than spelled out sixty times. It covers more
-// forms than DE_ORD does: DE_ORD drives multi-word detection, where a wrong
-// guess changes every term, while this set only ever applies to a term already
-// recorded as multi-word, under a sign that also carries its shortened form.
+// built from stem × ending rather than spelled out sixty times.
+//
+// Neither set contains the other, and that is deliberate. These sets reach past
+// the ORD ones (eleventh/twelfth; dritter/drittes, fünfte…zwölfte in every
+// ending) because widening the ORD sets changes how EVERY term in every
+// document is read, while widening these only changes what may be folded — and
+// a form that is not in DE_ORD can still reach a multi-word term through the
+// reference list or a manual override. constants.test.ts pins the split, and
+// CLAUDE.md tabulates it under The Qualifier Vocabulary.
 const DE_ORD_STEMS = [
   'erst',
   'zweit',

@@ -6,6 +6,8 @@ import {
   isArt,
   isOrd,
   isNumOrd,
+  EN_ORD,
+  DE_ORD,
   artType,
   isSignToken,
   compareSigns,
@@ -160,9 +162,10 @@ describe('article helpers', () => {
     expect(isOrd('zweite', 'de')).toBe(true);
     expect(isOrd('banana', 'en')).toBe(false);
   });
-  // isNumOrd is a STRICT subset of isOrd: only a numbering opens a term to the
-  // cumulative-reference rule, because only a numbering is certain to be
-  // droppable ("die Wellen 10, 20"). A lost "upper" is a lost qualifier.
+  // Only a numbering opens a term to the cumulative-reference rule, because only
+  // a numbering is certain to be droppable ("die Wellen 10, 20"); a lost "upper"
+  // is a lost qualifier. The two sets are NOT nested either way — see the
+  // partition test below and the vocabulary table in CLAUDE.md.
   it('isNumOrd recognises numberings in both languages', () => {
     for (const w of ['first', 'Second', 'third', 'tenth', 'twelfth'])
       expect(isNumOrd(w, 'en')).toBe(true);
@@ -185,6 +188,87 @@ describe('article helpers', () => {
     expect(isNumOrd('banana', 'en')).toBe(false);
     expect(isNumOrd('first', 'de')).toBe(false);
     expect(isNumOrd('erste', 'en')).toBe(false);
+  });
+
+  // The vocabulary that widens a term, split by what the split MEANS: a
+  // numbering may be dropped on a later reference (logic/cumulative.ts), a
+  // qualifier may not. Which bucket a word belongs in is a decision, not a fact
+  // about the word, so both halves are pinned here and tabulated in CLAUDE.md.
+  // Adding a word to EN_ORD/DE_ORD fails this test until it has been classified
+  // and the table updated — which is the point.
+  it('splits the ordinal vocabulary into numberings and qualifiers', () => {
+    expect([...EN_ORD].filter((w) => !isNumOrd(w, 'en')).sort()).toEqual(
+      [
+        'additional',
+        'another',
+        'auxiliary',
+        'bottom',
+        'front',
+        'further',
+        'inner',
+        'left',
+        'lower',
+        'main',
+        'next',
+        'other',
+        'outer',
+        'primary',
+        'rear',
+        'right',
+        'secondary',
+        'top',
+        'upper',
+      ].sort()
+    );
+    expect([...DE_ORD].filter((w) => !isNumOrd(w, 'de')).sort()).toEqual(
+      [
+        'andere',
+        'anderen',
+        'anderer',
+        'äußere',
+        'äußeren',
+        'hintere',
+        'hinteren',
+        'innere',
+        'inneren',
+        'linke',
+        'linken',
+        'obere',
+        'oberen',
+        'primäre',
+        'primären',
+        'rechte',
+        'rechten',
+        'sekundäre',
+        'sekundären',
+        'untere',
+        'unteren',
+        'vordere',
+        'vorderen',
+        'weitere',
+        'weiteren',
+        'weiterer',
+        'zusätzliche',
+        'zusätzlichen',
+      ].sort()
+    );
+  });
+
+  it('knows numberings the ordinal detector does not widen on its own', () => {
+    // The numbering sets reach past the ORD sets — every German inflection of
+    // every ordinal up to twelfth. Those forms cannot widen a term by
+    // themselves, so they only matter once the reference list or a manual
+    // override has already made the term multi-word; then the numbering is
+    // still droppable. This is why neither set contains the other.
+    for (const [w, lang] of [
+      ['eleventh', 'en'],
+      ['fünfte', 'de'],
+      ['dritter', 'de'],
+      ['zwölftem', 'de'],
+    ] as [string, 'en' | 'de'][]) {
+      expect(isNumOrd(w, lang)).toBe(true);
+      expect(isOrd(w, lang)).toBe(false);
+    }
   });
   it('artType classifies definite vs indefinite', () => {
     expect(artType('the')).toBe('def');
