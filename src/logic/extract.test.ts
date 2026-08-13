@@ -209,6 +209,47 @@ describe('detectOrdStems & multi-word terms', () => {
     expect(classify(res.signData['21'], res.termData, 'description')).toBe('ok');
   });
 
+  // German declines a modifier five ways and a draft uses all five. Only "-e"
+  // and "-en" were listed for the qualifiers, so "ein oberes Gehäuse 12" was
+  // recorded as plain "Gehäuse" while "das obere Gehäuse 12" was not — one sign,
+  // two terms, reported as an inconsistency the drafter never wrote.
+  it('widens a German term through every inflection of its qualifier', () => {
+    // [sentence, the two words that must form the term]
+    const cases: [string, [string, string]][] = [
+      ['Das obere Gehäuse 12 ist gezeigt.', ['obere', 'Gehäuse']],
+      ['Ein oberes Gehäuse 12 ist gezeigt.', ['oberes', 'Gehäuse']],
+      ['Die Lage des oberen Gehäuses 12 ist fest.', ['oberen', 'Gehäuses']],
+      ['Eine Vorrichtung mit oberem Gehäuse 12 ist gezeigt.', ['oberem', 'Gehäuse']],
+      ['Die Vorrichtung weist einen linken Arm 20 auf.', ['linken', 'Arm']],
+      ['Eine Vorrichtung mit rechtem Arm 22 ist gezeigt.', ['rechtem', 'Arm']],
+      ['Ein anderes Rad 40 dreht sich.', ['anderes', 'Rad']],
+      ['Ein zusätzliches Lager 50 ist vorgesehen.', ['zusätzliches', 'Lager']],
+      ['Zwei äußere Ringe 30 sind gezeigt.', ['äußere', 'Ringe']],
+    ];
+    for (const [text, [mod, noun]] of cases) {
+      const sign = must(text.match(/\d+/))[0];
+      const res = extractData(text, 'de');
+      // Expected stem computed, not spelled out: the stemmer owns that spelling
+      // (it folds "anderes" to "and"), and what matters here is that BOTH words
+      // are in the term rather than the noun alone.
+      expect(Object.keys(res.signData[sign].terms), text).toEqual([
+        [stem(mod, 'de'), stem(noun, 'de')].join(' '),
+      ]);
+    }
+  });
+
+  it('folds a shortened reference to a term written with any inflection', () => {
+    // The point of the inflections: "Das Rad 40" is the left wheel, not a third
+    // term, whichever ending introduced it.
+    const res = extractData(
+      'Das linke Rad 40 dreht. Ein rechtes Rad 42 dreht. Das Rad 40 ist montiert.',
+      'de'
+    );
+    expect(Object.keys(res.signData['40'].terms)).toEqual(['link rad']);
+    expect(classify(res.signData['40'], res.termData, 'description')).toBe('ok');
+    expect(classify(res.signData['42'], res.termData, 'description')).toBe('ok');
+  });
+
   it('honours a manual multi-word override (mwo)', () => {
     const res = extractData(
       'The control unit 10 is here. The control unit 10 again.',
