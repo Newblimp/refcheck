@@ -220,6 +220,15 @@ export function detectOrdStems(
 
 // Walk backwards from token index `i` collecting the term tokens (and a leading
 // article) that belong to the sign at `i`. Returns {allTT, artTok}.
+//
+// EXCL bars a word from being the BASE NOUN — the word closest to the sign —
+// not from standing in front of one. "a further 200 rivets are needed" must not
+// register "further" as the term of 200, while "a further shaft 20" is a
+// qualified term and belongs in the reference list as "further shaft". So an
+// excluded word ends the walk unless it is a distinguishing modifier (isOrd) and
+// the base noun has already been collected. Breaking on it unconditionally is
+// what made "further" dead vocabulary: it sat in EN_ORD, where nothing could
+// ever reach it, so "a further shaft 20" silently came back as "shaft".
 function collectTermToks(
   toks: Token[],
   i: number,
@@ -241,7 +250,7 @@ function collectTermToks(
       j--;
       continue;
     }
-    if (EXCL.has(lo)) break;
+    if (EXCL.has(lo) && (allTT.length === 0 || !isOrd(lo, lang))) break;
     allTT.unshift(t);
     j--;
   }

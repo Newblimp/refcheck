@@ -270,13 +270,14 @@ describe('article helpers', () => {
     expect([...DE_ORD].sort()).toEqual(de.sort());
   });
 
-  it('keeps every modifier out of EXCL', () => {
-    // collectTermToks stops the backward walk at an EXCL word, so a modifier
-    // that is also excluded could never widen a term — the vocabulary entry
-    // would be dead and nothing else would say so. ("unter" is in EXCL as a
-    // preposition; "untere" and its inflections are the modifier.)
-    expect([...DE_ORD].filter((w) => EXCL.has(w))).toEqual([]);
+  it('records which modifiers are also excluded words', () => {
+    // Being in both is legal and meaningful: EXCL bars a word from being the
+    // BASE NOUN, while the modifier sets let it QUALIFY one. "a further 200
+    // rivets" registers no term; "a further shaft 20" is "further shaft".
+    // collectTermToks implements that, and extract.test.ts pins the behaviour —
+    // this is just the inventory, so adding such a word is a conscious act.
     expect([...EN_ORD].filter((w) => EXCL.has(w))).toEqual(['further']);
+    expect([...DE_ORD].filter((w) => EXCL.has(w))).toEqual([]);
   });
 
   it('artType classifies definite vs indefinite', () => {

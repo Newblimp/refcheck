@@ -266,6 +266,48 @@ describe('detectOrdStems & multi-word terms', () => {
     expect(Object.keys(res.signData['10'].terms)).toEqual([stem('unit', 'en')]);
   });
 
+  // EXCL bars a word from being the BASE NOUN, not from qualifying one. Breaking
+  // the backward walk on it unconditionally made "further" — which sits in both
+  // EN_ORD and EXCL — dead vocabulary.
+  describe('an excluded word may qualify a term but never be its base noun', () => {
+    it('takes "a further shaft 20" as the two-word term "further shaft"', () => {
+      const res = extractData('A further shaft 20 is provided. The further shaft 20 turns.', 'en');
+      expect(Object.keys(res.signData['20'].terms)).toEqual(['further shaft']);
+      expect(rawTermsFor(res, '20')).toEqual(['further shaft']);
+      expect(classify(res.signData['20'], res.termData, 'description')).toBe('ok');
+    });
+
+    it('registers no term at all for "a further 200 rivets are needed"', () => {
+      // "further" is the word closest to the sign, so 200 has no term: nothing
+      // to highlight, and nothing to put in the reference list.
+      const res = extractData('A further 200 rivets are needed.', 'en');
+      expect(res.signData['200']).toBeUndefined();
+      expect([...res.noTermSigns]).toEqual(['200']);
+      expect(getAllErrors(res, 'description', new Set())).toEqual([]);
+    });
+
+    it('leaves the sign termless even mid-sentence, next to a real term', () => {
+      const res = extractData('The device 10 needs further 200 rivets.', 'en');
+      expect(Object.keys(res.signData)).toEqual(['10']);
+      expect([...res.noTermSigns]).toEqual(['200']);
+    });
+
+    it('folds a later "the shaft 20" into the qualified term', () => {
+      const res = extractData('A further shaft 20 is provided. The shaft 20 turns.', 'en');
+      expect(Object.keys(res.signData['20'].terms)).toEqual(['further shaft']);
+      expect(classify(res.signData['20'], res.termData, 'description')).toBe('ok');
+    });
+
+    it('still stops at an excluded word that is not a modifier', () => {
+      // "said" and "comprising" are excluded and are not qualifiers, so the term
+      // ends where they begin — the behaviour EXCL exists for.
+      const said = extractData('Said upper housing 12 is shown.', 'en');
+      expect(Object.keys(said.signData['12'].terms)).toEqual(['upper hous']);
+      const comp = extractData('A device comprising shaft 20 is shown.', 'en');
+      expect(Object.keys(comp.signData['20'].terms)).toEqual(['shaft']);
+    });
+  });
+
   it('does not learn a stem when the sign-preceding word is excluded', () => {
     const text = 'the first claim 20 is discussed.'; // "claim" ∈ EXCL
     expect(detectOrdStems(tokenize(text), 'en', text, false).size).toBe(0);
