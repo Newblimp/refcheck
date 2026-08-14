@@ -337,10 +337,24 @@ export const ROMAN_RE =
   '(?=[IVXLCDM])M{0,3}(?:CM|CD|D?C{0,3})(?:XC|XL|L?X{0,3})(?:IX|IV|V?I{0,3})(?:\\.\\d{1,3})?';
 export const ROMAN_RE_ANCHORED = new RegExp('^(?:' + ROMAN_RE + ')$');
 
+// First character codes a Roman step can start with (I V X L C D M).
+const ROMAN_LEAD = new Set([73, 86, 88, 76, 67, 68, 77]);
+
 // A token is a sign if it is an Arabic sign (right shape AND numeric value in
 // range) OR a Roman-numeral step/substep.
-export const isSignToken = (s: string) =>
-  (SIGN_RE_ANCHORED.test(s) && likelySign(s)) || ROMAN_RE_ANCHORED.test(s);
+//
+// The first character decides which of the two it could possibly be, so the
+// branch is taken on that rather than by trying both patterns: an Arabic sign
+// starts with a digit and a Roman step with one of IVXLCDM, which means an
+// ordinary lowercase word — nearly every token in a document — is rejected
+// without either regex being entered. isSignToken runs over every token three
+// times per extraction (the ordinal detector, the main scan, the bare-term
+// pass), so this is the single hottest predicate in the logic layer.
+export const isSignToken = (s: string) => {
+  const c = s.charCodeAt(0);
+  if (c >= 48 && c <= 57) return SIGN_RE_ANCHORED.test(s) && likelySign(s);
+  return ROMAN_LEAD.has(c) && ROMAN_RE_ANCHORED.test(s);
+};
 
 // Value of a Roman-numeral string (e.g. "XIV" → 14). Assumes a valid numeral —
 // every caller passes a [IVXLCDM]+ capture group. The `?? 0` is what that

@@ -62,6 +62,13 @@ export interface TermOccurrence {
  */
 export const cumKey = (sign: string, termStem: string): string => `${sign}\n${termStem}`;
 
+/** Words in a space-joined term, without allocating the array to count them. */
+function countWords(s: string): number {
+  let n = 1;
+  for (let i = s.indexOf(' '); i >= 0; i = s.indexOf(' ', i + 1)) n++;
+  return n;
+}
+
 /**
  * Which shortened terms are back-references, and to what.
  *
@@ -83,14 +90,20 @@ export function canonicalCumulativeTerms(
 
   for (const o of occs) {
     written.add(cumKey(o.sign, o.termStem));
-    const words = o.term.split(' ');
-    const stems = o.termStem.split(' ');
+    // Read off the strings rather than splitting them: this runs once per sign
+    // occurrence, and all but the modifier-led minority are rejected by the
+    // first two lines. A term's words are joined by single spaces and no token
+    // can contain one, so "has a space" is exactly "more than one word".
+    const sp = o.term.indexOf(' ');
+    if (sp < 0) continue;
+    if (!isOrd(o.term.slice(0, sp), lang)) continue;
+    const stemSp = o.termStem.indexOf(' ');
     // The raw term and its stem are built word for word from the same tokens, so
-    // the lengths always agree; checking it is what makes reading the modifier
-    // off `words` and the base off `stems` safe rather than merely likely.
-    if (words.length < 2 || words.length !== stems.length) continue;
-    if (!isOrd(words[0] ?? '', lang)) continue;
-    const base = stems.slice(1).join(' ');
+    // the word counts always agree; checking it is what makes reading the
+    // modifier off the raw term and the base off the stem safe rather than
+    // merely likely.
+    if (stemSp < 0 || countWords(o.term) !== countWords(o.termStem)) continue;
+    const base = o.termStem.slice(stemSp + 1);
     let byBase = widened.get(o.sign);
     if (!byBase) widened.set(o.sign, (byBase = new Map()));
     const at = byBase.get(base);

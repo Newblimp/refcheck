@@ -282,15 +282,17 @@ function findBareTerms({
   lang: Lang;
   isClaims: boolean;
 }): BareTerm[] {
-  // Index: stem of the term's last word → [termStem, …], longest term first.
-  const baseToTerms: Record<string, string[]> = {};
+  // Index: stem of the term's last word → [term, …], longest term first. Each
+  // entry carries its words already split — the candidate loop below runs per
+  // token and would otherwise re-split the same term stem for every one of them.
+  const baseToTerms: Record<string, { ts: string; parts: string[] }[]> = {};
   for (const ts of Object.keys(termData)) {
     const parts = ts.split(' ');
     const base = parts[parts.length - 1] ?? '';
-    (baseToTerms[base] ??= []).push(ts);
+    (baseToTerms[base] ??= []).push({ ts, parts });
   }
   for (const list of Object.values(baseToTerms))
-    list?.sort((a, b) => b.split(' ').length - a.split(' ').length);
+    list?.sort((a, b) => b.parts.length - a.parts.length);
 
   const coveredByKnownRange = buildKnownRangeIndex(signData);
 
@@ -304,8 +306,7 @@ function findBareTerms({
     const s = stems[i] ?? '';
     const candidates = baseToTerms[s];
     if (!candidates) continue;
-    for (const ts of candidates) {
-      const parts = ts.split(' ');
+    for (const { ts, parts } of candidates) {
       const wc = parts.length;
       if (i < wc - 1) continue;
       let match = true;
@@ -638,13 +639,24 @@ export function extractData(
     const man = mwo[bs];
     const manExtra = typeof man === 'number' && man >= 0 ? Math.floor(man) : null;
     const wc = 1 + (manExtra === null ? autoExtra : manExtra);
-    const termToks = allTT.slice(Math.max(0, allTT.length - wc));
+    const first = Math.max(0, allTT.length - wc);
 
-    const termStr = termToks.map((t) => t.word.toLowerCase()).join(' ');
-    const termStem = termToks.map((t) => stem(t.word, lang)).join(' ');
-    // termToks is a non-empty slice of a non-empty allTT.
-    const termStart = termToks[0]?.start ?? 0,
-      termEnd = termToks[termToks.length - 1]?.end ?? 0;
+    // Built by prepending onto the base noun rather than slice/map/join: the
+    // overwhelmingly common term is the base noun alone, and that case now
+    // allocates nothing at all and reuses the stem already computed above.
+    // collectOccurrence runs once per sign occurrence — thousands of times on a
+    // real description — so the three throwaway arrays per call showed up as
+    // garbage-collector time rather than as anything with a name.
+    let termStr = baseW.toLowerCase();
+    let termStem = bs;
+    for (let k = allTT.length - 2; k >= first; k--) {
+      const w = allTT[k]?.word ?? '';
+      termStr = `${w.toLowerCase()} ${termStr}`;
+      termStem = `${stem(w, lang)} ${termStem}`;
+    }
+    // The term is a non-empty tail of a non-empty allTT.
+    const termStart = allTT[first]?.start ?? 0,
+      termEnd = allTT[allTT.length - 1]?.end ?? 0;
 
     occs.push({
       sign,
@@ -658,7 +670,7 @@ export function extractData(
       // An article only belongs to this term when the term is the whole phrase
       // walked back to it; a reduced term leaves the article in front of words
       // that are no longer part of it.
-      artTok: artTok && termToks.length === allTT.length ? artTok : null,
+      artTok: artTok && first === 0 ? artTok : null,
     });
     seenSigns.add(sign);
   }

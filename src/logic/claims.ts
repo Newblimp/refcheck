@@ -196,7 +196,15 @@ export function computeClaimGraph(text: string, claimNums: ClaimNumber[]): Claim
     if (anc) return anc;
     anc = new Set<number>();
     ancestors.set(num, anc); // set before recursing (cheap cycle guard)
-    for (const p of direct.get(num) || []) {
+    // Parents highest-first, skipping any already reached through an earlier
+    // one. Ancestry is transitive, so a parent that is already in `anc` came in
+    // with the whole of ITS closure, and merging that closure again can only
+    // re-add what is there. On the ordinary "any one of the preceding claims"
+    // shape — every claim depending on all the ones before it — the first
+    // parent supplies the entire set and every other one is a single lookup,
+    // which is what takes this from O(claims³) to O(claims²).
+    for (const p of [...(direct.get(num) ?? [])].sort((a, b) => b - a)) {
+      if (anc.has(p)) continue;
       anc.add(p);
       for (const g of closure(p)) anc.add(g);
     }

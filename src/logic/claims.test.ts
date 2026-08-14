@@ -107,6 +107,26 @@ describe('computeClaimGraph', () => {
     expect([...must(g.ancestors.get(3))].sort()).toEqual([1, 2]);
   });
 
+  it('reaches every ancestor through a diamond', () => {
+    const text =
+      '1. A device (10).\n2. The device of claim 1.\n3. The device of claim 1.\n' +
+      '4. The device of claims 2 and 3.';
+    const g = must(computeClaimGraph(text, nums(text)));
+    expect([...must(g.ancestors.get(4))].sort()).toEqual([1, 2, 3]);
+  });
+
+  it('keeps the ancestors of a parent that is reachable through another parent', () => {
+    // Claim 5 names both 3 and 4, and 4 already depends on 3. The closure skips
+    // a parent it has already reached — sound only because that parent came in
+    // with the whole of ITS closure — so this is the case that would lose claim
+    // 1 if the skip were applied without the merge that justifies it.
+    const text =
+      '1. A device (10).\n2. Another device (20).\n3. The device of claim 1.\n' +
+      '4. The device of claim 3.\n5. The device of claims 3 and 4.';
+    const g = must(computeClaimGraph(text, nums(text)));
+    expect([...must(g.ancestors.get(5))].sort()).toEqual([1, 3, 4]);
+  });
+
   it('classifies missing / forward / self references', () => {
     const text =
       '1. A device as in claim 3.\n' + // forward (3 exists)

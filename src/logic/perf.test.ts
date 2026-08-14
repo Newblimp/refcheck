@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import type { ListTermIndex } from './listTerms.ts';
+import type { ExtractResult } from './extract.ts';
 import { extractData } from './extract.ts';
 import { listTermIndex } from './listTerms.ts';
 
@@ -82,10 +83,31 @@ function bigRefList(n = 300) {
   return rows.join('\n');
 }
 
-function timeExtract(text: string, isClaims: boolean, listIdx: ListTermIndex | null = null) {
-  const t0 = performance.now();
-  const res = extractData(text, 'en', {}, true, isClaims, listIdx);
-  return { ms: performance.now() - t0, res };
+/**
+ * Time one extraction — or, with `reps` above 1, the FASTEST of several.
+ *
+ * A guard like this asks "how fast can this go", and a single sample answers a
+ * different question: a GC pause or the scheduler taking the core away inflates
+ * it, and never deflates it. That is the whole flakiness mechanism here — the
+ * ratio comparisons below sit an order of magnitude clear of quadratic growth,
+ * so nothing but a one-off stall was ever going to fail them. Taking the minimum
+ * discards those stalls without weakening the guard: a genuinely quadratic
+ * implementation has no fast run to find.
+ */
+function timeExtract(
+  text: string,
+  isClaims: boolean,
+  listIdx: ListTermIndex | null = null,
+  reps = 1
+) {
+  let ms = Infinity;
+  let res!: ExtractResult;
+  for (let i = 0; i < reps; i++) {
+    const t0 = performance.now();
+    res = extractData(text, 'en', {}, true, isClaims, listIdx);
+    ms = Math.min(ms, performance.now() - t0);
+  }
+  return { ms, res };
 }
 
 describe('performance smoke', () => {
@@ -115,8 +137,8 @@ describe('performance smoke', () => {
     const small = listHeavyDescription(200);
     const large = listHeavyDescription(800);
     timeExtract(small, false); // warm the stem cache and JIT
-    const a = timeExtract(small, false).ms;
-    const b = timeExtract(large, false).ms;
+    const a = timeExtract(small, false, null, 3).ms;
+    const b = timeExtract(large, false, null, 3).ms;
     // Allow generous slack for timer noise on tiny durations, but 16x (true
     // quadratic growth) is far outside it.
     expect(b).toBeLessThan(Math.max(a * 10, 60));
@@ -130,8 +152,8 @@ describe('performance smoke', () => {
     const idx = listTermIndex(bigRefList(), 'en');
     expect(idx.size).toBeGreaterThan(300);
     timeExtract(text, false, idx); // warm
-    const withList = timeExtract(text, false, idx);
-    const without = timeExtract(text, false).ms;
+    const withList = timeExtract(text, false, idx, 3);
+    const without = timeExtract(text, false, null, 3).ms;
     // The extended terms really did land, so this is not measuring a no-op.
     expect(Object.keys(withList.res.termData)).toContain('fasten elem');
     expect(withList.ms).toBeLessThan(Math.max(without * 2, 60));
@@ -145,5 +167,24 @@ describe('performance smoke', () => {
     expect(res.depErrors.length).toBe(0);
     expect(Object.keys(res.signData).length).toBeGreaterThan(0);
     expect(ms).toBeLessThan(1000);
+  });
+
+  it('does not go cubic as a preceding-claims chain grows', () => {
+    // "Any one of the preceding claims" makes every claim depend on every
+    // earlier one, so the ancestor sets hold O(claims²) numbers however they are
+    // built — that part is the answer's own size and cannot be helped. What CAN
+    // be helped is unioning each parent's whole closure in again: that made the
+    // transitive closure O(claims³), and the absolute budget above never saw it
+    // because 150 claims is small enough to hide a cube.
+    //
+    // 4x the claims therefore costs ~8x (a quadratic answer diluted by the
+    // linear scans around it) and the cubic form cost ~38x, so the limit sits
+    // between them rather than at either.
+    const small = bigClaimSet(100);
+    const large = bigClaimSet(400);
+    timeExtract(small, true); // warm the stem cache and JIT
+    const a = timeExtract(small, true, null, 3).ms;
+    const b = timeExtract(large, true, null, 3).ms;
+    expect(b).toBeLessThan(Math.max(a * 20, 60));
   });
 });
