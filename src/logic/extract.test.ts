@@ -31,6 +31,45 @@ describe('extractData — consistency (description)', () => {
   });
 });
 
+describe('extractData — term identity is case-folded, sign detection is not', () => {
+  // A term has to survive capitalisation: a drafter writes it sentence-initial,
+  // in an ALL-CAPS heading and mid-sentence, and all three are one term. That
+  // holds because a term is tracked by its stem and `stem` lowercases (the
+  // German tests below lean on it throughout, since every German noun is
+  // capitalised) — but nothing said so for English, where the same term really
+  // does change case as it moves through a sentence.
+  const res = extractData(
+    'HOUSING 12 is shown in the drawing. The housing 12 is made of aluminium. ' +
+      'Housing 12 carries a cover 14. The Housing is heavy.',
+    'en'
+  );
+
+  it('reads three casings of one term as one term', () => {
+    expect(Object.keys(res.signData['12'].terms)).toEqual(['hous']);
+    expect(res.signData['12'].count).toBe(3);
+    expect(classify(res.signData['12'], res.termData, 'description')).toBe('ok');
+  });
+
+  it('records one lowercase spelling, so the reference list prints one form', () => {
+    expect(rawTermsFor(res, '12')).toEqual(['housing']);
+  });
+
+  it('finds a capitalised occurrence written without its sign', () => {
+    expect(res.bareTerms.map((b) => b.term)).toEqual(['housing']);
+    // The stem, not just the display string: the display string is lowercased
+    // on its way out, so it reads the same whether or not the identity folded.
+    expect(res.bareTerms.map((b) => b.termStem)).toEqual(['hous']);
+    expect(res.bareTerms[0].signs).toEqual(['12']);
+  });
+
+  it('does NOT fold case for a sign, which is what keeps "mm"/"cm" out', () => {
+    // The deliberate asymmetry: only an UPPERCASE Roman numeral is a step, so a
+    // lowercase word that happens to spell one stays a word.
+    const roman = extractData('The method comprises a step II and a step ii.', 'en');
+    expect(Object.keys(roman.signData)).toEqual(['II']);
+  });
+});
+
 describe('extractData — inconsistencies', () => {
   it('flags one sign used with two different terms', () => {
     const res = extractData('The housing 12 is connected to the casing 12.', 'en');
