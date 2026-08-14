@@ -2,6 +2,7 @@ import type { ReconcileResult } from '../logic/reconcile.ts';
 import type { Strings } from '../i18n.ts';
 
 import { memo } from 'react';
+import { OrphanCard } from './OrphanCard.tsx';
 
 // ── REFERENCE-LIST CHECK ────────────────────────────────────────────────────
 // Paste the draft's own "List of Reference Signs" / "Bezugszeichenliste" and
@@ -53,32 +54,24 @@ function RefListCheckImpl({ value, onChange, result, multiWord, t }: RefListChec
       )}
       {result && !result.hasAny && <div className="rlc-ok">✓ {t.reconcileOk(result.matched)}</div>}
       {result?.termMismatch.map(({ sign, listTerm, textTerm }) => (
-        <div className="orphan-card" key={'tm' + sign}>
-          <span className="orphan-sign">{sign}</span>
-          <span className="orphan-msg">{t.refTermMismatch(listTerm, textTerm)}</span>
-        </div>
+        <OrphanCard key={'tm' + sign} label={sign}>
+          {t.refTermMismatch(listTerm, textTerm)}
+        </OrphanCard>
       ))}
       {result?.duplicates.map(({ sign, terms }) => (
-        <div className="orphan-card" key={'dup' + sign}>
-          <span className="orphan-sign">{sign}</span>
-          <span className="orphan-msg">{t.refDuplicate(terms)}</span>
-        </div>
+        <OrphanCard key={'dup' + sign} label={sign}>
+          {t.refDuplicate(terms)}
+        </OrphanCard>
       ))}
       {result?.listedNotUsed.map(({ sign, term }) => (
-        <div className="orphan-card" key={'lnu' + sign}>
-          <span className="orphan-sign">{sign}</span>
-          <span className="orphan-msg">
-            "{term}" — {t.listedNotUsed}
-          </span>
-        </div>
+        <OrphanCard key={'lnu' + sign} label={sign}>
+          "{term}" — {t.listedNotUsed}
+        </OrphanCard>
       ))}
       {result?.usedNotListed.map(({ sign, term }) => (
-        <div className="orphan-card" key={'unl' + sign}>
-          <span className="orphan-sign">{sign}</span>
-          <span className="orphan-msg">
-            "{term}" — {t.usedNotListed}
-          </span>
-        </div>
+        <OrphanCard key={'unl' + sign} label={sign}>
+          "{term}" — {t.usedNotListed}
+        </OrphanCard>
       ))}
     </div>
   );

@@ -3,6 +3,8 @@ import { SignCard } from './SignCard.tsx';
 import { ErrorCard } from './ErrorCard.tsx';
 import { ClaimStats } from './ClaimStats.tsx';
 import { Section } from './Section.tsx';
+import { OrphanCard } from './OrphanCard.tsx';
+import { StatCell } from './StatCell.tsx';
 import { EmptyDocIcon } from './icons.tsx';
 import { ERROR_KINDS } from '../logic/errorKinds.ts';
 import type { ErrorKindId, ErrorRecord, Focus } from '../logic/errorKinds.ts';
@@ -108,30 +110,17 @@ function SidebarImpl({
       </div>
       {totalSigns > 0 && (
         <div className="stats-row">
-          <div className="stat-cell">
-            <span className="stat-n" style={{ color: 'var(--text)' }}>
-              {totalSigns}
-            </span>
-            <span className="stat-l">{t.totalLbl}</span>
-          </div>
-          <div className="stat-cell">
-            <span
-              className="stat-n"
-              style={{ color: totalErrs > 0 ? 'var(--warn)' : 'var(--text-dim)' }}
-            >
-              {totalErrs}
-            </span>
-            <span className="stat-l">{t.errLbl}</span>
-          </div>
-          <div className="stat-cell">
-            <span
-              className="stat-n"
-              style={{ color: okSigns.length > 0 ? 'var(--ok)' : 'var(--text-dim)' }}
-            >
-              {okSigns.length}
-            </span>
-            <span className="stat-l">{t.okLbl}</span>
-          </div>
+          <StatCell n={totalSigns} label={t.totalLbl} />
+          <StatCell
+            n={totalErrs}
+            label={t.errLbl}
+            color={totalErrs > 0 ? 'var(--warn)' : 'var(--text-dim)'}
+          />
+          <StatCell
+            n={okSigns.length}
+            label={t.okLbl}
+            color={okSigns.length > 0 ? 'var(--ok)' : 'var(--text-dim)'}
+          />
         </div>
       )}
       {totalSigns > 0 && (
@@ -239,38 +228,29 @@ function SidebarImpl({
                 }
               >
                 {orphaned.signConflicts.map(({ sign, descTerms, claimsTerms }) => (
-                  <div className="orphan-card" key={'sc' + sign}>
-                    <span className="orphan-sign">{sign}</span>
-                    <span className="orphan-msg">
-                      {t.crossSignConflict(descTerms[0] || '?', claimsTerms[0] || '?')}
-                    </span>
-                  </div>
+                  <OrphanCard key={'sc' + sign} label={sign}>
+                    {t.crossSignConflict(descTerms[0] || '?', claimsTerms[0] || '?')}
+                  </OrphanCard>
                 ))}
                 {orphaned.termConflicts.map(({ ts, rawTerm, descSigns, claimsSigns }) => (
-                  <div className="orphan-card" key={'tc' + ts}>
-                    <span className="orphan-sign">"{rawTerm}"</span>
-                    <span className="orphan-msg">
-                      {t.crossTermConflict(descSigns.join('/'), claimsSigns.join('/'))}
-                    </span>
-                  </div>
+                  <OrphanCard key={'tc' + ts} label={`"${rawTerm}"`}>
+                    {t.crossTermConflict(descSigns.join('/'), claimsSigns.join('/'))}
+                  </OrphanCard>
                 ))}
                 {orphaned.missingInDesc.map((s) => (
-                  <div className="orphan-card" key={'od' + s}>
-                    <span className="orphan-sign">{s}</span>
-                    <span className="orphan-msg">{t.missingInDesc}</span>
-                  </div>
+                  <OrphanCard key={'od' + s} label={s}>
+                    {t.missingInDesc}
+                  </OrphanCard>
                 ))}
                 {orphaned.missingInClaims.map((s) => (
-                  <div className="orphan-card" key={'oc' + s}>
-                    <span className="orphan-sign">{s}</span>
-                    <span className="orphan-msg">{t.missingInClaims}</span>
-                  </div>
+                  <OrphanCard key={'oc' + s} label={s}>
+                    {t.missingInClaims}
+                  </OrphanCard>
                 ))}
                 {orphaned.notIntroducedInDesc.map((s) => (
-                  <div className="orphan-card" key={'ni' + s}>
-                    <span className="orphan-sign">{s}</span>
-                    <span className="orphan-msg">{t.notIntroducedInDesc}</span>
-                  </div>
+                  <OrphanCard key={'ni' + s} label={s}>
+                    {t.notIntroducedInDesc}
+                  </OrphanCard>
                 ))}
               </Section>
             )}

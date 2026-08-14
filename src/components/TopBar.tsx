@@ -24,6 +24,17 @@ const THEMES: { id: Theme; Icon: () => JSX.Element; lbl: PlainStringKey }[] = [
   { id: 'dark', Icon: MoonIcon, lbl: 'themeDark' },
 ];
 
+// The mode and language toggles are tables for the same reason. Each was two
+// near-identical <button> blocks differing in a literal, which is exactly the
+// shape that lets one of the pair drift — the mode buttons already differed in
+// whether their dot indicator was commented.
+const MODES: { id: Mode; lbl: PlainStringKey }[] = [
+  { id: 'description', lbl: 'modeDesc' },
+  { id: 'claims', lbl: 'modeClaims' },
+];
+
+const LANGS: Lang[] = ['en', 'de'];
+
 export interface TopBarProps {
   t: Strings;
   lang: Lang;
@@ -109,39 +120,30 @@ function TopBarImpl({
         ))}
       </div>
       <div className="pill-toggle">
-        <button
-          className={mode === 'description' ? 'active' : ''}
-          onClick={() => onMode('description')}
-        >
-          {t.modeDesc}
-          {/* A dot marks a buffer that holds text, so the inactive mode still
-              says whether there is anything in it. */}
-          {hasDesc && <span className="buf-dot" />}
-        </button>
-        <button className={mode === 'claims' ? 'active' : ''} onClick={() => onMode('claims')}>
-          {t.modeClaims}
-          {hasClaims && <span className="buf-dot" />}
-        </button>
+        {MODES.map(({ id, lbl }) => (
+          <button key={id} className={mode === id ? 'active' : ''} onClick={() => onMode(id)}>
+            {t[lbl]}
+            {/* A dot marks a buffer that holds text, so the inactive mode still
+                says whether there is anything in it. */}
+            {(id === 'description' ? hasDesc : hasClaims) && <span className="buf-dot" />}
+          </button>
+        ))}
       </div>
       {/* Grouped so the language toggle and the help button move as one unit
           when the bar wraps — split across two lines, the pairing that reads
           as one control looked broken rather than merely narrow. */}
       <div className="lang-help">
         <div className="lang-toggle" role="group" aria-label="Language">
-          <button
-            className={lang === 'en' ? 'active' : ''}
-            aria-pressed={lang === 'en'}
-            onClick={() => onLang('en')}
-          >
-            EN
-          </button>
-          <button
-            className={lang === 'de' ? 'active' : ''}
-            aria-pressed={lang === 'de'}
-            onClick={() => onLang('de')}
-          >
-            DE
-          </button>
+          {LANGS.map((id) => (
+            <button
+              key={id}
+              className={lang === id ? 'active' : ''}
+              aria-pressed={lang === id}
+              onClick={() => onLang(id)}
+            >
+              {id.toUpperCase()}
+            </button>
+          ))}
         </div>
         {/* The dialog is a lazy chunk (LazyHelpDialog); starting its fetch on
             hover or keyboard focus means the click almost always lands on an

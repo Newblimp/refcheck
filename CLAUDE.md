@@ -226,6 +226,14 @@ src/
     ImportBanner.tsx    Import result + warnings + one-step Undo
     RefListCheck.tsx    Reference-list paste box + reconciliation findings
     ClaimStats.tsx      Claim-set statistics panel (claims mode)
+    OrphanCard.tsx      The sign/message row shared by the cross-reference section
+                        and the reference-list check — it was nine copies across
+                        Sidebar and RefListCheck
+    DismissButton.tsx   The ×/↩ button on every card. Its stopPropagation is the
+                        load-bearing part: the button sits inside a card that is
+                        itself activatable
+    StatCell.tsx        One figure-over-label cell of a .stats-row, shared by the
+                        sidebar's three and the claim-set panel's four
     cardProps.ts        activatable() — role/tabIndex/key handling shared by the cards
     Bee.tsx             The easter-egg bee (rAF loop writing transforms directly)
     App.smoke.test.tsx  Server-render smoke test (node env)
@@ -1096,8 +1104,27 @@ All access goes through `hooks/usePersistentState.ts`.
       were extracted inside the very first render: measured in Chromium at 4× CPU throttle
       with two 112 KB buffers, the document appeared after **4199 ms**; deferred, it appears
       after **227 ms** and the highlights fill in behind it
-- [x] A **payload budget** runs in CI (`npm run budget`): critical path 41.8 KB / 50 KB,
-      whole precached shell 60.2 KB / 70 KB
+- [x] A **payload budget** runs in CI (`npm run budget`): critical path 40.7 KB / 50 KB,
+      whole precached shell 58.8 KB / 70 KB
+- [x] **Terser, not esbuild, minifies the bundle** (`build.minify` in `vite.config.ts`).
+      Three compress passes; `mangle` is names-only, because property mangling would
+      rename the i18n keys and the `ERROR_KINDS` accessors, which are looked up by
+      string. Worth 1.1 KB on the entry chunk and 0.35 KB on the lazy `.docx` one, for
+      ~1.1s of build time — and it is the ONLY thing left that moves the critical path
+- [ ] **The critical path is at its floor, and this was measured rather than assumed.**
+      Every other candidate came back at zero or negative, so do not spend the effort
+      again: deleting the ENTIRE German string table (far beyond any legal refactor)
+      buys 2.24 KB, so i18n key-deduplication is worth ~0.2 KB; merging the duplicated
+      CSS selectors saved 280 raw bytes and **10 gzipped**; folding the nine repeated
+      `orphan-card` JSX trees into one component saved 440 raw bytes and **10 gzipped**;
+      re-expressing the five `mark.h-*` rules as one rule plus `--mk` tokens made gzip
+      **30 bytes worse**; and dropping `preact/compat` for bare preact plus a local
+      `memo` came out **90 bytes worse** while sacrificing the React portability.
+      The reason is uniform: gzip already collapses exactly the repetition that
+      "remove the duplication" targets, and replacing repetition with indirection
+      trades compressible text for novel tokens. There is no dead code and no dead CSS
+      (checked). Refactor the duplication for maintainability — that is why the three
+      shared components above exist — but do not expect bytes for it
 - [x] Editor hover hit-testing is throttled to one `elementFromPoint` per animation frame
 - [x] The reference list's multi-word terms cost one Map hit per sign occurrence: the
       index is keyed on the term's **last two words**, so a list naming three hundred
@@ -1213,6 +1240,8 @@ Actions"** in Settings → Pages. The Vite `base` is `/refcheck/` (project-site 
 - fflate (zip read/write for `.docx`; bundled, ~8KB gzipped — the only non-React runtime dep)
 - Vite + @preact/preset-vite (build); esbuild (a Vite dependency) type-strips the
   service worker — see build/swPrecache.ts
+- terser (minifier). A devDependency rather than Vite's bundled esbuild minifier,
+  for the 1.1 KB it takes off the critical path — see Performance
 - Vitest (tests); jsdom + @testing-library/preact + user-event + jest-dom (UI tests),
   preact-render-to-string (the server-render smoke test — also what tsconfig's
   `react-dom/server` path points at, since preact/compat/server ships no declarations)

@@ -2,6 +2,7 @@ import { memo } from 'react';
 import { classify } from '../logic/extract.ts';
 import { disKey } from '../logic/constants.ts';
 import { activatable } from './cardProps.ts';
+import { DismissButton } from './DismissButton.tsx';
 import type { Mode } from '../logic/constants.ts';
 import type { SignEntry, TermEntry } from '../logic/extract.ts';
 import type { Strings } from '../i18n.ts';
@@ -92,17 +93,7 @@ function SignCardImpl({
           </div>
         </span>
         <span className="sc-cnt">{t.occ(sData.count)}</span>
-        <button
-          className="dis-btn"
-          onClick={(e) => {
-            e.stopPropagation();
-            onDismiss(disKey.sign(sign));
-          }}
-          aria-label={isDis ? t.restoreOne : t.dismissOne}
-          title={isDis ? t.restoreOne : t.dismissOne}
-        >
-          {isDis ? '↩' : '×'}
-        </button>
+        <DismissButton dismissed={isDis} disKey={disKey.sign(sign)} onDismiss={onDismiss} t={t} />
       </div>
       {notes.map((n, i) => (
         <div key={i} className="sc-note">

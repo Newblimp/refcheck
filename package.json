@@ -28,6 +28,7 @@
     "jsdom": "^29.1.1",
     "preact-render-to-string": "^6.7.0",
     "prettier": "^3.8.1",
+    "terser": "^5.50.0",
     "typescript": "^5.9.3",
     "vite": "^6.4.3",
     "vitest": "^3.2.7"

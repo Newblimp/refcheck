@@ -47,6 +47,23 @@ export default defineConfig({
     ],
   },
   build: {
+    // Terser rather than Vite's default esbuild. This is the only lever left on
+    // the critical path that actually moves it: measured against this bundle it
+    // takes the entry chunk 29.0 KB → 27.9 KB gzipped and the lazy .docx chunk
+    // 13.0 → 12.7, for ~1.1s of build time and one devDependency. Everything
+    // cheaper was tried first and measured at zero — see the note in
+    // build/budget.ts on why "remove the duplication" does not shrink a gzipped
+    // payload.
+    //
+    // Three compress passes rather than the default one: the later passes are
+    // what fold the constant-heavy tables in constants.js and errorKinds.js.
+    // `mangle` is names-only — property mangling would rename the i18n keys and
+    // the ERROR_KINDS accessors, which are looked up by string.
+    minify: 'terser',
+    terserOptions: {
+      compress: { passes: 3 },
+      mangle: true,
+    },
     rollupOptions: {
       output: {
         // The framework changes only when the dependency is upgraded, while the

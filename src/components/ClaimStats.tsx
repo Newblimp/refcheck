@@ -1,5 +1,5 @@
 import { memo } from 'react';
-import type { ComponentChildren } from 'preact';
+import { StatCell } from './StatCell.tsx';
 import type { ClaimStats as ClaimStatsData } from '../logic/claimStats.ts';
 import type { Strings } from '../i18n.ts';
 
@@ -27,22 +27,13 @@ function ClaimStatsImpl({ stats, t }: ClaimStatsProps) {
     else if (flag === 'epoHighExcessClaims') notes.push(t.csEpoHighExcess(stats.total));
   }
 
-  const cell = (n: number, label: string, warn?: boolean): ComponentChildren => (
-    <div className="stat-cell">
-      <span className="stat-n" style={{ color: warn ? 'var(--warn)' : 'var(--text)' }}>
-        {n}
-      </span>
-      <span className="stat-l">{label}</span>
-    </div>
-  );
-
   return (
     <div className="cs-body">
       <div className="stats-row">
-        {cell(stats.total, t.csTotal)}
-        {cell(stats.independent, t.csIndep)}
-        {cell(stats.dependent, t.csDepend)}
-        {cell(stats.maxDepth, t.csDepth)}
+        <StatCell n={stats.total} label={t.csTotal} />
+        <StatCell n={stats.independent} label={t.csIndep} />
+        <StatCell n={stats.dependent} label={t.csDepend} />
+        <StatCell n={stats.maxDepth} label={t.csDepth} />
       </div>
       {notes.map((n) => (
         <div className="cs-note" key={n}>

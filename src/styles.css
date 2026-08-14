@@ -153,7 +153,12 @@ body,
 .spacer {
   flex: 1;
 }
-.pill-toggle {
+/* One container shape behind all three segmented toggles (mode, language,
+   theme). They were three byte-identical rules; only the buttons inside them
+   differ, and those rules stay separate below. */
+.pill-toggle,
+.lang-toggle,
+.theme-toggle {
   display: flex;
   background: var(--bg);
   border: 1px solid var(--border);
@@ -189,14 +194,6 @@ body,
   align-items: center;
   gap: 14px;
 }
-.lang-toggle {
-  display: flex;
-  background: var(--bg);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 3px;
-  gap: 2px;
-}
 .lang-toggle button {
   background: none;
   border: none;
@@ -212,14 +209,6 @@ body,
 .lang-toggle button.active {
   background: var(--accent);
   color: var(--on-accent);
-}
-.theme-toggle {
-  display: flex;
-  background: var(--bg);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 3px;
-  gap: 2px;
 }
 .theme-toggle button {
   display: flex;
@@ -462,13 +451,18 @@ body,
   overflow-y: auto;
   padding: 8px;
 }
-.ref-scroll::-webkit-scrollbar {
+/* Both side panes scroll the same way; .ov-scroll's own copy of these three
+   rules lived 380 lines further down, which is how they were kept in step. */
+.ref-scroll::-webkit-scrollbar,
+.ov-scroll::-webkit-scrollbar {
   width: 5px;
 }
-.ref-scroll::-webkit-scrollbar-track {
+.ref-scroll::-webkit-scrollbar-track,
+.ov-scroll::-webkit-scrollbar-track {
   background: transparent;
 }
-.ref-scroll::-webkit-scrollbar-thumb {
+.ref-scroll::-webkit-scrollbar-thumb,
+.ov-scroll::-webkit-scrollbar-thumb {
   background: var(--border2);
   border-radius: 3px;
 }
@@ -841,16 +835,6 @@ mark.h-hover {
   flex: 1;
   overflow-y: auto;
   padding: 8px;
-}
-.ov-scroll::-webkit-scrollbar {
-  width: 5px;
-}
-.ov-scroll::-webkit-scrollbar-track {
-  background: transparent;
-}
-.ov-scroll::-webkit-scrollbar-thumb {
-  background: var(--border2);
-  border-radius: 3px;
 }
 .ov-empty {
   display: flex;

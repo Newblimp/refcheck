@@ -94,11 +94,11 @@ export const EXCL = new Set([
   'further',
   'also',
   'only',
-  'each',
   'any',
   'all',
   'both',
-  // German
+  // German. Words German shares with English ("in", "an", "maximal", "minimal")
+  // are already listed above — this is one Set, so a second copy is inert.
   'figur',
   'figuren',
   'abbildung',
@@ -128,7 +128,6 @@ export const EXCL = new Set([
   'von',
   'mit',
   'zu',
-  'an',
   'am',
   'bis',
   'um',
@@ -137,10 +136,7 @@ export const EXCL = new Set([
   'etwa',
   'ungefähr',
   'wesentlichen',
-  'maximal',
-  'minimal',
   'im',
-  'in',
   'der',
   'die',
   'das',

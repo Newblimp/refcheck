@@ -1,5 +1,6 @@
 import { memo } from 'react';
 import { activatable } from './cardProps.ts';
+import { DismissButton } from './DismissButton.tsx';
 import type { JSX } from 'preact';
 import type { ErrorKind, ErrorKindId, ErrorRecord } from '../logic/errorKinds.ts';
 import type { Strings } from '../i18n.ts';
@@ -51,17 +52,7 @@ function ErrorCardImpl({ kind, item, focused, t, dis, onFocus, onDismiss }: Erro
           <div className="err-msg">{kind.message(item, t)}</div>
           {sub && <div className="err-sub">{sub}</div>}
         </span>
-        <button
-          className="dis-btn"
-          aria-label={isDis ? t.restoreOne : t.dismissOne}
-          title={isDis ? t.restoreOne : t.dismissOne}
-          onClick={(e) => {
-            e.stopPropagation();
-            onDismiss(key);
-          }}
-        >
-          {isDis ? '↩' : '×'}
-        </button>
+        <DismissButton dismissed={isDis} disKey={key} onDismiss={onDismiss} t={t} />
       </div>
     </div>
   );
