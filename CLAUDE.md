@@ -645,12 +645,23 @@ use `xmlFault` (`docx/fixture.ts`) for that.
 
 The four non-sign error categories — **article**, **missing sign**, **claim numbering**,
 **claim dependency** — are rows in one table rather than parallel code in nine files.
-Each row names where `extractData` puts the records, how to identify one for dismissal,
-its span, its term (or `null`), its highlight class, its search predicate, and the
-presentation data (glyph, colour token, i18n keys, message formatter).
+Each row **reaches** its records (`items: (res) => res.artErrors`), says how to identify
+one for dismissal, its span, its term (or `null`), its highlight class, its search
+predicate, and the presentation data (glyph, colour token, i18n keys, message formatter).
+
+`items` is an accessor rather than the NAME of the `ExtractResult` field to index, and
+the difference is instructive: a name has to be constrained by a mapped type
+(`FieldFor<T>` — "the key whose value is `T[]`") to stop a row pointing at the wrong
+array, and even then the read needs `as T[]`, because indexing by a key known only to be
+one of several cannot type its result. The accessor needs neither — `T` is checked where
+the row is written, and the read is an ordinary property access. Two pieces of type-level
+machinery removed for five bytes of payload.
 
 **Adding a category** is: produce it in `extract.ts`, add a row, add its i18n keys, and
-define `--<color>` / `--<color>-bg` in both themes. `errorSpans.ts`, `buildHtml.ts`,
+define `--<color>` / `--<color>-bg` in both themes. Adding the field to `ExtractResult`
+also fails `EMPTY_RESULT` in `App.tsx` until it is listed there — that object is spelled
+out and annotated rather than spread from this table, because the spread needed an
+`as ExtractResult` that silenced the very check it existed to provide. `errorSpans.ts`, `buildHtml.ts`,
 `App.tsx`, `Sidebar.tsx`, `ErrorCard.tsx` and the status bar all pick it up by looping the
 table. That used to be a nine-file edit; it is a three-file one now.
 
@@ -1104,7 +1115,7 @@ All access goes through `hooks/usePersistentState.ts`.
       were extracted inside the very first render: measured in Chromium at 4× CPU throttle
       with two 112 KB buffers, the document appeared after **4199 ms**; deferred, it appears
       after **227 ms** and the highlights fill in behind it
-- [x] A **payload budget** runs in CI (`npm run budget`): critical path 40.7 KB / 50 KB,
+- [x] A **payload budget** runs in CI (`npm run budget`): critical path 40.8 KB / 50 KB,
       whole precached shell 58.8 KB / 70 KB
 - [x] **Terser, not esbuild, minifies the bundle** (`build.minify` in `vite.config.ts`).
       Three compress passes; `mangle` is names-only, because property mangling would

@@ -46,17 +46,25 @@ interface Panes {
 /** The context menu, plus where the right-click happened. */
 type OpenCtxMenu = CtxMenuData & { x: number; y: number };
 
-// The shape extractData returns, with nothing in it. The per-category arrays are
-// derived from ERROR_KINDS so a new category cannot be forgotten here — an
-// omission would surface as a crash on an empty buffer, which is the one moment
-// nobody tests by hand.
-const EMPTY_RESULT = {
+// The shape extractData returns, with nothing in it.
+//
+// Written out and ANNOTATED rather than spread from ERROR_KINDS. The derived
+// form existed so a new category could not be forgotten here — an omission
+// surfaces as a crash on an empty buffer, the one moment nobody tests by hand —
+// but Object.fromEntries types its result too loosely to assign, so it needed
+// `as ExtractResult`, and that cast silenced the very check it was there to
+// make. Spelling the object out lets the annotation do the work: a category
+// added to ExtractResult fails THIS LINE at compile time.
+const EMPTY_RESULT: ExtractResult = {
   signData: {},
   termData: {},
   noTermSigns: new Set<string>(),
   claimGraph: null,
-  ...Object.fromEntries(ERROR_KINDS.map((k) => [k.field, []])),
-} as ExtractResult;
+  artErrors: [],
+  bareTerms: [],
+  numErrors: [],
+  depErrors: [],
+};
 
 // How long the text buffers wait before being written to localStorage. Long
 // enough that a burst of typing produces one write, short enough that a refresh

@@ -48,14 +48,6 @@ export type NavProp = 'ae' | 'bt' | 'ne' | 'de';
 export type ErrorRecord = ArtError | BareTerm | NumError | DepError;
 
 /**
- * The field of an ExtractResult holding `T[]`, derived rather than written out,
- * so a row cannot name a field whose records are a different shape.
- */
-type FieldFor<T> = {
-  [K in keyof ExtractResult]-?: ExtractResult[K] extends T[] ? K : never;
-}[keyof ExtractResult];
-
-/**
  * One error category.
  *
  * `T` is the record type this row describes. Every accessor is checked against
@@ -66,8 +58,17 @@ type FieldFor<T> = {
  */
 export interface ErrorKind<T extends ErrorRecord = ErrorRecord> {
   id: ErrorKindId;
-  /** Where extractData puts the array. */
-  field: FieldFor<T>;
+  /**
+   * This kind's records in an extraction result.
+   *
+   * An accessor rather than the name of the field to index. The name had to be
+   * constrained by a mapped type (`FieldFor<T>`, "the key of ExtractResult whose
+   * value is T[]") to stop a row pointing at the wrong array — and that STILL
+   * did not type the read, because indexing by a key that is only known to be
+   * one of several needs `as T[]` to come back. A function needs neither: `T` is
+   * checked at the row, and the read is an ordinary property access.
+   */
+  items: (res: ExtractResult) => T[];
   /** Dismissal identity within the category. */
   disId: (e: T) => string;
   /** Full dismissal key (prefix + identity). */
@@ -113,7 +114,7 @@ const defineKind = <T extends ErrorRecord>(row: ErrorKind<T>): ErrorKind<T> => r
 const ROWS = [
   defineKind<ArtError>({
     id: 'art',
-    field: 'artErrors',
+    items: (res) => res.artErrors,
     disId: (e) => e.termStem,
     disKey: (e) => disKey.art(e.termStem),
     start: (e) => e.artStart,
@@ -141,7 +142,7 @@ const ROWS = [
   }),
   defineKind<BareTerm>({
     id: 'bare',
-    field: 'bareTerms',
+    items: (res) => res.bareTerms,
     disId: (e) => e.termStem,
     disKey: (e) => disKey.bare(e.termStem),
     start: (e) => e.termStart,
@@ -161,7 +162,7 @@ const ROWS = [
   }),
   defineKind<NumError>({
     id: 'num',
-    field: 'numErrors',
+    items: (res) => res.numErrors,
     disId: (e) => e.key,
     disKey: (e) => disKey.num(e.key),
     start: (e) => e.start,
@@ -184,7 +185,7 @@ const ROWS = [
   }),
   defineKind<DepError>({
     id: 'dep',
-    field: 'depErrors',
+    items: (res) => res.depErrors,
     disId: (e) => e.key,
     disKey: (e) => disKey.dep(e.key),
     start: (e) => e.start,
@@ -252,5 +253,5 @@ export function kindItems<T extends ErrorRecord>(
   res: ExtractResult | null | undefined,
   kind: ErrorKind<T>
 ): T[] {
-  return (res?.[kind.field] ?? []) as T[];
+  return res ? kind.items(res) : [];
 }
