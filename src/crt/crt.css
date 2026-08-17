@@ -1,0 +1,260 @@
+/* ── CRT SCREEN FILTER ───────────────────────────────────────────────────────
+   Everything the "old cathode ray screen" look costs, in one file that the app
+   only fetches when somebody actually asks for it (src/crt/load.ts).
+
+   Three rules shape what is in here:
+
+   1. IT IS NOT ON THE CRITICAL PATH. styles.css is inlined into index.html
+      (build/inlineCss.ts), so a rule added there is paid for by every first
+      visit, on a feature most sessions never switch on. This file is imported
+      dynamically instead, which makes it its own asset — still precached by the
+      service worker (swPrecache derives the list from the emitted bundle), so
+      the filter works offline like the rest of the app.
+
+   2. NOTHING ANIMATES EXCEPT transform AND opacity. Those two are the only
+      properties the compositor can run without repainting, and the layers below
+      cover the whole viewport — animating anything else here would repaint the
+      editor's backdrop on every frame, which on a 100 KB description is the
+      most expensive paint in the app. crt.test.ts reads the @keyframes blocks
+      back and fails on any other property.
+
+   3. THE PALETTE IS A PALETTE, not a filter over one. There is no
+      `filter: sepia()` on a wrapper: a filter on an ancestor forces the whole
+      app into one re-rasterized layer AND makes it the containing block for
+      every position:fixed descendant (the context menu, the bee, the reset
+      button). Redefining the tokens costs nothing at paint time and leaves the
+      layout untouched.
+
+   The specificity is `html:root[...]` (0,2,1) rather than `:root[...]` (0,2,0)
+   deliberately: the theme blocks in styles.css are (0,2,0), and this file is
+   injected at runtime, so relying on source order would make the whole palette
+   depend on the order the browser happens to apply an injected stylesheet in. */
+
+html:root[data-crt='on'] {
+  color-scheme: dark;
+
+  /* A terminal is monospace all the way through, and this is the one place the
+     rule in styles.css about never turning proportional UI into code is the
+     point rather than the hazard. The editor is untouched by construction: both
+     of its layers name --font-mono directly, so the two stay locked to each
+     other and the highlights cannot slide off the text. */
+  --font-ui: var(--font-mono);
+
+  --bg: #03120a;
+  --surface: #07200f;
+  --surface2: #0d3019;
+  --border: #1b4e2e;
+  --border2: #2c7245;
+
+  --text: #c8ffd9;
+  --text-muted: #8ff0ab;
+  --text-dim: #6fcb8d;
+
+  --accent: #4ff28a;
+  --on-accent: #03120a;
+  --accent-glow: color-mix(in srgb, var(--accent) 20%, transparent);
+
+  /* The error categories keep their hues. A monochrome screen would be more
+     faithful and would also make five kinds of error look identical, which is
+     the one thing this tool may not do — so they are pulled onto a phosphor
+     ramp instead of being flattened into it. Every one of them clears 7:1 on
+     all three surfaces, well past AA, because the scanline layer below
+     composites a veil over the whole screen (crt.test.ts checks both). */
+  --warn: #ffd35c;
+  --art: #7ff0c8;
+  --ok: #b6f06a;
+  --bare: #ff9b86;
+  --num: #8fd8ff;
+  --dep: #ffa3d8;
+  --info: #9fd0ff;
+
+  /* Derived from the six above rather than spelled out again: a highlight fill
+     is its own hue at low alpha and an underline the same hue at 75%. */
+  --warn-bg: color-mix(in srgb, var(--warn) 15%, transparent);
+  --warn-u: color-mix(in srgb, var(--warn) 75%, transparent);
+  --warn-border: color-mix(in srgb, var(--warn) 50%, transparent);
+  --warn-wt: color-mix(in srgb, var(--warn) 85%, transparent);
+  --warn-wt-bg: color-mix(in srgb, var(--warn) 8%, transparent);
+  --warn-wt-bd: color-mix(in srgb, var(--warn) 50%, transparent);
+  --art-bg: color-mix(in srgb, var(--art) 14%, transparent);
+  --art-u: color-mix(in srgb, var(--art) 75%, transparent);
+  --ok-bg: color-mix(in srgb, var(--ok) 12%, transparent);
+  --ok-border: color-mix(in srgb, var(--ok) 40%, transparent);
+  --bare-bg: color-mix(in srgb, var(--bare) 14%, transparent);
+  --bare-u: color-mix(in srgb, var(--bare) 75%, transparent);
+  --num-bg: color-mix(in srgb, var(--num) 14%, transparent);
+  --num-u: color-mix(in srgb, var(--num) 75%, transparent);
+  --dep-bg: color-mix(in srgb, var(--dep) 14%, transparent);
+  --dep-u: color-mix(in srgb, var(--dep) 75%, transparent);
+
+  /* The phosphor bloom, used by the text-shadow below. */
+  --crt-glow: color-mix(in srgb, var(--accent) 45%, transparent);
+}
+
+/* PHOSPHOR BLOOM
+   Small radius on purpose. A shadow is drawn per glyph run, and the editor is
+   the one place in this app holding tens of thousands of them.
+
+   The backdrop is excluded outright: its text is `color: transparent` (the
+   textarea under it draws the characters, the backdrop draws only the marks),
+   and a text-shadow paints regardless of the text colour — so leaving it on
+   would render a second, blurred copy of the whole document a pixel behind the
+   real one. */
+html[data-crt='on'] body {
+  text-shadow: 0 0 3px var(--crt-glow);
+}
+html[data-crt='on'] .backdrop {
+  text-shadow: none;
+}
+/* Chrome does not inherit text-shadow into a form control, so the editor — the
+   one surface a drafter actually reads — needs it named. Measured rather than
+   assumed: see the note in CLAUDE.md for the frame times on a 100 KB buffer. */
+html[data-crt='on'] .editor-ta {
+  text-shadow: 0 0 3px var(--crt-glow);
+}
+
+/* SCANLINES + TUBE
+   One fixed layer holding three static gradients and one animated property.
+   `pointer-events: none` is load-bearing rather than tidy: the editor hit-tests
+   hover with elementFromPoint, and a full-screen layer that answered would kill
+   the sign highlighting outright (the drop overlay and the bee are the same
+   way).
+
+   The flicker is an opacity animation on this layer alone, so a frame of it
+   never touches the app underneath — `will-change: opacity` keeps the layer
+   promoted so the compositor does not re-rasterize the screen behind it. */
+html[data-crt='on'] body::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+  pointer-events: none;
+  background:
+    repeating-linear-gradient(to bottom, rgba(0, 0, 0, 0.3) 0 1px, rgba(0, 0, 0, 0) 1px 3px),
+    radial-gradient(130% 105% at 50% 50%, rgba(0, 0, 0, 0) 55%, rgba(0, 0, 0, 0.55) 100%),
+    linear-gradient(to bottom, rgba(120, 255, 170, 0.05), rgba(120, 255, 170, 0.02));
+  box-shadow: inset 0 0 130px rgba(0, 20, 8, 0.75);
+  will-change: opacity;
+  animation: crt-flicker 4.5s linear infinite;
+}
+
+/* THE ROLLING BAR
+   The bright band an unsynced CRT drifts up the screen. A single translateY,
+   which is why it is its own layer rather than a fourth gradient on the one
+   above — an animated gradient stop would repaint the full viewport. */
+html[data-crt='on'] body::before {
+  content: '';
+  position: fixed;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 38vh;
+  z-index: 2001;
+  pointer-events: none;
+  background: linear-gradient(
+    to bottom,
+    rgba(200, 255, 220, 0) 0%,
+    rgba(200, 255, 220, 0.035) 42%,
+    rgba(200, 255, 220, 0.06) 50%,
+    rgba(200, 255, 220, 0.035) 58%,
+    rgba(200, 255, 220, 0) 100%
+  );
+  will-change: transform;
+  animation: crt-roll 9s linear infinite;
+}
+
+/* SWITCHING ON
+   Plays once, when the attribute appears. It is on #root's own pseudo-element
+   and not on #root itself: a transform on the app box would make it the
+   containing block for every position:fixed descendant mid-animation. This
+   layer ends at opacity 0 and stays there, costing nothing until the filter is
+   switched off and on again. */
+html[data-crt='on'] #root::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: 2002;
+  pointer-events: none;
+  opacity: 0;
+  background: radial-gradient(
+    120% 60% at 50% 50%,
+    rgba(220, 255, 235, 0.95),
+    rgba(120, 255, 170, 0.25) 60%,
+    rgba(120, 255, 170, 0) 100%
+  );
+  animation: crt-on 0.65s ease-out 1;
+}
+
+@keyframes crt-flicker {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  8% {
+    opacity: 0.9;
+  }
+  9% {
+    opacity: 1;
+  }
+  47% {
+    opacity: 1;
+  }
+  48% {
+    opacity: 0.86;
+  }
+  49% {
+    opacity: 1;
+  }
+  72% {
+    opacity: 0.94;
+  }
+  74% {
+    opacity: 1;
+  }
+}
+
+@keyframes crt-roll {
+  from {
+    transform: translateY(-40vh);
+  }
+  to {
+    transform: translateY(105vh);
+  }
+}
+
+/* The tube striking: a hairline that expands to fill the screen, then fades. */
+@keyframes crt-on {
+  0% {
+    opacity: 0;
+    transform: scaleY(0.004);
+  }
+  12% {
+    opacity: 1;
+    transform: scaleY(0.004);
+  }
+  55% {
+    opacity: 0.75;
+    transform: scaleY(1);
+  }
+  100% {
+    opacity: 0;
+    transform: scaleY(1);
+  }
+}
+
+/* Reduced motion keeps the LOOK and drops the moving parts — the palette, the
+   scanlines, the vignette and the bloom all stay, so the filter still visibly
+   applies rather than reading as a button that does nothing. Same stance the
+   bee takes: what is suppressed is motion nobody asked for, not the thing that
+   was asked for by name. */
+@media (prefers-reduced-motion: reduce) {
+  html[data-crt='on'] body::after,
+  html[data-crt='on'] body::before,
+  html[data-crt='on'] #root::after {
+    animation: none;
+  }
+  html[data-crt='on'] body::before,
+  html[data-crt='on'] #root::after {
+    display: none;
+  }
+}

@@ -14,6 +14,7 @@ import { ctxMenuItems } from '../logic/ctxMenuItems.ts';
 import { useDebounced } from '../hooks/useDebounced.ts';
 import { usePersistentState, jsonCodec, setCodec, oneOf } from '../hooks/usePersistentState.ts';
 import { useTheme } from '../hooks/useTheme.ts';
+import { useCrt, preloadCrt } from '../hooks/useCrt.ts';
 import { useBee } from '../hooks/useBee.ts';
 import { useHotkeys } from '../hooks/useHotkeys.ts';
 import { useEditorSync } from '../hooks/useEditorSync.ts';
@@ -116,6 +117,9 @@ export function App() {
   );
   const [dis, setDis] = usePersistentState<Set<string>>('rsc_dis', new Set(), setCodec);
   const [theme, setTheme] = useTheme();
+  // The CRT screen filter. Off by default, and its stylesheet is not even
+  // fetched until it is switched on for the first time (hooks/useCrt.ts).
+  const [crt, toggleCrt] = useCrt();
   // Transient UI state
   const text = mode === 'description' ? descText : claimsText;
   // Currently highlighted error card: {type: 'sign'|'art'|'bare'|'num'|'dep', key}
@@ -577,6 +581,9 @@ export function App() {
         onMode={switchMode}
         theme={theme}
         onTheme={setTheme}
+        crt={crt}
+        onCrt={toggleCrt}
+        onCrtHover={preloadCrt}
         hasDesc={!!descText}
         hasClaims={!!claimsText}
         imported={imported}

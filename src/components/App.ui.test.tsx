@@ -35,6 +35,9 @@ beforeEach(() => {
   try {
     localStorage.clear();
   } catch {}
+  // Applied to <html>, which no render tears down, so it would leak into the
+  // next test the way data-theme's counterpart used to.
+  document.documentElement.removeAttribute('data-crt');
   vi.clearAllMocks();
 });
 
@@ -507,6 +510,31 @@ describe('App (interactive)', () => {
     fireEvent.click(screen.getByLabelText('Light'));
     await waitFor(() => expect(document.documentElement.getAttribute('data-theme')).toBe('light'));
     expect(localStorage.getItem('rsc_theme')).toBe('light');
+  });
+
+  it('CRT filter toggles data-crt on and off, and persists', async () => {
+    render(<App />);
+    const on = screen.getByLabelText('Switch on the CRT screen filter');
+    expect(on).toHaveAttribute('aria-pressed', 'false');
+    fireEvent.click(on);
+    // Asynchronous on purpose: the stylesheet is a lazily fetched asset, and
+    // the attribute is what its rules hang off, so it waits for the import.
+    await waitFor(() => expect(document.documentElement.getAttribute('data-crt')).toBe('on'));
+    expect(localStorage.getItem('rsc_crt')).toBe('on');
+
+    fireEvent.click(screen.getByLabelText('Switch off the CRT screen filter'));
+    await waitFor(() => expect(document.documentElement.hasAttribute('data-crt')).toBe(false));
+    expect(localStorage.getItem('rsc_crt')).toBe('off');
+  });
+
+  it('restores the CRT filter on load', async () => {
+    localStorage.setItem('rsc_crt', 'on');
+    render(<App />);
+    await waitFor(() => expect(document.documentElement.getAttribute('data-crt')).toBe('on'));
+    expect(screen.getByLabelText('Switch off the CRT screen filter')).toHaveAttribute(
+      'aria-pressed',
+      'true'
+    );
   });
 
   it('restores persisted dismissals on load', async () => {

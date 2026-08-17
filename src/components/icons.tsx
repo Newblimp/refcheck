@@ -50,6 +50,15 @@ export const MoonIcon = () => (
   </svg>
 );
 
+/** The CRT filter toggle: a tube-shaped screen with a prompt on it. */
+export const CrtIcon = () => (
+  <svg width="15" height="15" viewBox="0 0 24 24" {...stroke}>
+    <rect x="2" y="4" width="20" height="14" rx="4" />
+    <path d="M6 21h12" />
+    <path d="M7 9l2.5 2.5L7 14M12.5 14H17" strokeWidth="1.6" />
+  </svg>
+);
+
 /** Error-nav chevrons. Heavier stroke, and no caps — they are 10px wide. */
 export const ChevronLeftIcon = () => (
   <svg

@@ -50,7 +50,7 @@ export const BUDGETS: Budgets = {
  * bytes leave the entry chunk and are counted against `critical` again under
  * their own name, plus the chunk's own overhead.
  */
-const LAZY = /^assets\/(importDoc|Bee|HelpDialog)-|\.svg$/;
+const LAZY = /^assets\/(importDoc|Bee|HelpDialog|crt)-|\.svg$/;
 
 /** Compare a measured bundle against the budgets. */
 export function checkBudget(

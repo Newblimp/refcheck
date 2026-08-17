@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { must } from '../test/helpers.ts';
+import { must, contrast } from '../test/helpers.ts';
 import { readFileSync } from 'node:fs';
 
 // Contrast regression guard for the two themes.
@@ -26,28 +26,6 @@ function palette(theme: string): Palette {
     if (d?.[1] && d[2]) out[d[1]] = d[2];
   }
   return out;
-}
-
-const toRgb = (h: string): number[] => {
-  const s = h.replace('#', '');
-  const n =
-    s.length === 3
-      ? s
-          .split('')
-          .map((c) => c + c)
-          .join('')
-      : s;
-  return [0, 2, 4].map((i) => parseInt(n.slice(i, i + 2), 16));
-};
-const channel = (c: number): number => {
-  const s = c / 255;
-  return s <= 0.03928 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
-};
-const luminance = ([r = 0, g = 0, b = 0]: number[]): number =>
-  0.2126 * channel(r) + 0.7152 * channel(g) + 0.0722 * channel(b);
-export function contrast(a: string, b: string): number {
-  const [hi, lo] = [luminance(toRgb(a)), luminance(toRgb(b))].sort((x, y) => y - x);
-  return (hi + 0.05) / (lo + 0.05);
 }
 
 // Every surface a foreground token can land on. --surface2 is the card

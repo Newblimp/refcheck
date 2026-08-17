@@ -1,8 +1,9 @@
 import { memo } from 'react';
-import { LogoIcon, SunIcon, MonitorIcon, MoonIcon } from './icons.tsx';
+import { LogoIcon, SunIcon, MonitorIcon, MoonIcon, CrtIcon } from './icons.tsx';
 import type { JSX, Ref } from 'preact';
 import type { Lang, Mode } from '../logic/constants.ts';
 import type { Theme } from '../hooks/useTheme.ts';
+import type { Crt } from '../hooks/useCrt.ts';
 import type { ImportResult } from '../logic/importDoc.ts';
 import type { PlainStringKey, Strings } from '../i18n.ts';
 
@@ -43,6 +44,10 @@ export interface TopBarProps {
   onMode: (mode: Mode) => void;
   theme: Theme;
   onTheme: (theme: Theme) => void;
+  /** The CRT screen filter, and its toggle. */
+  crt: Crt;
+  onCrt: () => void;
+  onCrtHover: () => void;
   /** Whether each buffer has content — drives the mode buttons' dot indicator. */
   hasDesc: boolean;
   hasClaims: boolean;
@@ -64,6 +69,9 @@ function TopBarImpl({
   onMode,
   theme,
   onTheme,
+  crt,
+  onCrt,
+  onCrtHover,
   hasDesc,
   hasClaims,
   imported,
@@ -118,6 +126,28 @@ function TopBarImpl({
             <Icon />
           </button>
         ))}
+      </div>
+      {/* The CRT screen filter. Its own group rather than a fourth button in the
+          theme toggle: it is not a theme (it overrides whichever one is set),
+          and the group's buttons are mutually exclusive while this one is a
+          plain on/off — hence aria-pressed rather than a selected sibling.
+          Borrowing .theme-toggle's styling costs no new CSS.
+
+          Hover/focus starts fetching the stylesheet (it is a lazy asset, like
+          the help dialog's chunk), so the click usually lands on rules the
+          browser has already applied. */}
+      <div className="theme-toggle">
+        <button
+          className={crt === 'on' ? 'active' : ''}
+          onClick={onCrt}
+          onMouseEnter={onCrtHover}
+          onFocus={onCrtHover}
+          aria-pressed={crt === 'on'}
+          title={crt === 'on' ? t.crtOff : t.crtOn}
+          aria-label={crt === 'on' ? t.crtOff : t.crtOn}
+        >
+          <CrtIcon />
+        </button>
       </div>
       <div className="pill-toggle">
         {MODES.map(({ id, lbl }) => (
