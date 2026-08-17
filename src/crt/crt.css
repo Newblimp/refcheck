@@ -113,16 +113,51 @@ html[data-crt='on'] .editor-ta {
   text-shadow: 0 0 3px var(--crt-glow);
 }
 
-/* SCANLINES + TUBE
-   One fixed layer holding three static gradients and one animated property.
+/* THE SCANLINES
+   A 6px pattern — 2px of shadow, 4px of gap — on a layer of its own, drifting
+   down one whole period every 2.4s. Two things follow from that split:
+
+   · IT MOVES, so it cannot share the layer the vignette is on. A translate
+     applies to everything the element paints, and a vignette that slid with the
+     scan would look like the tube itself was loose.
+   · THE LOOP IS ONE PERIOD, so the end state is pixel-identical to the start
+     and the drift is seamless. The layer is inset 8px past the viewport on both
+     edges, which is what keeps the travel from exposing a gap at the top.
+
+   The duty cycle is deliberately the same as the 1px/3px pattern this replaced
+   — a third of the screen in shadow — so the veil over the palette is unchanged
+   and the contrast figures crt.test.ts checks still describe what renders.
+
    `pointer-events: none` is load-bearing rather than tidy: the editor hit-tests
    hover with elementFromPoint, and a full-screen layer that answered would kill
    the sign highlighting outright (the drop overlay and the bee are the same
    way).
 
-   The flicker is an opacity animation on this layer alone, so a frame of it
-   never touches the app underneath — `will-change: opacity` keeps the layer
-   promoted so the compositor does not re-rasterize the screen behind it. */
+   Both animations run here, and they compose because they drive different
+   properties: the drift is transform, the mains flicker is opacity. Neither
+   touches the app underneath, and `will-change` keeps the layer promoted so the
+   compositor never re-rasterizes the screen behind it. */
+html[data-crt='on'] #root::before {
+  content: '';
+  position: fixed;
+  inset: -8px 0;
+  z-index: 1999;
+  pointer-events: none;
+  background: repeating-linear-gradient(
+    to bottom,
+    rgba(0, 0, 0, 0.3) 0 2px,
+    rgba(0, 0, 0, 0) 2px 6px
+  );
+  will-change: transform, opacity;
+  animation:
+    crt-scan 2.4s linear infinite,
+    crt-flicker 4.5s linear infinite;
+}
+
+/* THE TUBE
+   The glass: a vignette, the phosphor tint and the inner glow at the edges.
+   Static on purpose — this is the shape of the screen, and the only thing that
+   moves across it is the scan above. */
 html[data-crt='on'] body::after {
   content: '';
   position: fixed;
@@ -130,12 +165,9 @@ html[data-crt='on'] body::after {
   z-index: 2000;
   pointer-events: none;
   background:
-    repeating-linear-gradient(to bottom, rgba(0, 0, 0, 0.3) 0 1px, rgba(0, 0, 0, 0) 1px 3px),
     radial-gradient(130% 105% at 50% 50%, rgba(0, 0, 0, 0) 55%, rgba(0, 0, 0, 0.55) 100%),
     linear-gradient(to bottom, rgba(120, 255, 170, 0.05), rgba(120, 255, 170, 0.02));
   box-shadow: inset 0 0 130px rgba(0, 20, 8, 0.75);
-  will-change: opacity;
-  animation: crt-flicker 4.5s linear infinite;
 }
 
 /* THE ROLLING BAR
@@ -213,6 +245,16 @@ html[data-crt='on'] #root::after {
   }
 }
 
+/* One period of the scanline pattern, so the loop is seamless. */
+@keyframes crt-scan {
+  from {
+    transform: translateY(0);
+  }
+  to {
+    transform: translateY(6px);
+  }
+}
+
 @keyframes crt-roll {
   from {
     transform: translateY(-40vh);
@@ -248,11 +290,14 @@ html[data-crt='on'] #root::after {
    bee takes: what is suppressed is motion nobody asked for, not the thing that
    was asked for by name. */
 @media (prefers-reduced-motion: reduce) {
-  html[data-crt='on'] body::after,
+  html[data-crt='on'] #root::before,
   html[data-crt='on'] body::before,
   html[data-crt='on'] #root::after {
     animation: none;
   }
+  /* The scan layer stays — standing still it is simply the scanlines, which are
+     the look rather than the motion. Only the band and the power-on strike,
+     which exist purely to move, are taken away. */
   html[data-crt='on'] body::before,
   html[data-crt='on'] #root::after {
     display: none;

@@ -193,6 +193,19 @@ describe('CRT animations', () => {
     for (const p of props) expect(['transform', 'opacity']).toContain(p);
   });
 
+  it('drifts the scanlines by exactly one period', () => {
+    // The scan loop is seamless only if the travel equals the pattern's period:
+    // the end state has to be pixel-identical to the start, or every cycle ends
+    // in a visible jump. Both numbers are read back rather than trusted, since
+    // they live 150 lines apart and either one can be tuned alone.
+    const period = must(/rgba\(0, 0, 0, 0\)\s+\d+px\s+(\d+)px/.exec(css)?.[1], 'scanline period');
+    const travel = must(
+      /@keyframes crt-scan[\s\S]*?to\s*\{[^}]*translateY\((\d+)px\)/.exec(css)?.[1],
+      'scan travel'
+    );
+    expect(travel).toBe(period);
+  });
+
   it('runs no animation it does not define', () => {
     const defined = new Set(frames.map((f) => f.name));
     for (const [, value] of css.matchAll(/(?:^|[;\s])animation:\s*([^;]+)/g)) {
@@ -207,15 +220,17 @@ describe('CRT animations', () => {
     expect(i, 'no reduced-motion block').toBeGreaterThan(0);
     const rest = css.slice(i);
     expect(rest).toContain('animation: none');
-    // …and keeps the look: the scanline layer must not be switched off with
-    // them, or the button reads as doing nothing at all.
+    // …and keeps the look: standing still, the scan layer IS the scanlines, and
+    // the tube is not motion at all. Hiding either would leave a button that
+    // reads as doing nothing.
+    expect(rest).not.toMatch(/#root::before[^{]*\{[^}]*display:\s*none/);
     expect(rest).not.toMatch(/body::after[^{]*\{[^}]*display:\s*none/);
   });
 });
 
 describe('CRT overlay layers', () => {
   // Selector → declarations, for the rules that create the fixed layers.
-  const layers = ['body::after', 'body::before', '#root::after'];
+  const layers = ['#root::before', 'body::after', 'body::before', '#root::after'];
 
   it.each(layers)('%s never swallows a pointer event', (layer) => {
     const m = new RegExp(`${layer.replace('#', '#')}\\s*\\{([^}]*)\\}`).exec(css);
