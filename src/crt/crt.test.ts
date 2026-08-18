@@ -4,14 +4,17 @@ import { join } from 'node:path';
 import { contrast, must } from '../test/helpers.ts';
 
 // The CRT screen filter, checked the only way a stylesheet can be: by reading
-// it. Three things here are not cosmetic, and each of them is invisible to
-// every other kind of test in this suite.
+// it. Four things here are not cosmetic, and each is invisible to every other
+// kind of test in this suite.
 //
-//   · CONTRAST. The filter replaces the whole palette, so it leaves the matrix
-//     in palette.test.ts behind entirely — a green-on-green token pair would
-//     ship unnoticed. It also draws a dark veil over the result, which no
-//     token-vs-token check can see, so the bar here is higher than AA and there
-//     is a second pass with the veil composited in.
+//   · THAT THE PALETTE SHOWS THROUGH. The filter is optics, not a theme — the
+//     day/night setting and Gruvbox have to survive it. This file used to
+//     replace all thirty-odd palette tokens with a green phosphor set, so the
+//     failure mode to guard is one of them creeping back and quietly overruling
+//     the theme underneath.
+//   · WHAT IT COSTS TO READ. The scanlines are a dark veil over everything,
+//     which no token-vs-token check can see, so the shipped themes are re-run
+//     through it here with the veil composited in.
 //   · WHAT ANIMATES. transform and opacity are the two properties the
 //     compositor can run on its own. The layers below cover the viewport, so
 //     animating anything else would repaint the editor's backdrop every frame —
@@ -37,9 +40,12 @@ function block(source: string, selector: string): Record<string, string> {
 }
 
 const crt = block(css, "html:root[data-crt='on']");
-const dark = block(appCss, ":root[data-theme='dark']");
+const themes = {
+  dark: block(appCss, ":root[data-theme='dark']"),
+  light: block(appCss, ":root[data-theme='light']"),
+};
 
-/** Hex-valued tokens only; the rest are derived with color-mix. */
+/** Hex-valued tokens only — the rest are rgba fills and underlines. */
 const hex = (p: Record<string, string>) =>
   Object.fromEntries(Object.entries(p).filter(([, v]) => /^#[0-9a-fA-F]{3,8}$/.test(v)));
 
@@ -58,12 +64,17 @@ const FOREGROUNDS = [
   '--info',
 ];
 
-// The scanline layer is rgba(0,0,0,0.3) over one row in every three, so the
-// screen behind it loses about a tenth of its light everywhere — and the
-// flicker dips further still. Modelling it as a uniform black veil is a
-// simplification of a spatial pattern, but it is the right direction and the
+// How much light the scan layer takes out of the picture, READ OUT OF THE
+// STYLESHEET rather than written down here: alpha × duty cycle, so tuning the
+// pattern re-tunes the model with it. Averaging a stripe into a uniform veil is
+// a simplification of a spatial pattern, but it is the right direction and the
 // right order of magnitude, which is what a guard needs.
-const VEIL = 0.12;
+const scan = must(
+  /rgba\(0, 0, 0, ([\d.]+)\) 0 (\d+)px,\s*rgba\(0, 0, 0, 0\) \d+px (\d+)px/.exec(css),
+  'scanline pattern'
+);
+const VEIL = Number(scan[1]) * (Number(scan[2]) / Number(scan[3]));
+
 const veiled = (h: string): string => {
   const s = h.replace('#', '');
   const n =
@@ -77,43 +88,24 @@ const veiled = (h: string): string => {
   return '#' + dim.map((c) => c.toString(16).padStart(2, '0')).join('');
 };
 
+// Not 4.5. The tightest pair in the shipped dark theme is --text-dim on
+// --surface2 at 4.59:1, so ANY veil at all leaves AA — that is a fact about how
+// close the theme runs to the line, not about this filter, and the filter is
+// opt-in besides. What is worth guarding is that it stays CLOSE: 4.0 is where
+// the current pattern (0.28 over a third of the screen) sits with a little room,
+// and a heavier scanline fails it.
+const FLOOR = 4;
+
 describe('CRT palette', () => {
-  it('redefines every token the themes define', () => {
-    // Anything left out falls back to whichever theme is underneath, which is
-    // how you get one orange chip on a green screen — or worse, a light-theme
-    // surface behind CRT text.
-    for (const token of Object.keys(dark))
-      expect(crt[token], `CRT mode does not define ${token}`).toBeDefined();
-  });
-
-  it.each(FOREGROUNDS)('%s clears 7:1 on every surface', (fg) => {
-    const p = hex(crt);
-    for (const bg of SURFACES) {
-      const r = contrast(must(p[fg], fg), must(p[bg], bg));
-      expect(r, `${fg} on ${bg} is ${r.toFixed(2)}:1`).toBeGreaterThanOrEqual(7);
-    }
-  });
-
-  it.each(FOREGROUNDS)('%s still clears WCAG AA under the scanlines', (fg) => {
-    const p = hex(crt);
-    for (const bg of SURFACES) {
-      const r = contrast(veiled(must(p[fg], fg)), veiled(must(p[bg], bg)));
-      expect(r, `${fg} on ${bg} veiled is ${r.toFixed(2)}:1`).toBeGreaterThanOrEqual(4.5);
-    }
-  });
-
-  it('keeps the text ramp ordered: text > muted > dim', () => {
-    const p = hex(crt);
-    const on = (t: string) => contrast(must(p[t], t), must(p['--surface'], '--surface'));
-    expect(on('--text')).toBeGreaterThan(on('--text-muted'));
-    expect(on('--text-muted')).toBeGreaterThan(on('--text-dim'));
-  });
-
-  it('clears AA for text drawn on the accent fill', () => {
-    const p = hex(crt);
-    expect(
-      contrast(must(p['--on-accent'], 'on-accent'), must(p['--accent'], 'accent'))
-    ).toBeGreaterThanOrEqual(4.5);
+  it('redefines nothing the themes define', () => {
+    // The whole point of the current design: Gruvbox dark and the light theme
+    // show through the filter unchanged, and the day/night toggle keeps
+    // working underneath it. One token redefined here silently overrules the
+    // theme — and it would be a plausible-looking line, since this file used to
+    // be nothing but thirty of them.
+    const theirs = new Set([...Object.keys(themes.dark), ...Object.keys(themes.light)]);
+    const taken = Object.keys(crt).filter((name) => theirs.has(name));
+    expect(taken, `the filter must not repaint the theme: ${taken.join(', ')}`).toEqual([]);
   });
 
   it('leaves the editor alignment invariant alone', () => {
@@ -124,11 +116,37 @@ describe('CRT palette', () => {
     expect(crt['--font-ui']).toBe('var(--font-mono)');
     expect(crt['--font-mono']).toBeUndefined();
   });
+
+  it('blooms only on a dark theme', () => {
+    // The glow is `currentColor`, so on a light theme it is a dark halo around
+    // dark text — dirty glass rather than a lit screen. Every rule that sets a
+    // glow is therefore scoped to the dark theme; the only unscoped one may be
+    // the reset that takes it OFF the backdrop.
+    for (const [, selector, body] of css.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+      const shadow = /(?:^|[;\s])text-shadow:\s*([^;]+)/.exec(body);
+      if (!shadow || shadow[1]?.trim() === 'none') continue;
+      expect(selector, `${selector.trim()} glows on every theme`).toContain("[data-theme='dark']");
+    }
+  });
+});
+
+describe.each(['dark', 'light'] as const)('%s theme seen through the filter', (name) => {
+  const p = hex(themes[name]);
+
+  it.each(FOREGROUNDS)('%s stays legible under the scanlines', (fg) => {
+    for (const bg of SURFACES) {
+      const r = contrast(veiled(must(p[fg], fg)), veiled(must(p[bg], bg)));
+      expect(
+        r,
+        `${name} ${fg} on ${bg} is ${r.toFixed(2)}:1 through a ${(VEIL * 100).toFixed(1)}% veil`
+      ).toBeGreaterThanOrEqual(FLOOR);
+    }
+  });
 });
 
 describe('CRT stylesheet discipline', () => {
   // The same two scans palette.test.ts runs over styles.css. They are rules
-  // about CSS rather than about one file, and this file is now a second place
+  // about CSS rather than about one file, and this file is a second place
   // colours are written.
   it('paints text with tokens, never with literal colours', () => {
     const literals = [];
@@ -156,10 +174,61 @@ describe('CRT stylesheet discipline', () => {
 
   it('outranks the theme blocks whatever order the browser applies them in', () => {
     // The stylesheet is injected at runtime, so equal specificity would leave
-    // the entire palette depending on load order. html + :root + [attr] beats
+    // the look depending on load order. html + :root + [attr] beats
     // :root + [attr].
     expect(css).toContain("html:root[data-crt='on']");
     expect(css).not.toMatch(/(?<!html):root\[data-crt/);
+  });
+});
+
+describe('CRT tube geometry', () => {
+  it('draws the curvature instead of applying it', () => {
+    // The bulge is a bezel whose opening bows, not `filter: url(#barrel)` on a
+    // wrapper. A real displacement would re-run over the whole layer on every
+    // repaint, make the element the containing block for every fixed
+    // descendant, and — the part that decides it — leave hit testing behind
+    // with the undistorted geometry, so the caret would land somewhere other
+    // than where the character appears.
+    expect(css).not.toMatch(/(?:^|[;\s])filter:/);
+    const outside = css.replace(/@keyframes[\s\S]*?\n\}/g, '');
+    expect(outside).not.toMatch(/(?:^|[;\s])transform:/);
+  });
+
+  it('stretches the bezel to any window', () => {
+    // preserveAspectRatio='none' over a 0-100 viewBox is what makes one path
+    // responsive; clip-path's path() takes absolute units only and would be
+    // pinned to whatever window it was drawn for.
+    expect(css).toContain("viewBox='0 0 100 100'");
+    expect(css).toContain("preserveAspectRatio='none'");
+  });
+
+  it('cuts the opening as a hole rather than painting a shape', () => {
+    // The bezel is the OUTSIDE of the barrel: a full-box rectangle with the
+    // face subtracted from it by the even-odd rule. Without the rectangle the
+    // path fills the screen instead of framing it.
+    expect(css).toContain("fill-rule='evenodd'");
+    expect(css).toContain('M0 0h100v100H0z');
+  });
+
+  it('bows the raster by the same fraction of the width at every size', () => {
+    // The scan arcs come from a circle whose radius is in vw, so the sag scales
+    // with the window: a radius in px would read as a fisheye on a phone and
+    // flatten out to straight lines on a wide monitor.
+    expect(css).toMatch(/repeating-radial-gradient\(\s*circle \d+vw at 50% \d+vw/);
+  });
+
+  it('drifts the scanlines by exactly one period', () => {
+    // The scan loop is seamless only if the travel equals the pattern's period:
+    // the end state has to be pixel-identical to the start, or every cycle ends
+    // in a visible jump. (On arcs it is exact on the vertical axis and off by
+    // x²p/2R² elsewhere — a fiftieth of a pixel at the corners.) Both numbers
+    // are read back rather than trusted, since they live 100 lines apart and
+    // either one can be tuned alone.
+    const travel = must(
+      /@keyframes crt-scan[\s\S]*?to\s*\{[^}]*translateY\((\d+)px\)/.exec(css)?.[1],
+      'scan travel'
+    );
+    expect(travel).toBe(scan[3]);
   });
 });
 
@@ -193,19 +262,6 @@ describe('CRT animations', () => {
     for (const p of props) expect(['transform', 'opacity']).toContain(p);
   });
 
-  it('drifts the scanlines by exactly one period', () => {
-    // The scan loop is seamless only if the travel equals the pattern's period:
-    // the end state has to be pixel-identical to the start, or every cycle ends
-    // in a visible jump. Both numbers are read back rather than trusted, since
-    // they live 150 lines apart and either one can be tuned alone.
-    const period = must(/rgba\(0, 0, 0, 0\)\s+\d+px\s+(\d+)px/.exec(css)?.[1], 'scanline period');
-    const travel = must(
-      /@keyframes crt-scan[\s\S]*?to\s*\{[^}]*translateY\((\d+)px\)/.exec(css)?.[1],
-      'scan travel'
-    );
-    expect(travel).toBe(period);
-  });
-
   it('runs no animation it does not define', () => {
     const defined = new Set(frames.map((f) => f.name));
     for (const [, value] of css.matchAll(/(?:^|[;\s])animation:\s*([^;]+)/g)) {
@@ -221,33 +277,29 @@ describe('CRT animations', () => {
     const rest = css.slice(i);
     expect(rest).toContain('animation: none');
     // …and keeps the look: standing still, the scan layer IS the scanlines, and
-    // the tube is not motion at all. Hiding either would leave a button that
-    // reads as doing nothing.
+    // the tube face is not motion at all. Hiding either would leave a button
+    // that reads as doing nothing.
     expect(rest).not.toMatch(/#root::before[^{]*\{[^}]*display:\s*none/);
     expect(rest).not.toMatch(/body::after[^{]*\{[^}]*display:\s*none/);
   });
 });
 
 describe('CRT overlay layers', () => {
-  // Selector → declarations, for the rules that create the fixed layers.
   const layers = ['#root::before', 'body::after', 'body::before', '#root::after'];
 
   it.each(layers)('%s never swallows a pointer event', (layer) => {
-    const m = new RegExp(`${layer.replace('#', '#')}\\s*\\{([^}]*)\\}`).exec(css);
+    const m = new RegExp(`${layer}\\s*\\{([^}]*)\\}`).exec(css);
     expect(m, `no rule for ${layer}`).not.toBeNull();
     expect(must(m?.[1], layer)).toMatch(/pointer-events:\s*none/);
   });
 
-  it('never wraps the app in a filter, and transforms only the layers', () => {
-    // A filter or a transform on an element that CONTAINS the app forces the
-    // whole thing into one re-rasterized layer, and makes it the containing
-    // block for every position:fixed descendant — the context menu, the bee,
-    // the drop overlay and the reset button. The look is a palette plus
-    // overlays for exactly this reason, so `filter` appears nowhere and
-    // `transform` only inside the keyframes that drive the two overlays.
-    expect(css).not.toMatch(/(?:^|[;\s])filter:/);
-    const outside = css.replace(/@keyframes[\s\S]*?\n\}/g, '');
-    expect(outside).not.toMatch(/(?:^|[;\s])transform:/);
+  it('keeps the corners of the app clear of the bezel', () => {
+    // The opening closes in at the corners, and the app puts something in every
+    // one of them: the logo, the help button, the pane chevrons and the fixed
+    // reset button. The picture is inset to match, and the reset button — being
+    // fixed, so the inset does not reach it — is moved by hand.
+    expect(css).toMatch(/#root\s*\{[^}]*padding:/);
+    expect(css).toMatch(/\.reset-btn\s*\{[^}]*(right|bottom):/);
   });
 });
 

@@ -2,7 +2,7 @@
    Everything the "old cathode ray screen" look costs, in one file that the app
    only fetches when somebody actually asks for it (src/crt/load.ts).
 
-   Three rules shape what is in here:
+   Four rules shape what is in here:
 
    1. IT IS NOT ON THE CRITICAL PATH. styles.css is inlined into index.html
       (build/inlineCss.ts), so a rule added there is paid for by every first
@@ -11,88 +11,67 @@
       service worker (swPrecache derives the list from the emitted bundle), so
       the filter works offline like the rest of the app.
 
-   2. NOTHING ANIMATES EXCEPT transform AND opacity. Those two are the only
+   2. IT DOES NOT TOUCH THE PALETTE. The filter is optics, not a theme: Gruvbox
+      dark and the light theme both show through it exactly as they do with the
+      filter off, and the day/night setting keeps working underneath. This file
+      therefore defines no palette token at all, and crt.test.ts fails on one
+      appearing — the earlier green-phosphor version replaced all thirty-odd of
+      them, and the one thing that is easy to do by accident is to bring one
+      back.
+
+   3. NOTHING ANIMATES EXCEPT transform AND opacity. Those two are the only
       properties the compositor can run without repainting, and the layers below
-      cover the whole viewport — animating anything else here would repaint the
+      cover the whole viewport — animating anything else would repaint the
       editor's backdrop on every frame, which on a 100 KB description is the
       most expensive paint in the app. crt.test.ts reads the @keyframes blocks
-      back and fails on any other property.
+      back and fails on a third property.
 
-   3. THE PALETTE IS A PALETTE, not a filter over one. There is no
-      `filter: sepia()` on a wrapper: a filter on an ancestor forces the whole
-      app into one re-rasterized layer AND makes it the containing block for
-      every position:fixed descendant (the context menu, the bee, the reset
-      button). Redefining the tokens costs nothing at paint time and leaves the
-      layout untouched.
+   4. THE CURVATURE IS DRAWN, NOT APPLIED. The tube face is an overlay: a bezel
+      whose opening bows outward at the middle of each edge and closes in at the
+      corners, a raster of arcs that follows the same curve, and the shading of
+      glass. What it deliberately is NOT is `filter: url(#barrel)` on a wrapper.
+      That would displace the app's own pixels — but a filter re-runs over the
+      whole layer on every repaint (so every keystroke in a 100 KB document
+      would re-distort the viewport), it makes the element the containing block
+      for every position:fixed descendant, and — the part that actually decides
+      it — hit testing is NOT displaced with the pixels, so the caret would land
+      somewhere other than where the text appears. In a text editor that is a
+      bug, not an effect.
 
    The specificity is `html:root[...]` (0,2,1) rather than `:root[...]` (0,2,0)
-   deliberately: the theme blocks in styles.css are (0,2,0), and this file is
-   injected at runtime, so relying on source order would make the whole palette
-   depend on the order the browser happens to apply an injected stylesheet in. */
+   deliberately: styles.css's own blocks are (0,2,0), and this file is injected
+   at runtime, so relying on source order would leave the look depending on the
+   order the browser happens to apply an injected stylesheet in. */
 
 html:root[data-crt='on'] {
-  color-scheme: dark;
-
   /* A terminal is monospace all the way through, and this is the one place the
      rule in styles.css about never turning proportional UI into code is the
      point rather than the hazard. The editor is untouched by construction: both
      of its layers name --font-mono directly, so the two stay locked to each
      other and the highlights cannot slide off the text. */
   --font-ui: var(--font-mono);
+}
 
-  --bg: #03120a;
-  --surface: #07200f;
-  --surface2: #0d3019;
-  --border: #1b4e2e;
-  --border2: #2c7245;
-
-  --text: #c8ffd9;
-  --text-muted: #8ff0ab;
-  --text-dim: #6fcb8d;
-
-  --accent: #4ff28a;
-  --on-accent: #03120a;
-  --accent-glow: color-mix(in srgb, var(--accent) 20%, transparent);
-
-  /* The error categories keep their hues. A monochrome screen would be more
-     faithful and would also make five kinds of error look identical, which is
-     the one thing this tool may not do — so they are pulled onto a phosphor
-     ramp instead of being flattened into it. Every one of them clears 7:1 on
-     all three surfaces, well past AA, because the scanline layer below
-     composites a veil over the whole screen (crt.test.ts checks both). */
-  --warn: #ffd35c;
-  --art: #7ff0c8;
-  --ok: #b6f06a;
-  --bare: #ff9b86;
-  --num: #8fd8ff;
-  --dep: #ffa3d8;
-  --info: #9fd0ff;
-
-  /* Derived from the six above rather than spelled out again: a highlight fill
-     is its own hue at low alpha and an underline the same hue at 75%. */
-  --warn-bg: color-mix(in srgb, var(--warn) 15%, transparent);
-  --warn-u: color-mix(in srgb, var(--warn) 75%, transparent);
-  --warn-border: color-mix(in srgb, var(--warn) 50%, transparent);
-  --warn-wt: color-mix(in srgb, var(--warn) 85%, transparent);
-  --warn-wt-bg: color-mix(in srgb, var(--warn) 8%, transparent);
-  --warn-wt-bd: color-mix(in srgb, var(--warn) 50%, transparent);
-  --art-bg: color-mix(in srgb, var(--art) 14%, transparent);
-  --art-u: color-mix(in srgb, var(--art) 75%, transparent);
-  --ok-bg: color-mix(in srgb, var(--ok) 12%, transparent);
-  --ok-border: color-mix(in srgb, var(--ok) 40%, transparent);
-  --bare-bg: color-mix(in srgb, var(--bare) 14%, transparent);
-  --bare-u: color-mix(in srgb, var(--bare) 75%, transparent);
-  --num-bg: color-mix(in srgb, var(--num) 14%, transparent);
-  --num-u: color-mix(in srgb, var(--num) 75%, transparent);
-  --dep-bg: color-mix(in srgb, var(--dep) 14%, transparent);
-  --dep-u: color-mix(in srgb, var(--dep) 75%, transparent);
-
-  /* The phosphor bloom, used by the text-shadow below. */
-  --crt-glow: color-mix(in srgb, var(--accent) 45%, transparent);
+/* The picture is inset so the app's own chrome clears the bezel's opening. The
+   corners close in furthest — that is what a bulging face does — and the logo,
+   the help button and the fixed reset button all live in corners. */
+html[data-crt='on'] #root {
+  padding: 7px 16px;
+}
+html[data-crt='on'] .reset-btn {
+  right: 34px;
+  bottom: 24px;
 }
 
 /* PHOSPHOR BLOOM
-   Small radius on purpose. A shadow is drawn per glyph run, and the editor is
+   Every element blooms in its OWN colour (`currentColor`), which is both what a
+   phosphor does and the only version of this that survives the palette staying
+   the theme's: a fixed glow colour would tint Gruvbox towards itself.
+
+   Dark themes only. On the light theme the same rule is a dark halo around dark
+   text — dirty glass rather than a lit screen — so it is simply not applied.
+
+   Small radius on purpose: a shadow is drawn per glyph run, and the editor is
    the one place in this app holding tens of thousands of them.
 
    The backdrop is excluded outright: its text is `color: transparent` (the
@@ -100,8 +79,8 @@ html:root[data-crt='on'] {
    and a text-shadow paints regardless of the text colour — so leaving it on
    would render a second, blurred copy of the whole document a pixel behind the
    real one. */
-html[data-crt='on'] body {
-  text-shadow: 0 0 3px var(--crt-glow);
+html[data-theme='dark'][data-crt='on'] body {
+  text-shadow: 0 0 3px currentColor;
 }
 html[data-crt='on'] .backdrop {
   text-shadow: none;
@@ -109,24 +88,29 @@ html[data-crt='on'] .backdrop {
 /* Chrome does not inherit text-shadow into a form control, so the editor — the
    one surface a drafter actually reads — needs it named. Measured rather than
    assumed: see the note in CLAUDE.md for the frame times on a 100 KB buffer. */
-html[data-crt='on'] .editor-ta {
-  text-shadow: 0 0 3px var(--crt-glow);
+html[data-theme='dark'][data-crt='on'] .editor-ta {
+  text-shadow: 0 0 3px currentColor;
 }
 
-/* THE SCANLINES
-   A 6px pattern — 2px of shadow, 4px of gap — on a layer of its own, drifting
-   down one whole period every 2.4s. Two things follow from that split:
+/* THE RASTER
+   Scanlines on a layer of their own, drifting down one whole period every 2.4s
+   — a scan that is not quite in sync. Three things about it are deliberate:
 
-   · IT MOVES, so it cannot share the layer the vignette is on. A translate
+   · THE LINES ARE ARCS, not rows. The gradient is radial, centred far below the
+     screen, so the raster bows the same way the tube face does; straight lines
+     over a curved opening would flatten the whole illusion. The radius is huge
+     (the centre is ~9 screens down), which is what keeps the bow a gentle ~2%
+     of the height rather than a fisheye.
+   · IT MOVES, so it cannot share the layer the tube shading is on. A translate
      applies to everything the element paints, and a vignette that slid with the
      scan would look like the tube itself was loose.
-   · THE LOOP IS ONE PERIOD, so the end state is pixel-identical to the start
-     and the drift is seamless. The layer is inset 8px past the viewport on both
-     edges, which is what keeps the travel from exposing a gap at the top.
-
-   The duty cycle is deliberately the same as the 1px/3px pattern this replaced
-   — a third of the screen in shadow — so the veil over the palette is unchanged
-   and the contrast figures crt.test.ts checks still describe what renders.
+   · THE LOOP IS ONE PERIOD, so the end state is (near enough) pixel-identical
+     to the start. Translating concentric arcs by one radial period is exact on
+     the vertical axis and off by x²·p/2R² at horizontal offset x — with p = 6px
+     and R ≈ 9 screen heights that is under a twentieth of a pixel at the far
+     corners, i.e. the loop is seamless where a straight-line pattern would be
+     seamless too. The layer is inset 8px past the viewport on both edges, which
+     is what keeps the travel from exposing a gap at the top.
 
    `pointer-events: none` is load-bearing rather than tidy: the editor hit-tests
    hover with elementFromPoint, and a full-screen layer that answered would kill
@@ -143,9 +127,9 @@ html[data-crt='on'] #root::before {
   inset: -8px 0;
   z-index: 1999;
   pointer-events: none;
-  background: repeating-linear-gradient(
-    to bottom,
-    rgba(0, 0, 0, 0.3) 0 2px,
+  background: repeating-radial-gradient(
+    circle 600vw at 50% 600vw,
+    rgba(0, 0, 0, 0.28) 0 2px,
     rgba(0, 0, 0, 0) 2px 6px
   );
   will-change: transform, opacity;
@@ -154,10 +138,34 @@ html[data-crt='on'] #root::before {
     crt-flicker 4.5s linear infinite;
 }
 
-/* THE TUBE
-   The glass: a vignette, the phosphor tint and the inner glow at the edges.
-   Static on purpose — this is the shape of the screen, and the only thing that
-   moves across it is the scan above. */
+/* THE TUBE FACE
+   One static layer carrying, from the top down: the bezel, the sheen of the
+   glass, and the vignette.
+
+   THE BEZEL is an SVG mask painted in the background stack. `viewBox="0 0 100
+   100"` with `preserveAspectRatio="none"` is what makes it responsive — the
+   path stretches to whatever the viewport is, which no clip-path shorthand and
+   no `path()` (absolute units only) can do. Each edge of the opening bows
+   outward to meet the viewport at the middle and pulls back in towards the
+   corners, which is the shape of a bulging face seen head on: the sides swell,
+   the corners are squeezed. `fill-rule="evenodd"` with an outer rectangle is
+   what makes the path a HOLE rather than a shape.
+
+   Black in both themes, and that is not the palette showing through: the mask
+   around a tube is black on every terminal ever built, and a bezel tinted to
+   the theme would read as a coloured border rather than as the edge of a
+   screen. The second path strokes that same opening with a faint white rim —
+   the glass catching the light where it meets the mask. Without it the shape is
+   invisible on the dark theme, black on Gruvbox's near-black, and the whole
+   curvature only reads in daylight.
+
+   THE VIGNETTE is sized (130% 105%) so that its dark end falls outside the
+   viewport: at the viewport's own corner it is only ~0.08 alpha, and along the
+   middle of each edge it is nothing at all. That is deliberate — the app's side
+   panes live within a few tens of pixels of the edge, and a vignette that
+   really reached 0.55 over them would take a chunk out of the contrast the
+   themes are checked at. What darkens the extreme edge is the inset shadow,
+   which is mostly behind the bezel by the time it is strong. */
 html[data-crt='on'] body::after {
   content: '';
   position: fixed;
@@ -165,14 +173,16 @@ html[data-crt='on'] body::after {
   z-index: 2000;
   pointer-events: none;
   background:
-    radial-gradient(130% 105% at 50% 50%, rgba(0, 0, 0, 0) 55%, rgba(0, 0, 0, 0.55) 100%),
-    linear-gradient(to bottom, rgba(120, 255, 170, 0.05), rgba(120, 255, 170, 0.02));
-  box-shadow: inset 0 0 130px rgba(0, 20, 8, 0.75);
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100' preserveAspectRatio='none'%3E%3Cpath fill='%23000' fill-rule='evenodd' d='M0 0h100v100H0z M2.4,2 C25,-1.2 75,-1.2 97.6,2 C101.6,25 101.6,75 97.6,98 C75,101.2 25,101.2 2.4,98 C-1.6,75 -1.6,25 2.4,2 Z'/%3E%3Cpath fill='none' stroke='%23fff' stroke-opacity='.13' stroke-width='.45' d='M2.4,2 C25,-1.2 75,-1.2 97.6,2 C101.6,25 101.6,75 97.6,98 C75,101.2 25,101.2 2.4,98 C-1.6,75 -1.6,25 2.4,2 Z'/%3E%3C/svg%3E")
+      0 0 / 100% 100% no-repeat,
+    linear-gradient(118deg, rgba(255, 255, 255, 0.05) 0%, rgba(255, 255, 255, 0) 34%),
+    radial-gradient(130% 105% at 50% 50%, rgba(0, 0, 0, 0) 55%, rgba(0, 0, 0, 0.55) 100%);
+  box-shadow: inset 0 0 60px rgba(0, 0, 0, 0.5);
 }
 
 /* THE ROLLING BAR
-   The bright band an unsynced CRT drifts up the screen. A single translateY,
-   which is why it is its own layer rather than a fourth gradient on the one
+   The bright band an unsynced CRT drifts down the screen. A single translateY,
+   which is why it is its own layer rather than another gradient on the one
    above — an animated gradient stop would repaint the full viewport. */
 html[data-crt='on'] body::before {
   content: '';
@@ -185,11 +195,11 @@ html[data-crt='on'] body::before {
   pointer-events: none;
   background: linear-gradient(
     to bottom,
-    rgba(200, 255, 220, 0) 0%,
-    rgba(200, 255, 220, 0.035) 42%,
-    rgba(200, 255, 220, 0.06) 50%,
-    rgba(200, 255, 220, 0.035) 58%,
-    rgba(200, 255, 220, 0) 100%
+    rgba(255, 255, 255, 0) 0%,
+    rgba(255, 255, 255, 0.03) 42%,
+    rgba(255, 255, 255, 0.05) 50%,
+    rgba(255, 255, 255, 0.03) 58%,
+    rgba(255, 255, 255, 0) 100%
   );
   will-change: transform;
   animation: crt-roll 9s linear infinite;
@@ -210,9 +220,9 @@ html[data-crt='on'] #root::after {
   opacity: 0;
   background: radial-gradient(
     120% 60% at 50% 50%,
-    rgba(220, 255, 235, 0.95),
-    rgba(120, 255, 170, 0.25) 60%,
-    rgba(120, 255, 170, 0) 100%
+    rgba(255, 255, 255, 0.9),
+    rgba(255, 255, 255, 0.22) 60%,
+    rgba(255, 255, 255, 0) 100%
   );
   animation: crt-on 0.65s ease-out 1;
 }
@@ -245,7 +255,7 @@ html[data-crt='on'] #root::after {
   }
 }
 
-/* One period of the scanline pattern, so the loop is seamless. */
+/* One period of the scan pattern, so the loop is seamless. */
 @keyframes crt-scan {
   from {
     transform: translateY(0);
@@ -284,8 +294,8 @@ html[data-crt='on'] #root::after {
   }
 }
 
-/* Reduced motion keeps the LOOK and drops the moving parts — the palette, the
-   scanlines, the vignette and the bloom all stay, so the filter still visibly
+/* Reduced motion keeps the LOOK and drops the moving parts — the curved bezel,
+   the scanlines, the glass and the bloom all stay, so the filter still visibly
    applies rather than reading as a button that does nothing. Same stance the
    bee takes: what is suppressed is motion nobody asked for, not the thing that
    was asked for by name. */

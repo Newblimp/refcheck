@@ -71,8 +71,9 @@ src/
                         the first visit fetched
   assets/bee.svg        Noto Color Emoji bee (Google, Apache-2.0), vendored so the
                         easter egg needs no CDN either
-  crt/crt.css           The CRT screen filter: the whole green-phosphor palette,
-                        the scanline/roll/power-on layers and their keyframes.
+  crt/crt.css           The CRT screen filter: the curved bezel, the bowed
+                        raster, the roll/power-on layers and their keyframes.
+                        Defines NO palette token — the theme shows through.
                         NOT part of styles.css on purpose — that one is inlined
                         into index.html, so this would be paid for by every first
                         visit (see CRT Screen Filter below)
@@ -211,7 +212,8 @@ src/
     helpers.ts          must() / q() — turn "this might be missing" into a named
                         test failure rather than a non-null assertion or a `?.`
                         that lets a broken fixture pass. Also contrast(), which
-                        two files now need: the themes and the CRT palette
+                        two files now need: the themes, and the themes again
+                        as the CRT filter's scanlines veil them
                         (importing it from one test file into the other would
                         register that file's whole suite inside the second)
     globals.d.ts        Ambient declarations for the test environment
@@ -638,10 +640,19 @@ use `xmlFault` (`docx/fixture.ts`) for that.
 ### CRT screen filter
 
 A button in the top bar (the little tube, next to the theme toggle) puts the whole tool
-on an old cathode ray screen: green phosphor, scanlines that drift slowly down the
-picture as if the scan were a touch out of sync, a vignetted tube, a bright band rolling
-down over them, a mains flicker and a power-on strike. Persisted under
+behind the glass of an old cathode ray screen: a bulging tube face whose sides bow out
+and whose corners squeeze in, a raster of scanlines bowed to match and drifting slowly
+down as if the scan were a touch out of sync, a phosphor bloom on the text, a bright
+band rolling down over it, a mains flicker and a power-on strike. Persisted under
 `rsc_crt` and applied as `<html data-crt="on">`, the way the theme is applied.
+
+**It is optics, not a theme.** Gruvbox dark and the light theme show through it exactly
+as they do with the filter off, and the day/night toggle keeps working underneath — the
+stylesheet defines no palette token at all. (It did once: an earlier version replaced all
+thirty-odd of them with a green phosphor set. `crt.test.ts` now fails on a single one
+coming back, because that is a one-line change that silently overrules the theme.) The
+one non-optical thing it still does is make the chrome monospace, which is typography
+rather than colour.
 
 It is deliberately cheap, and each of the four decisions below is what makes it so:
 
@@ -656,48 +667,87 @@ It is deliberately cheap, and each of the four decisions below is what makes it 
 - **It is still precached**, because swPrecache derives its list from the emitted
   bundle. Verified in Chromium: a visit that never opens the filter, then an offline
   reload, then a first-ever switch-on — which works, from cache
-- **It is a palette plus four overlays, never a `filter:` on a wrapper.** A filter (or
-  a transform) on an element containing the app forces the whole thing into one
-  re-rasterized layer AND makes it the containing block for every `position: fixed`
-  descendant — the context menu, the bee, the drop overlay, the reset button.
-  Redefining the tokens costs nothing at paint time; `crt.test.ts` fails on a `filter`
-  anywhere in the file
+- **The curvature is DRAWN, never applied.** The obvious way to bulge a screen is
+  `filter: url(#barrel)` on a wrapper, and it is wrong three times over: a filter
+  re-runs over the whole layer on every repaint, so every keystroke in a 100 KB
+  document would re-distort the viewport; it makes the element the containing block
+  for every `position: fixed` descendant (the context menu, the bee, the drop overlay,
+  the reset button); and — the one that actually decides it — **hit testing is not
+  displaced with the pixels**, so the caret would land somewhere other than where the
+  character appears. In a text editor that is a bug, not an effect. What ships instead
+  is a bezel whose opening bows, a raster bowed to match, and the shading of glass;
+  `crt.test.ts` fails on a `filter` anywhere in the file
 - **Only `transform` and `opacity` animate**, the two properties the compositor runs
   by itself. The layers cover the viewport, so animating anything else would repaint
   the editor's backdrop every frame. `crt.test.ts` reads the `@keyframes` blocks back
   and fails on a third property
 
-The four layers are `#root::before` (the scanlines), `body::after` (the tube),
+The four layers are `#root::before` (the raster), `body::after` (the tube face),
 `body::before` (the rolling band) and `#root::after` (the power-on strike). The first
 two are a split rather than one layer with more gradients on it, and the reason is the
-drift: a translate applies to everything the element paints, so a vignette sharing that
-layer would slide with the scan and read as a loose tube. The scan pattern is 2px of
-shadow every 6px, and it travels **exactly one period** per cycle — the end state is
-then pixel-identical to the start, so the loop is seamless rather than jumping once
-every 2.4s (`crt.test.ts` reads the period and the travel back out and compares them).
-The layer is inset 8px past the viewport top and bottom, which is what keeps the travel
-from exposing a gap. Its duty cycle — a third of the screen in shadow — is what the
-contrast figures below are calculated against, so changing the pattern means rechecking
-them.
+drift: a translate applies to everything the element paints, so a bezel sharing that
+layer would slide with the scan and read as a loose tube.
+
+**The tube face** is an SVG in the background stack: a full-box rectangle with the
+barrel subtracted out of it by `fill-rule="evenodd"`, so the path is a hole and what
+paints is the mask around it. `viewBox="0 0 100 100"` with `preserveAspectRatio="none"`
+is what makes one path fit every window — `clip-path: path()` takes absolute units only
+and would be pinned to whatever size it was drawn for. Each edge bows out to meet the
+viewport at its middle and pulls back in towards the corners, which is what a bulging
+face looks like head on. A second path strokes that same opening with a faint white rim,
+the glass catching the light where it meets the mask: without it the shape is invisible
+on the dark theme (black on Gruvbox's near-black) and the curvature only reads in
+daylight. The app is inset by a few pixels to match, and the fixed reset button — which
+an inset cannot reach — is moved by hand, because every corner the opening closes in on
+has something in it: the logo, the help button, the pane chevrons.
+
+**The raster** is 2px of shadow every 6px, drifting **exactly one period** per cycle, so
+the end state is pixel-identical to the start and the loop is seamless rather than
+jumping once every 2.4s (`crt.test.ts` reads the period and the travel back out and
+compares them). The lines are **arcs, not rows** — a `repeating-radial-gradient` from a
+circle centred far below the screen, so the raster bows the way the face does; straight
+lines over a curved opening flatten the whole illusion. The radius is in `vw`, which
+makes the sag the same fraction of the width at every window size (a radius in px reads
+as a fisheye on a phone and as straight lines on a wide monitor). Concentric arcs are
+not periodic under a translation the way rows are, but the error is x²p/2R² — under a
+fiftieth of a pixel at the far corners with this radius, so the loop is as seamless as
+the straight version was. The layer is inset 8px past the viewport top and bottom, which
+keeps the travel from exposing a gap; its duty cycle — a third of the screen in shadow —
+is what the contrast figures below are calculated against, so changing the pattern means
+rechecking them.
 
 Three details that are easy to get wrong and are each pinned by a test:
 
 - **The overlays are `pointer-events: none`** — the same requirement the bee and the
   drop overlay have, because the editor hit-tests hover with `elementFromPoint` and a
   full-screen layer that answered would kill sign highlighting outright
-- **The palette is replaced, not tinted, and it clears 7:1 rather than AA.** The
-  scanline layer draws a dark veil over everything, which no token-vs-token check can
-  see, so `crt.test.ts` checks the raw ratios at 7:1 AND re-checks them at AA with the
-  veil composited in. It also requires the CRT block to define **every** token the
-  theme blocks define — one left out falls back to the theme underneath, which is how
-  a lone orange chip ends up on a green screen
+- **The scanlines cost contrast, and the guard bounds the cost.** They are a dark veil
+  over everything, which no token-vs-token check can see, so `crt.test.ts` runs BOTH
+  shipped palettes through the veil (alpha × duty cycle, parsed out of the stylesheet
+  rather than written down, so tuning the pattern re-tunes the model) and requires
+  every foreground to stay above **4.0:1** on all three surfaces. Not 4.5: the tightest
+  pair in the shipped dark theme is `--text-dim` on `--surface2` at 4.59:1, so _any_
+  veil at all leaves AA — that is a fact about how close the theme runs to the line
+  rather than about this filter, which is opt-in and simulates a worse display on
+  purpose. The bar is where the current pattern sits with a little room, and a heavier
+  scanline fails it
+- **The bloom is `currentColor`, and dark themes only.** Every element glows in its own
+  colour, which is both what a phosphor does and the only version that survives the
+  palette staying the theme's — a fixed glow colour would tint Gruvbox towards itself.
+  On the light theme the same rule is a dark halo around dark text, dirty glass rather
+  than a lit screen, so it is simply not applied; `crt.test.ts` fails on a glow rule
+  that is not scoped to `[data-theme='dark']`. The backdrop is excluded outright in
+  both: its text is `color: transparent` and a text-shadow paints regardless of the
+  text colour, so it would render a blurred second copy of the whole document a pixel
+  behind the real one
 - **The chrome goes monospace via `--font-ui: var(--font-mono)`**, which is the one
   place the rule against turning proportional UI into code is the point. The editor is
   untouched by construction: both of its layers name `--font-mono` directly, so they
   stay locked to each other. Overriding `--font-mono` would break that, and the test
   says so
-- **`prefers-reduced-motion` keeps the look and drops the moving parts.** The scan
-  layer stops but stays — standing still it simply IS the scanlines — while the rolling
+- **`prefers-reduced-motion` keeps the look and drops the moving parts.** The tube face
+  and the bloom are not motion at all, and the raster layer stops but stays — standing
+  still it simply IS the scanlines — while the rolling
   band and the power-on strike, which exist only to move, are removed outright. Same
   stance the bee takes: what is suppressed is motion nobody asked for, not the thing
   that was asked for by name — a filter that switched on invisibly would just read as a
@@ -1121,10 +1171,10 @@ All access goes through `hooks/usePersistentState.ts`.
       than the muted tier and inverts the hierarchy
 - [x] `--info` (soft blue) for genuinely informational content — the claim-set panel, which
       must not look like an error
-- [x] The **CRT screen filter** replaces the whole palette rather than tinting it, so it
-      leaves that matrix behind entirely — `src/crt/crt.test.ts` is its counterpart, at a
-      7:1 bar plus a second pass with the scanline veil composited in (see CRT screen
-      filter)
+- [x] The **CRT screen filter** leaves the palette alone — both themes show through it —
+      so `src/crt/crt.test.ts` extends that matrix rather than replacing it: the same
+      tokens, re-checked with the scanline veil composited in, at a 4.0 floor (see CRT
+      screen filter for why not 4.5)
 - [x] "All consistent" is an i18n key (`allConsistent`) in both languages
 
 ### Performance
@@ -1180,10 +1230,12 @@ All access goes through `hooks/usePersistentState.ts`.
 - [x] **The CRT screen filter's stylesheet too** (`src/crt/load.ts`), by the same rule:
       1.0 KB gzipped that only a user who switches it on ever fetches, precached like the
       other deferred chunks. Measured in Chromium on a 100 KB description: with the filter
-      on, scrolling the editor holds 60fps (16.7 ms median frame, identical to filter-off);
-      under a 6× CPU throttle the median goes 16.7 ms → ~28 ms, of which the phosphor glow
-      is ~3 ms (measured by forcing the editor's `text-shadow` off and re-running) and the
-      four overlay layers are the rest
+      on, scrolling the editor holds 60fps (16.7 ms median frame, identical to filter-off),
+      and keystroke-to-paint is unchanged within the noise between two filter-off runs —
+      which is the measurement the bezel actually needed, since an overlay's cost is a
+      repaint cost. Under a 6× CPU throttle the scroll median goes 16.7 ms → ~18 ms, about
+      1 ms of which is the phosphor bloom (measured by forcing the editor's `text-shadow`
+      off and re-running)
 - [x] **The help screen too** (`components/LazyHelpDialog.tsx`), with its strings
       (`helpText.ts`) riding in the same chunk — it is opened by a click, and both
       languages of it shipped eagerly. The `?` button preloads on hover/focus. Note
@@ -1356,7 +1408,7 @@ Actions"** in Settings → Pages. The Vite `base` is `/refcheck/` (project-site 
 
 ### Testing
 
-Run with `npm test` (currently **820 tests**). Logic tests run under the fast `node`
+Run with `npm test` (currently **823 tests**). Logic tests run under the fast `node`
 environment; only `*.ui.test.tsx` files run under `jsdom` (scoped via
 `environmentMatchGlobs` in `vite.config.ts`, with `src/test/setup.ts` providing the
 jest-dom matchers and `matchMedia`/`clipboard` stubs). The `include` glob covers
@@ -1435,7 +1487,7 @@ Coverage by area:
 | `importDoc.test.ts`              | `fileKind` (`.docx`/`.docm`/legacy `.doc`/other), import returns buffers+lang+provenance, round-trip vs fresh export, DE fresh export heading                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
 | `beeFlight.test.ts`              | spawn off each of the four edges, entering/`entered`, jagged path (heading reversals), bounded speed, lifespan → `leaving`, exit through any side, hard age cap, `countBees` (word boundary, plural, `beetle` negative, DE `Biene`/`Bienen` gated on language, `Bienenstock` negative)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
 | `i18n.test.ts`                   | EN/DE key parity + matching value types                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
-| `crt/crt.test.ts`                | The CRT screen filter, which no other test can see: every theme token redefined (a missing one falls back to the theme underneath), 7:1 contrast on all three surfaces **and** AA again with the scanline veil composited in, the text ramp ordering, the editor's font invariant (`--font-ui` overridden, `--font-mono` never), the same literal-colour and opacity scans palette.test.ts runs over styles.css, a specificity that does not depend on injection order, **every `@keyframes` animating only `transform`/`opacity`**, the scan drift travelling exactly one pattern period (a seamless loop), no `filter` anywhere, `pointer-events: none` on all three layers, a reduced-motion block that drops the motion and keeps the look, and that nothing imports the stylesheet statically                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| `crt/crt.test.ts`                | The CRT screen filter, which no other test can see: that it redefines **no** token either theme defines (the filter is optics, not a palette), both shipped palettes re-checked with the scanline veil composited in at a 4.0 floor (the veil itself parsed out of the stylesheet), the bloom scoped to the dark theme, the editor's font invariant (`--font-ui` overridden, `--font-mono` never), the same literal-colour and opacity scans palette.test.ts runs over styles.css, a specificity that does not depend on injection order, **every `@keyframes` animating only `transform`/`opacity`**, the scan drift travelling exactly one pattern period (a seamless loop), the bezel being a responsive `preserveAspectRatio='none'` hole rather than a shape and the raster bowing by a `vw`-relative radius, no `filter` and no `transform` outside the keyframes, `pointer-events: none` on all four layers, the corners kept clear of the bezel, a reduced-motion block that drops the motion and keeps the look, and that nothing imports the stylesheet statically                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
 | `palette.test.ts`                | contrast of every foreground token against `--bg`/`--surface`/`--surface2` in both themes at the 4.5:1 AA bar, plus the `text > muted > dim` ramp ordering, **text on a coloured fill (`--on-accent` on `--accent`)**, and two stylesheet scans: **no rule may dim text with a partial `opacity`** (it composites text AND surface against what is behind, and turned a 4.59:1 pair into 3.05:1), **no rule may paint text with a literal colour** (a non-token is outside the matrix by construction). Contrast is invisible to every other kind of test — a Lighthouse run found two failures this file passed                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 | `errorKinds.test.ts`             | The registry's invariants: unique ids, **the historical dismissal prefixes (`s:` `a:` `b:` `n:` `d:`) — the storage-format guard, which is the one thing a naive "simplification" here would break silently**, the historical `getAllErrors` property names, a field the extractor actually fills, well-formed spans, term-vs-null per kind, a non-empty message in both languages, i18n keys that exist, search predicates that reject a non-match, and **both colour tokens defined in both themes** (the card takes its colour from those, so they are the entire stylesheet cost of a category)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
 | `ctxMenuItems.test.ts`           | The editor's right-click menu, which previously could only be exercised by mounting the app: nothing actionable at the caret, sign vs bare term vs article, reduce offered only once a term is wider than its base noun, insert-sign offered for one sign and withheld for two, **the sign correction — offered on the odd occurrence (from the term span as well as the sign), withheld on the ones that agree and on an even split**, dismissed entries flipping to Restore, restore-all appearing only when something is dismissed, and German labels                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
