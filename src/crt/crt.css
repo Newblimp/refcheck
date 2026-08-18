@@ -154,10 +154,23 @@ html[data-crt='on'] #root::before {
    Black in both themes, and that is not the palette showing through: the mask
    around a tube is black on every terminal ever built, and a bezel tinted to
    the theme would read as a coloured border rather than as the edge of a
-   screen. The second path strokes that same opening with a faint white rim —
-   the glass catching the light where it meets the mask. Without it the shape is
-   invisible on the dark theme, black on Gruvbox's near-black, and the whole
-   curvature only reads in daylight.
+   screen.
+
+   THE EDGE OF THE GLASS is the four strokes on that same path, painted in this
+   order: a wide blurred white one (the bevel — the lit thickness of the glass,
+   soft because it is a shading, not a line), then a warm stroke a hair OUTSIDE
+   the opening and a cool one a hair INSIDE, then the crisp specular rim. The
+   warm/cool pair is dispersion: thick glass splits what it bends, and that
+   fringe is the cue that reads as "thick" rather than "a rounded border". The
+   rim also has a job unrelated to optics — without it the opening is invisible
+   on the dark theme, black on Gruvbox's near-black, and the curvature only
+   reads in daylight.
+
+   THE CORNER SHADE is the elliptical gradient between the sheen and the
+   vignette: glass is thickest where two curved edges meet, and darkening the
+   corners specifically is what reads as depth rather than as a border. It is
+   elliptical rather than rectangular for exactly that reason — a rectangular
+   falloff would darken the middle of each edge just as much.
 
    THE VIGNETTE is sized (130% 105%) so that its dark end falls outside the
    viewport: at the viewport's own corner it is only ~0.08 alpha, and along the
@@ -173,12 +186,32 @@ html[data-crt='on'] body::after {
   z-index: 2000;
   pointer-events: none;
   background:
-    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100' preserveAspectRatio='none'%3E%3Cpath fill='%23000' fill-rule='evenodd' d='M0 0h100v100H0z M2.4,2 C25,-1.2 75,-1.2 97.6,2 C101.6,25 101.6,75 97.6,98 C75,101.2 25,101.2 2.4,98 C-1.6,75 -1.6,25 2.4,2 Z'/%3E%3Cpath fill='none' stroke='%23fff' stroke-opacity='.13' stroke-width='.45' d='M2.4,2 C25,-1.2 75,-1.2 97.6,2 C101.6,25 101.6,75 97.6,98 C75,101.2 25,101.2 2.4,98 C-1.6,75 -1.6,25 2.4,2 Z'/%3E%3C/svg%3E")
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100' preserveAspectRatio='none'%3E%3Cpath fill='%23000' fill-rule='evenodd' d='M0 0h100v100H0z M2.4,2 C25,-1.2 75,-1.2 97.6,2 C101.6,25 101.6,75 97.6,98 C75,101.2 25,101.2 2.4,98 C-1.6,75 -1.6,25 2.4,2 Z'/%3E%3Cfilter id='s'%3E%3CfeGaussianBlur stdDeviation='1.1'/%3E%3C/filter%3E%3Cpath fill='none' stroke='%23fff' stroke-opacity='.10' stroke-width='2.6' filter='url(%23s)' d='M2.4,2 C25,-1.2 75,-1.2 97.6,2 C101.6,25 101.6,75 97.6,98 C75,101.2 25,101.2 2.4,98 C-1.6,75 -1.6,25 2.4,2 Z'/%3E%3Cpath fill='none' stroke='%23ffb27a' stroke-opacity='.16' stroke-width='.3' transform='translate(50,50) scale(1.008) translate(-50,-50)' d='M2.4,2 C25,-1.2 75,-1.2 97.6,2 C101.6,25 101.6,75 97.6,98 C75,101.2 25,101.2 2.4,98 C-1.6,75 -1.6,25 2.4,2 Z'/%3E%3Cpath fill='none' stroke='%237fd4ff' stroke-opacity='.14' stroke-width='.3' transform='translate(50,50) scale(.992) translate(-50,-50)' d='M2.4,2 C25,-1.2 75,-1.2 97.6,2 C101.6,25 101.6,75 97.6,98 C75,101.2 25,101.2 2.4,98 C-1.6,75 -1.6,25 2.4,2 Z'/%3E%3Cpath fill='none' stroke='%23fff' stroke-opacity='.16' stroke-width='.4' d='M2.4,2 C25,-1.2 75,-1.2 97.6,2 C101.6,25 101.6,75 97.6,98 C75,101.2 25,101.2 2.4,98 C-1.6,75 -1.6,25 2.4,2 Z'/%3E%3C/svg%3E")
       0 0 / 100% 100% no-repeat,
-    linear-gradient(118deg, rgba(255, 255, 255, 0.05) 0%, rgba(255, 255, 255, 0) 34%),
+    linear-gradient(118deg, rgba(255, 255, 255, 0.06) 0%, rgba(255, 255, 255, 0) 34%),
+    radial-gradient(ellipse 72% 72% at 50% 50%, rgba(0, 0, 0, 0) 62%, rgba(0, 0, 0, 0.3) 100%),
     radial-gradient(130% 105% at 50% 50%, rgba(0, 0, 0, 0) 55%, rgba(0, 0, 0, 0.55) 100%);
   box-shadow: inset 0 0 60px rgba(0, 0, 0, 0.5);
 }
+
+/* WHAT IS NOT HERE: A REFRACTION BLUR
+   Thick glass smears what you see through it, and `backdrop-filter: blur()` on
+   a rim-shaped layer does exactly that to the app's own pixels — it was built,
+   it looked right, and it was taken out again on the numbers. On a 100 KB
+   description it took scrolling the editor from a 16.7 ms median frame to 65 ms
+   and keystroke-to-paint from 67 ms to 136 ms. Four thin edge strips instead of
+   one full-viewport layer only got that back to 24 ms and 97 ms, and four small
+   corner squares measured the same as the strips — so the cost is not the
+   filtered area and there is no cheap placement of it.
+
+   Every other part of this filter measured free in the same harness. The glass
+   is therefore DRAWN — bevel, dispersion, rim, corner shade — rather than
+   sampled, which is also why the caret still lands exactly where it is drawn.
+   (Displacing the pixels for real needs an SVG displacement map, and its only
+   spatial source, feImage, does not load in Chromium at all: verified against an
+   SVG data URI, a canvas PNG data URI and a served PNG, parsed and scripted
+   alike. Its failure mode is not "no effect" — a transparent map displaces the
+   whole interface by a uniform scale/2.) */
 
 /* THE ROLLING BAR
    The bright band an unsynced CRT drifts down the screen. A single translateY,

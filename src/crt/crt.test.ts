@@ -217,6 +217,29 @@ describe('CRT tube geometry', () => {
     expect(css).toMatch(/repeating-radial-gradient\(\s*circle \d+vw at 50% \d+vw/);
   });
 
+  it('draws the edge of the glass rather than sampling it', () => {
+    // The four strokes on the opening, in paint order: the blurred bevel (the
+    // lit thickness), a warm stroke a hair outside and a cool one a hair inside
+    // (dispersion — thick glass splits what it bends), and the specular rim.
+    // Together they are what makes the border read as glass rather than as a
+    // rounded frame, and they cost nothing: it is all one static layer.
+    expect(css, 'no blurred bevel').toContain('feGaussianBlur');
+    expect(css, 'no outer (warm) fringe').toMatch(/stroke='%23ffb27a'[^/]*scale\(1\.008\)/);
+    expect(css, 'no inner (cool) fringe').toMatch(/stroke='%237fd4ff'[^/]*scale\(\.992\)/);
+  });
+
+  it('never reads the backdrop', () => {
+    // `backdrop-filter: blur()` on a rim-shaped layer is the honest way to smear
+    // what you see through thick glass, and it was built and then removed on the
+    // measurements: on a 100 KB description it took the editor's scroll from a
+    // 16.7 ms median frame to 65 ms and keystroke-to-paint from 67 ms to 136 ms.
+    // Four thin strips instead of one layer only recovered 24 ms / 97 ms, and
+    // four small corner squares measured the same as the strips — so there is no
+    // cheap placement of it. Every other part of this filter measures free.
+    const code = css.replace(/\/\*[\s\S]*?\*\//g, '');
+    expect(code).not.toMatch(/backdrop-filter:/);
+  });
+
   it('drifts the scanlines by exactly one period', () => {
     // The scan loop is seamless only if the travel equals the pattern's period:
     // the end state has to be pixel-identical to the start, or every cycle ends
