@@ -181,6 +181,29 @@ describe('CRT stylesheet discipline', () => {
   });
 });
 
+/** Every declaration that applies to `selector`, from all the rules naming it.
+    Concatenated rather than first-match: the strips take their filter from one
+    shared rule and their geometry from a rule each. */
+function rule(selector: string): string {
+  const bodies = [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)]
+    .filter(([, selectors]) => selectors.split(',').some((one) => one.trim().endsWith(selector)))
+    .map(([, , body]) => body);
+  if (!bodies.length) throw new Error(`no rule for ${selector}`);
+  return bodies.join('\n');
+}
+
+/** The four refraction strips, by the edge each one covers. */
+const STRIPS = [
+  "html[data-crt='on']::before",
+  "html[data-crt='on']::after",
+  '.main::before',
+  '.main::after',
+];
+
+/** The stylesheet with its comments removed — several scans below would
+    otherwise match the prose explaining why a thing is or is not there. */
+const code = css.replace(/\/\*[\s\S]*?\*\//g, '');
+
 describe('CRT tube geometry', () => {
   it('draws the curvature instead of applying it', () => {
     // The bulge is a bezel whose opening bows, not `filter: url(#barrel)` on a
@@ -228,16 +251,49 @@ describe('CRT tube geometry', () => {
     expect(css, 'no inner (cool) fringe').toMatch(/stroke='%237fd4ff'[^/]*scale\(\.992\)/);
   });
 
-  it('never reads the backdrop', () => {
-    // `backdrop-filter: blur()` on a rim-shaped layer is the honest way to smear
-    // what you see through thick glass, and it was built and then removed on the
-    // measurements: on a 100 KB description it took the editor's scroll from a
-    // 16.7 ms median frame to 65 ms and keystroke-to-paint from 67 ms to 136 ms.
-    // Four thin strips instead of one layer only recovered 24 ms / 97 ms, and
-    // four small corner squares measured the same as the strips — so there is no
-    // cheap placement of it. Every other part of this filter measures free.
-    const code = css.replace(/\/\*[\s\S]*?\*\//g, '');
-    expect(code).not.toMatch(/backdrop-filter:/);
+  it('smears what is seen through the borders', () => {
+    // The refraction: a real blur of the app's own pixels at the rim, which is
+    // what thick glass does to what you look through. It is the one part of this
+    // filter that costs anything, so the three guards below bound that cost.
+    expect(code).toMatch(/backdrop-filter:\s*blur\(/);
+  });
+
+  it('confines the blur to four bounded strips', () => {
+    // A backdrop-filter costs roughly its own area. One full-viewport ring took
+    // the editor's scroll from a 16.7 ms median frame to 65 ms on a 100 KB
+    // description; these four strips, about a sixth of the viewport between
+    // them, cost 22 ms. A rule that filtered the whole screen would put that
+    // straight back, so no backdrop-filtered layer may be full-bleed.
+    for (const [, selector, body] of code.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+      if (!/backdrop-filter:/.test(body)) continue;
+      expect(body, `${selector.trim()} filters the whole viewport`).not.toMatch(
+        /(?:^|[;\s])inset:/
+      );
+    }
+    // …and each strip names a bounded edge.
+    for (const strip of STRIPS) expect(rule(strip), strip).toMatch(/(?:width|height):\s*min\(/);
+  });
+
+  it('keeps the moving layers out of the blur they would re-run', () => {
+    // A backdrop-filter re-runs whenever anything in its backdrop changes. The
+    // raster drifts every frame, so if it painted BELOW the strips the blur
+    // would re-run at 60fps instead of only when the app itself repaints.
+    const z = (sel: string) => Number(must(/z-index:\s*(\d+)/.exec(rule(sel))?.[1], sel));
+    for (const strip of STRIPS) expect(z(strip)).toBeLessThan(z('#root::before'));
+  });
+
+  it('leaves the document alone where the editor fills the window', () => {
+    // On the desktop layout the editor is the middle column, so the strips land
+    // on chrome. Below the breakpoint it fills the window and every strip would
+    // sit on the drafter's own sentences — smearing the text being checked is
+    // not an effect, it is a defect.
+    const m = /@media \(max-width: 860px\)\s*\{([\s\S]*?)\n\}/.exec(css);
+    expect(m, 'no narrow-screen block').not.toBeNull();
+    expect(must(m?.[1], 'narrow-screen block')).toMatch(/display:\s*none/);
+  });
+
+  it.each(STRIPS)('%s never swallows a pointer event', (strip) => {
+    expect(rule(strip)).toMatch(/pointer-events:\s*none/);
   });
 
   it('drifts the scanlines by exactly one period', () => {

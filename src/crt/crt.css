@@ -194,24 +194,105 @@ html[data-crt='on'] body::after {
   box-shadow: inset 0 0 60px rgba(0, 0, 0, 0.5);
 }
 
-/* WHAT IS NOT HERE: A REFRACTION BLUR
-   Thick glass smears what you see through it, and `backdrop-filter: blur()` on
-   a rim-shaped layer does exactly that to the app's own pixels — it was built,
-   it looked right, and it was taken out again on the numbers. On a 100 KB
-   description it took scrolling the editor from a 16.7 ms median frame to 65 ms
-   and keystroke-to-paint from 67 ms to 136 ms. Four thin edge strips instead of
-   one full-viewport layer only got that back to 24 ms and 97 ms, and four small
-   corner squares measured the same as the strips — so the cost is not the
-   filtered area and there is no cheap placement of it.
+/* THE REFRACTION
+   What thick glass does to what you see THROUGH it: at the borders, where the
+   glass is thickest, it smears. These four strips blur the app's own pixels — a
+   real optical effect on the real content rather than a picture of one — each
+   feathered from the screen edge inwards to nothing. The falloff is held high
+   for the first half of each strip rather than fading linearly: the chrome that
+   sits under them — the logo, the status chips, the pane headers — sits in the
+   MIDDLE of a strip, not at its edge, so a straight ramp put the visible part of
+   the smear almost entirely off-screen.
 
-   Every other part of this filter measured free in the same harness. The glass
-   is therefore DRAWN — bevel, dispersion, rim, corner shade — rather than
-   sampled, which is also why the caret still lands exactly where it is drawn.
-   (Displacing the pixels for real needs an SVG displacement map, and its only
-   spatial source, feImage, does not load in Chromium at all: verified against an
-   SVG data URI, a canvas PNG data URI and a served PNG, parsed and scripted
-   alike. Its failure mode is not "no effect" — a transparent map displaces the
-   whole interface by a uniform scale/2.) */
+   FOUR STRIPS, NOT ONE LAYER, and that is the whole reason this is affordable.
+   A backdrop-filter costs roughly its own area: one full-viewport ring took
+   scrolling a 100 KB description from a 16.7 ms median frame to 65 ms, while
+   these four (about a sixth of the viewport between them) cost 24 ms. Below
+   that there is a floor — four small corner squares measured the same as the
+   strips — so this is as cheap as a backdrop blur gets. It is the one part of
+   this filter that is not free, and it is here because it is what the effect
+   actually is.
+
+   THE CORNERS COMPOUND, which is exactly right: a horizontal and a vertical
+   strip overlap there, the second one filters the first one's output, and the
+   glass reads thickest where two curved edges meet — the same profile the
+   corner shade above draws.
+
+   IT SMEARS BUT DOES NOT DISPLACE, and that is not a compromise, it is the
+   requirement. Bending the pixels needs an SVG displacement map, whose only
+   spatial source is feImage, which does not load in Chromium at all (verified
+   against an SVG data URI, a canvas PNG data URI and a served PNG, parsed and
+   scripted alike) and whose failure mode is a uniform shift of the entire
+   interface rather than no effect. And even where it works, hit testing is not
+   displaced with the pixels, so every control under the band would answer a few
+   pixels from where it is drawn. A blur moves nothing: the caret, the hover
+   hit-testing and every button stay exactly where they are painted.
+
+   The strips sit BELOW the raster (z 1998 against 1999) on purpose. The
+   scanlines animate, and a moving layer inside a backdrop-filter's backdrop
+   would re-run the blur every frame instead of only when the app repaints.
+
+   `backdrop-filter` reads what is painted behind, so none of these may be given
+   a background of its own — and, like every other layer here, none may answer a
+   pointer event. */
+html[data-crt='on']::before,
+html[data-crt='on']::after,
+html[data-crt='on'] .main::before,
+html[data-crt='on'] .main::after {
+  content: '';
+  position: fixed;
+  z-index: 1998;
+  pointer-events: none;
+  -webkit-backdrop-filter: blur(2px) brightness(1.03);
+  backdrop-filter: blur(2px) brightness(1.03);
+}
+html[data-crt='on']::before {
+  top: 0;
+  left: 0;
+  right: 0;
+  height: min(60px, 7vh);
+  -webkit-mask-image: linear-gradient(to bottom, #000, rgba(0, 0, 0, 0.62) 50%, transparent);
+  mask-image: linear-gradient(to bottom, #000, rgba(0, 0, 0, 0.62) 50%, transparent);
+}
+html[data-crt='on']::after {
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: min(60px, 7vh);
+  -webkit-mask-image: linear-gradient(to top, #000, rgba(0, 0, 0, 0.62) 50%, transparent);
+  mask-image: linear-gradient(to top, #000, rgba(0, 0, 0, 0.62) 50%, transparent);
+}
+html[data-crt='on'] .main::before {
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: min(68px, 5.5vw);
+  -webkit-mask-image: linear-gradient(to right, #000, rgba(0, 0, 0, 0.62) 50%, transparent);
+  mask-image: linear-gradient(to right, #000, rgba(0, 0, 0, 0.62) 50%, transparent);
+}
+html[data-crt='on'] .main::after {
+  right: 0;
+  top: 0;
+  bottom: 0;
+  width: min(68px, 5.5vw);
+  -webkit-mask-image: linear-gradient(to left, #000, rgba(0, 0, 0, 0.62) 50%, transparent);
+  mask-image: linear-gradient(to left, #000, rgba(0, 0, 0, 0.62) 50%, transparent);
+}
+
+/* Not on a phone. The desktop layout puts the editor in the middle column, so
+   the strips land on the chrome and never on the text being checked; below the
+   breakpoint the editor fills the window and every strip would sit on top of
+   the drafter's own sentences. Smearing the document is not an effect, it is a
+   defect — and this is also the one part of the filter that costs anything, on
+   the machines least able to pay for it. */
+@media (max-width: 860px) {
+  html[data-crt='on']::before,
+  html[data-crt='on']::after,
+  html[data-crt='on'] .main::before,
+  html[data-crt='on'] .main::after {
+    display: none;
+  }
+}
 
 /* THE ROLLING BAR
    The bright band an unsynced CRT drifts down the screen. A single translateY,
