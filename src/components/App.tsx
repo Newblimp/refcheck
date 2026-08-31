@@ -3,7 +3,7 @@ import type { JSX } from 'preact';
 import { T } from '../i18n.ts';
 import { extractData, classify } from '../logic/extract.ts';
 import { getAllErrors, errorGroup } from '../logic/errorSpans.ts';
-import { ERROR_KINDS, KIND_BY_ID, kindItems } from '../logic/errorKinds.ts';
+import { ERROR_KINDS, KIND_BY_ID, kindItems, sameFocus } from '../logic/errorKinds.ts';
 import { buildHtml, findAtPos } from '../logic/buildHtml.ts';
 import { computeCrossRef } from '../logic/crossref.ts';
 import { reconcileRefList } from '../logic/reconcile.ts';
@@ -287,13 +287,16 @@ export function App() {
   // single-occurrence card (article/bare/numbering/dependency) simply toggles,
   // exactly as before, while a multi-occurrence sign cycles through its marks.
   const focusCycle = useCallback(
-    (type: Focus['type'], key: Focus['key'], occs: [number, number][]) => {
+    (next: Focus, occs: [number, number][]) => {
       if (!occs.length) return;
-      const id = type + ':' + key;
+      // The cycle's identity. A sign card and one of its term chips focus the
+      // same sign, so the term has to be part of this or clicking "axle" after
+      // "shaft" would read as advancing the shaft cycle.
+      const id =
+        next.type === 'sign' ? `sign:${next.key}|${next.term ?? ''}` : `${next.type}:${next.key}`;
       const cur = focusOcc.current;
-      const focus = focusRef.current;
       // Only continue an existing cycle if this same error is still focused.
-      const advancing = !!focus && focus.type === type && focus.key === key && cur.id === id;
+      const advancing = sameFocus(focusRef.current, next) && cur.id === id;
       const idx = advancing ? cur.idx + 1 : 0;
       if (advancing && idx >= occs.length) {
         // stepped past the last → unfocus
@@ -304,10 +307,7 @@ export function App() {
       const occ = occs[idx];
       if (!occ) return;
       focusOcc.current = { id, idx };
-      // `key` is a sign string for 'sign' and a char offset otherwise — the
-      // asymmetry Focus spells out. The pairing holds by construction at both
-      // call sites below, which is what the cast asserts.
-      setFocus({ type, key } as Focus);
+      setFocus(next);
       scrollTo(occ[0], occ[1]);
     },
     [scrollTo]
@@ -317,7 +317,26 @@ export function App() {
       const occs: [number, number][] = (signDataRef.current[sign]?.positions ?? [])
         .map((p): [number, number] => [p.signStart, p.signEnd])
         .sort((a, b) => a[0] - b[0]);
-      focusCycle('sign', sign, occs);
+      focusCycle({ type: 'sign', key: sign }, occs);
+    },
+    [focusCycle]
+  );
+  // Click a term chip on a sign card: cycle the occurrences written with THAT
+  // term, rather than every occurrence of the sign.
+  //
+  // This is what a sign-to-term conflict actually needs. "Shaft 22 and axle 22"
+  // is one card carrying both terms, and cycling the card stepped through both
+  // occurrences in document order with no way to ask for the shaft ones — the
+  // card said the two spellings existed and then made the drafter find each of
+  // them by eye. The whole term is selected along with its sign, so what lands
+  // in the middle of the editor is "shaft 22", not a bare number.
+  const onFocusTerm = useCallback(
+    (sign: string, termStem: string) => {
+      const occs: [number, number][] = (signDataRef.current[sign]?.positions ?? [])
+        .filter((p) => p.termStem === termStem)
+        .map((p): [number, number] => [Math.min(p.termStart, p.signStart), p.signEnd])
+        .sort((a, b) => a[0] - b[0]);
+      focusCycle({ type: 'sign', key: sign, term: termStem }, occs);
     },
     [focusCycle]
   );
@@ -329,7 +348,7 @@ export function App() {
     (kindId: ErrorKindId, item: ErrorRecord) => {
       const kind = KIND_BY_ID[kindId];
       const start = kind.start(item);
-      focusCycle(kindId, start, [[start, kind.end(item)]]);
+      focusCycle({ type: kindId, key: start }, [[start, kind.end(item)]]);
     },
     [focusCycle]
   );
@@ -449,7 +468,6 @@ export function App() {
     // honour. The help screen documents the arrows.
     'mod+[': () => navigate(-1),
     'mod+]': () => navigate(1),
-    '/': () => searchRef.current?.focus(),
     Escape: () => setCtx(null),
   });
 
@@ -736,6 +754,7 @@ export function App() {
           hoverSign={hoverSign}
           onHover={setHoverSign}
           onFocusSign={onFocusSign}
+          onFocusTerm={onFocusTerm}
           onFocusError={onFocusError}
           onDismiss={toggleDis}
           onRestoreAll={restoreAll}

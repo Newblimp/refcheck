@@ -245,8 +245,33 @@ export const KIND_BY_ID = Object.fromEntries(ERROR_KINDS.map((k) => [k.id, k])) 
  * offset for every other kind. focusCycle, anchorIdx and each card's `focused`
  * comparison all depend on that asymmetry, so it is spelled out here rather
  * than flattened to `string | number` — which would let the two be confused.
+ *
+ * `term` narrows a sign focus to ONE of the terms that sign was written with,
+ * which is what the term chips on a sign card cycle: "shaft 22 and axle 22" is
+ * one card with two chips, and clicking a chip steps through that term's
+ * occurrences alone. It never changes what the editor highlights (the sign is
+ * still the focused sign) — only which chip is marked active and which
+ * occurrences the next click advances through.
  */
-export type Focus = { type: 'sign'; key: string } | { type: ErrorKindId; key: number };
+export type Focus =
+  { type: 'sign'; key: string; term?: string } | { type: ErrorKindId; key: number };
+
+/**
+ * Do two focus values name the same thing, the sign card's term chip included?
+ *
+ * This is what tells focusCycle "advance" from "start over": a click on the
+ * other chip of the same sign is a different cycle, and must begin at that
+ * term's first occurrence rather than stepping the previous term's.
+ */
+export function sameFocus(a: Focus | null, b: Focus | null): boolean {
+  if (!a || !b) return false;
+  // Written as a sign/non-sign split rather than a key comparison plus a cast:
+  // `a.type !== b.type` narrows neither operand, so reading `b.term` after
+  // establishing that `a` is a sign needs an assertion. Testing both does not.
+  if (a.type === 'sign' || b.type === 'sign')
+    return a.type === 'sign' && b.type === 'sign' && a.key === b.key && a.term === b.term;
+  return a.type === b.type && a.key === b.key;
+}
 
 /** The records of one kind in an extraction result (never undefined). */
 export function kindItems<T extends ErrorRecord>(

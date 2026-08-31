@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import type { Lang } from './constants.ts';
 import { readFileSync } from 'node:fs';
-import { ERROR_KINDS, KIND_BY_ID, kindItems } from './errorKinds.ts';
+import { ERROR_KINDS, KIND_BY_ID, kindItems, sameFocus } from './errorKinds.ts';
 import type { ErrorKind, ErrorKindId, ErrorRecord } from './errorKinds.ts';
 import { must } from '../test/helpers.ts';
 import { extractData } from './extract.ts';
@@ -115,5 +115,39 @@ describe('ERROR_KINDS', () => {
         const count = css.split(token).length - 1;
         expect(count, `${token} defined ${count}× (expected one per theme)`).toBe(themes.length);
       }
+  });
+});
+
+// The focus comparison focusCycle uses to decide "is this the same thing the
+// user clicked last time, or a new cycle?". It has to see the term, or a sign
+// card's two chips would read as one cycle and clicking the second would
+// advance the first instead of starting over.
+describe('sameFocus', () => {
+  it('matches a sign focus with itself and separates the two chips of one sign', () => {
+    expect(sameFocus({ type: 'sign', key: '22' }, { type: 'sign', key: '22' })).toBe(true);
+    expect(
+      sameFocus(
+        { type: 'sign', key: '22', term: 'shaft' },
+        { type: 'sign', key: '22', term: 'shaft' }
+      )
+    ).toBe(true);
+    expect(
+      sameFocus(
+        { type: 'sign', key: '22', term: 'shaft' },
+        { type: 'sign', key: '22', term: 'axl' }
+      )
+    ).toBe(false);
+    // The card itself is not either chip.
+    expect(sameFocus({ type: 'sign', key: '22', term: 'shaft' }, { type: 'sign', key: '22' })).toBe(
+      false
+    );
+  });
+
+  it('separates signs, kinds and offsets, and treats null as matching nothing', () => {
+    expect(sameFocus({ type: 'sign', key: '22' }, { type: 'sign', key: '24' })).toBe(false);
+    expect(sameFocus({ type: 'art', key: 4 }, { type: 'bare', key: 4 })).toBe(false);
+    expect(sameFocus({ type: 'art', key: 4 }, { type: 'art', key: 9 })).toBe(false);
+    expect(sameFocus(null, { type: 'art', key: 4 })).toBe(false);
+    expect(sameFocus(null, null)).toBe(false);
   });
 });

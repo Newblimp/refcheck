@@ -23,6 +23,15 @@ export function activatable(onActivate: (e: Event) => void): {
     onKeyDown: (e) => {
       // Space must not scroll the sidebar, and both keys must not reach a parent.
       if (e.key !== 'Enter' && e.key !== ' ') return;
+      // Only when the CARD itself has focus. The buttons nested inside it —
+      // dismiss, and the term chips on a sign card — bubble their key events up
+      // here, and preventDefault would then cancel the browser's own
+      // Enter/Space activation of that button and run the card's action
+      // instead: keyboard users got the card's behaviour from every control on
+      // it. The click path was already safe (each button stops propagation);
+      // this is the same guarantee for the key path, in one place rather than
+      // one handler per nested button.
+      if (e.target !== e.currentTarget) return;
       e.preventDefault();
       e.stopPropagation();
       onActivate(e);

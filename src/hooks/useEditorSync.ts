@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { backdropScroll } from '../logic/scrollSync.ts';
+import { backdropScroll, centerOffset } from '../logic/scrollSync.ts';
 
 // ── useEditorSync ────────────────────────────────────────────────────────────
 // Everything imperative about the two-layer editor: keeping the highlight
@@ -14,10 +14,87 @@ import { backdropScroll } from '../logic/scrollSync.ts';
 // plain useEffect on the server so the render smoke test logs no SSR warning.
 const useIsoLayoutEffect = typeof window !== 'undefined' ? useLayoutEffect : useEffect;
 
+/** A span's vertical placement inside the scrollable content, in px. */
+interface SpanBox {
+  top: number;
+  height: number;
+}
+
+/**
+ * The DOM range covering [start, end) of the backdrop's text.
+ *
+ * buildHtml's alignment invariant is what makes this a plain character walk:
+ * stripping the marks reproduces the buffer exactly, so the concatenated text
+ * nodes ARE the buffer and no mapping is needed. Returns null when the offsets
+ * run past the end — the backdrop content is debounced, so on a large document
+ * it can still be a keystroke behind the buffer these offsets came from.
+ */
+function rangeAt(bd: HTMLElement, start: number, end: number): Range | null {
+  const walker = document.createTreeWalker(bd, NodeFilter.SHOW_TEXT);
+  let seen = 0;
+  let sNode: Node | null = null,
+    sOff = 0;
+  for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+    const len = node.nodeValue?.length ?? 0;
+    if (!sNode && start <= seen + len) {
+      sNode = node;
+      sOff = start - seen;
+    }
+    if (sNode && end <= seen + len) {
+      const range = document.createRange();
+      range.setStart(sNode, sOff);
+      range.setEnd(node, end - seen);
+      return range;
+    }
+    seen += len;
+  }
+  return null;
+}
+
+/**
+ * Where [start, end) sits in the backdrop, or null if it cannot be measured.
+ *
+ * Null covers the environments that have no layout at all (jsdom reports every
+ * rect as zero) as well as a backdrop whose content has not caught up, so the
+ * caller always has to have an estimate to fall back on.
+ */
+function spanBox(bd: HTMLElement | null, start: number, end: number): SpanBox | null {
+  if (!bd || typeof document === 'undefined' || typeof document.createRange !== 'function')
+    return null;
+  const range = rangeAt(bd, start, end);
+  if (!range) return null;
+  // jsdom implements Range but no layout at all — it has no
+  // getBoundingClientRect to call, and every element rect it does report is
+  // zero. Both are "cannot be measured here", so both fall through to the
+  // estimate rather than throwing inside a click handler.
+  if (typeof range.getBoundingClientRect !== 'function') return null;
+  const r = range.getBoundingClientRect();
+  if (!r || !r.height) return null;
+  // Relative to the top of the scrollable content, so it can be handed straight
+  // to scrollTop. Both rects carry the backdrop's overscroll translation, if
+  // any, so it cancels in the subtraction.
+  return { top: r.top - bd.getBoundingClientRect().top + bd.scrollTop, height: r.height };
+}
+
+/**
+ * The pre-measurement estimate, kept only as a fallback: line height times the
+ * number of newlines before the span. It is right for a document whose lines do
+ * not wrap and low for one whose lines do, which is why it is no longer what
+ * the jump is built on.
+ */
+function estimateBox(ta: HTMLTextAreaElement, start: number, text: string): SpanBox {
+  // Measured rather than hardcoded, so CSS changes and browser zoom cannot
+  // desync it further.
+  let lh = parseFloat(getComputedStyle(ta).lineHeight);
+  if (!Number.isFinite(lh)) lh = (parseFloat(getComputedStyle(ta).fontSize) || 13.5) * 1.75;
+  const lines = text.slice(0, start).split('\n').length;
+  return { top: (lines - 1) * lh, height: lh };
+}
+
 /**
  * @param html The backdrop's current markup — re-syncing keys off this, because
  *   it is what changes the backdrop's height.
- * @param text The active buffer, for line counting in scrollTo.
+ * @param text The active buffer, for scrollTo's fallback estimate.
  */
 export function useEditorSync({ html, text }: { html: string; text: string }) {
   const taRef = useRef<HTMLTextAreaElement | null>(null);
@@ -133,19 +210,29 @@ export function useEditorSync({ html, text }: { html: string; text: string }) {
     hoveredMarks.current = next;
   }, [hoverSign, html]);
 
-  /** Select [start, end] and scroll it into view. */
+  /** Select [start, end] and scroll it to the middle of the editor. */
   const scrollTo = useCallback(
     (start: number, end: number) => {
       const ta = taRef.current;
       if (!ta) return;
       ta.focus();
       ta.setSelectionRange(start, end);
-      // Measure the real line height instead of hardcoding it, so CSS changes and
-      // browser zoom cannot desync click-to-navigate scrolling.
-      let lh = parseFloat(getComputedStyle(ta).lineHeight);
-      if (!Number.isFinite(lh)) lh = (parseFloat(getComputedStyle(ta).fontSize) || 13.5) * 1.75;
-      const lines = textRef.current.slice(0, start).split('\n').length;
-      ta.scrollTop = Math.max(0, (lines - 5) * lh);
+      // Where the span actually is, measured on the backdrop — the one layer
+      // that has a DOM to measure. A <textarea> offers no way to ask where a
+      // character sits, so this used to be estimated from the number of
+      // NEWLINES before it: `(lines - 5) * lineHeight`. That is only the right
+      // answer when no line wraps, and a patent paragraph is one logical line
+      // wrapped over a dozen visual ones — so the jump landed a screenful or
+      // more above the term, which reads exactly as "it scrolled somewhere, but
+      // not to the highlight".
+      //
+      // The two layers are laid out identically by construction (same font,
+      // same width, same wrapping — see styles.css and the Fonts note in
+      // CLAUDE.md), and buildHtml guarantees the backdrop's text content is the
+      // buffer character for character. So the backdrop's geometry IS the
+      // textarea's.
+      const box = spanBox(bdRef.current, start, end) ?? estimateBox(ta, start, textRef.current);
+      ta.scrollTop = centerOffset(box.top, box.height, ta.clientHeight, ta.scrollHeight);
       syncScroll();
     },
     [syncScroll]

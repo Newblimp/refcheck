@@ -994,6 +994,11 @@ mark.h-hover {
   gap: 3px;
   margin-top: 3px;
 }
+/* A term chip is a real <button>: clicking it steps through the occurrences
+   written with THAT term, which is how a sign carrying two of them ("shaft 22"
+   and "axle 22") is taken apart. Everything from `cursor` down is the button
+   reset — a UA button centres its text, brings its own line-height and offers
+   no pointer cursor — so the chip goes on reading as a chip. */
 .tc {
   font-size: 11px;
   font-family: var(--font-mono);
@@ -1006,6 +1011,17 @@ mark.h-hover {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  line-height: 1.5;
+  text-align: left;
+  transition:
+    border-color 0.12s,
+    background 0.12s;
+}
+.tc:hover {
+  border-color: var(--accent);
 }
 .tc.err {
   border-color: var(--warn-border);
@@ -1016,6 +1032,19 @@ mark.h-hover {
   border-color: var(--ok-border);
   color: var(--ok);
   background: var(--ok-bg);
+}
+/* The chip the card is currently stepping through. Filled rather than outlined,
+   because an outline is one more border beside the chip's own and in the dark
+   theme --accent and --warn are near enough the same orange to say nothing at
+   all. It has to sit AFTER .tc.err and .tc.ok: all three are one class on .tc,
+   so source order is the only thing deciding which paints the chip. */
+.tc.focused {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--on-accent);
+}
+.tc.focused .mw-badge {
+  background: var(--surface);
 }
 .mw-badge {
   font-size: 10px;

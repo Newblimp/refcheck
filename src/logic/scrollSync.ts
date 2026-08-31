@@ -37,3 +37,35 @@ export function backdropScroll(
   const top = Math.min(Math.max(st, 0), max);
   return { top, shift: st - top };
 }
+
+/**
+ * Where to scroll so that a span sits roughly in the middle of the editor.
+ *
+ * Jumping to an error used to put it five lines from the top, computed from the
+ * NUMBER OF NEWLINES before it — which is not where the line is. A patent
+ * paragraph is one logical line that wraps over a dozen visual ones, so on a
+ * real draft "five lines down" was hundreds of pixels short of the term and the
+ * jump landed nowhere near it. Centring needs the span's measured position
+ * instead (see useEditorSync), and this is the arithmetic on top of it: put the
+ * middle of the span at the middle of the box, then clamp to the scroll range,
+ * so a target in the first or last screenful simply stops at the end rather
+ * than being pushed off it.
+ *
+ * @param top     Span offset from the top of the scrollable content, in px.
+ * @param height  The span's own height (a wrapped span spans several lines).
+ * @returns The scrollTop to assign.
+ */
+export function centerOffset(
+  top: number,
+  height: number,
+  clientHeight: number,
+  scrollHeight: number
+): number {
+  if (!Number.isFinite(top)) return 0;
+  const box = Number.isFinite(clientHeight) ? clientHeight : 0;
+  const h = Number.isFinite(height) ? height : 0;
+  const max = Math.max(0, (Number.isFinite(scrollHeight) ? scrollHeight : 0) - box);
+  // Centre the span itself, not its top edge: a term wrapped across two lines
+  // would otherwise sit half a line low.
+  return Math.min(Math.max(top - (box - h) / 2, 0), max);
+}

@@ -101,6 +101,79 @@ describe('App (interactive)', () => {
     expect(ed.selectionStart).toBe(first);
   });
 
+  // A sign written with two terms is one card carrying both. Cycling the card
+  // walks every occurrence of the sign; the chips are how the drafter asks for
+  // one of the two spellings, which is the whole point of the finding.
+  describe('term chips on a sign card', () => {
+    const TWO_TERMS = 'The shaft 22 turns. The axle 22 turns too. The shaft 22 is steel.';
+    const chips = (container: ParentNode) => [...container.querySelectorAll('.sign-card .tc')];
+
+    it('jumps to the occurrences of one term, and selects the term with its sign', async () => {
+      const { container } = render(<App />);
+      typeInto(TWO_TERMS);
+      await waitFor(() => expect(chips(container).length).toBe(2));
+      const [shaft, axle] = chips(container);
+      expect(must(shaft).textContent).toBe('shaft');
+      expect(must(axle).textContent).toBe('axle');
+
+      const ed = editor();
+      const sel = () => ed.value.slice(ed.selectionStart, ed.selectionEnd);
+
+      fireEvent.click(must(axle));
+      expect(sel()).toBe('axle 22');
+      // …and it is the axle chip that is marked, not the whole card's first term.
+      expect(must(axle).className).toMatch(/focused/);
+      expect(must(shaft).className).not.toMatch(/focused/);
+    });
+
+    it('cycles that term only, skipping the other one in between', async () => {
+      const { container } = render(<App />);
+      typeInto(TWO_TERMS);
+      await waitFor(() => expect(chips(container).length).toBe(2));
+      const ed = editor();
+      const shaft = () => must(chips(container)[0]);
+      const sel = () => ({
+        at: ed.selectionStart,
+        text: ed.value.slice(ed.selectionStart, ed.selectionEnd),
+      });
+
+      fireEvent.click(shaft());
+      const first = sel();
+      fireEvent.click(shaft());
+      const second = sel();
+      expect(first.text).toBe('shaft 22');
+      expect(second.text).toBe('shaft 22');
+      // The axle occurrence sits between the two shafts and must be stepped over.
+      expect(first.at).toBeLessThan(TWO_TERMS.indexOf('axle'));
+      expect(second.at).toBeGreaterThan(TWO_TERMS.indexOf('axle'));
+      // Past the last occurrence of this term → unfocus, as a card does.
+      fireEvent.click(shaft());
+      expect(maybe(container, '.tc.focused')).toBeFalsy();
+    });
+
+    it('does not also cycle the card it sits in', async () => {
+      const { container } = render(<App />);
+      typeInto(TWO_TERMS);
+      await waitFor(() => expect(chips(container).length).toBe(2));
+      const ed = editor();
+      // Clicking the second chip must land on THAT term. Without the chip's
+      // stopPropagation the card's own handler also fires and the cycle ends up
+      // on whichever occurrence comes first in the document.
+      fireEvent.click(must(chips(container)[1]));
+      expect(ed.value.slice(ed.selectionStart, ed.selectionEnd)).toBe('axle 22');
+    });
+
+    it('restarts the cycle when the click moves to the other chip', async () => {
+      const { container } = render(<App />);
+      typeInto(TWO_TERMS);
+      await waitFor(() => expect(chips(container).length).toBe(2));
+      const ed = editor();
+      fireEvent.click(must(chips(container)[0])); // shaft, 1st
+      fireEvent.click(must(chips(container)[1])); // axle — a different cycle
+      expect(ed.value.slice(ed.selectionStart, ed.selectionEnd)).toBe('axle 22');
+    });
+  });
+
   it('copies the reference list to the clipboard', async () => {
     const { container } = render(<App />);
     typeInto('The device 10 has a housing 12.');
@@ -569,6 +642,28 @@ describe('App (keyboard and accessibility)', () => {
     await waitFor(() => expect(card.className).toMatch(/focused/));
   });
 
+  // A card is activatable, and it also CONTAINS buttons (dismiss, and a sign
+  // card's term chips). Enter on one of those bubbles up to the card, and the
+  // card's handler used to preventDefault it — cancelling the browser's own
+  // activation of the button and running the card's action instead. Every
+  // nested control did the card's job for a keyboard user.
+  it("leaves a nested button's Enter to the button, not the card around it", async () => {
+    const { container } = render(<App />);
+    typeInto(CONFLICT);
+    await sidebar(container).findByText('12');
+    const card = q(container, '.sign-card');
+
+    fireEvent.keyDown(q(card, '.dis-btn'), { key: 'Enter' });
+    expect(card.className).not.toMatch(/focused/);
+    fireEvent.keyDown(q(card, '.tc'), { key: 'Enter' });
+    expect(card.className).not.toMatch(/focused/);
+
+    // …and the card itself still activates, so the guard has not simply
+    // switched keyboard activation off.
+    fireEvent.keyDown(card, { key: 'Enter' });
+    await waitFor(() => expect(card.className).toMatch(/focused/));
+  });
+
   it('collapsible section headers expose their expanded state', async () => {
     const { container } = render(<App />);
     typeInto(CONFLICT);
@@ -579,18 +674,27 @@ describe('App (keyboard and accessibility)', () => {
     await waitFor(() => expect(header).toHaveAttribute('aria-expanded', 'false'));
   });
 
-  it('"/" focuses the sign filter, but not while typing in the editor', async () => {
+  // Ctrl+F, the shortcut every other application uses for "find". The bare "/"
+  // it replaced was suppressed while the editor held focus (which is nearly
+  // always), so reaching the filter meant clicking away from the text first.
+  it('Ctrl+F focuses the sign filter, including from inside the editor', async () => {
     const { container } = render(<App />);
     typeInto(CONFLICT);
     await sidebar(container).findByText('12');
     const search = maybe(container, '.search-in');
 
-    // Fired at the editor: must be ignored, or the app is unusable.
-    fireEvent.keyDown(editor(), { key: '/', target: editor() });
-    expect(document.activeElement).not.toBe(search);
+    fireEvent.keyDown(editor(), { key: 'f', ctrlKey: true, target: editor() });
+    await waitFor(() => expect(document.activeElement).toBe(search));
+  });
+
+  it('no longer binds a bare "/", which typed a slash and stole focus', async () => {
+    const { container } = render(<App />);
+    typeInto(CONFLICT);
+    await sidebar(container).findByText('12');
+    const search = maybe(container, '.search-in');
 
     fireEvent.keyDown(document.body, { key: '/' });
-    await waitFor(() => expect(document.activeElement).toBe(search));
+    expect(document.activeElement).not.toBe(search);
   });
 
   it('keeps <html lang> in step with the language toggle', async () => {

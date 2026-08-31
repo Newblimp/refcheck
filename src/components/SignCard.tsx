@@ -13,9 +13,12 @@ export interface SignCardProps {
   termData: Record<string, TermEntry>;
   mode: Mode;
   focused: boolean;
+  /** The term chip the focus currently sits on, if any. */
+  focusedTerm: string | null;
   t: Strings;
   dis: Set<string>;
   onFocus: (sign: string) => void;
+  onFocusTerm: (sign: string, termStem: string) => void;
   onDismiss: (key: string) => void;
   hoverSign: string | null;
   onHover?: (sign: string | null) => void;
@@ -28,9 +31,11 @@ function SignCardImpl({
   termData,
   mode,
   focused,
+  focusedTerm,
   t,
   dis,
   onFocus,
+  onFocusTerm,
   onDismiss,
   hoverSign,
   onHover,
@@ -83,11 +88,29 @@ function SignCardImpl({
               // by the ordinal detector or by the reference list showed no badge
               // — and a sign carrying both a one- and a two-word term badged both.
               const wc = ts.split(' ').length;
+              // A real <button>, not another role="button" div: the card is
+              // already activatable and nesting the role would be a lie to a
+              // screen reader, while a button inside it is the same shape the
+              // dismiss control already has. stopPropagation is load-bearing
+              // for the same reason it is there — without it the click also
+              // cycles the card, which is the thing the chip exists to avoid.
               return (
-                <span key={ts} className={`tc ${isConf ? 'err' : sev === 'ok' ? 'ok' : ''}`}>
+                <button
+                  key={ts}
+                  type="button"
+                  className={`tc ${isConf ? 'err' : sev === 'ok' ? 'ok' : ''}${
+                    focusedTerm === ts ? ' focused' : ''
+                  }`}
+                  title={t.jumpTerm(raw)}
+                  aria-label={t.jumpTerm(raw)}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onFocusTerm(sign, ts);
+                  }}
+                >
                   {raw}
                   {wc > 1 && <span className="mw-badge">{t.wdCt(wc)}</span>}
-                </span>
+                </button>
               );
             })}
           </div>

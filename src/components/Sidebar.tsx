@@ -38,6 +38,8 @@ export interface SidebarProps {
   hoverSign: string | null;
   onHover: (sign: string | null) => void;
   onFocusSign: (sign: string) => void;
+  /** Jump to the occurrences written with one of a sign's terms. */
+  onFocusTerm: (sign: string, termStem: string) => void;
   onFocusError: (id: ErrorKindId, item: ErrorRecord) => void;
   onDismiss: (key: string) => void;
   onRestoreAll: () => void;
@@ -69,6 +71,7 @@ function SidebarImpl({
   hoverSign,
   onHover,
   onFocusSign,
+  onFocusTerm,
   onFocusError,
   onDismiss,
   onRestoreAll,
@@ -83,12 +86,18 @@ function SidebarImpl({
   // The multi-word width now comes off the term itself (see SignCard), so the
   // cards no longer need `mwo` or `lang` — one prop identity fewer that changed
   // on every override edit.
+  // Which term chip the focus sits on, for a given card. A sign focus may name
+  // one of the sign's terms (the chips cycle that term alone), so the card needs
+  // both halves: is this my sign, and if so which chip.
+  const chipFocus = (sign: string): string | null =>
+    focus?.type === 'sign' && focus.key === sign ? (focus.term ?? null) : null;
   const signCardProps = {
     termData,
     mode,
     t,
     dis,
     onFocus: onFocusSign,
+    onFocusTerm,
     onDismiss,
     hoverSign,
     onHover,
@@ -130,6 +139,7 @@ function SidebarImpl({
             className="search-in"
             placeholder={t.searchPh}
             aria-label={t.searchPh}
+            title={t.searchHint}
             value={search}
             onChange={(e) => onSearch(e.currentTarget.value)}
           />
@@ -154,6 +164,7 @@ function SidebarImpl({
                   sign={sign}
                   sData={sData}
                   focused={focus?.type === 'sign' && focus.key === sign}
+                  focusedTerm={chipFocus(sign)}
                   {...signCardProps}
                 />
               ))}
@@ -190,6 +201,7 @@ function SidebarImpl({
                   sign={sign}
                   sData={sData}
                   focused={focus?.type === 'sign' && focus.key === sign}
+                  focusedTerm={chipFocus(sign)}
                   {...signCardProps}
                 />
               ))}
@@ -201,7 +213,14 @@ function SidebarImpl({
               count={errSignsDismissed.length}
             >
               {errSignsDismissed.map(([sign, sData]) => (
-                <SignCard key={sign} sign={sign} sData={sData} focused={false} {...signCardProps} />
+                <SignCard
+                  key={sign}
+                  sign={sign}
+                  sData={sData}
+                  focused={false}
+                  focusedTerm={chipFocus(sign)}
+                  {...signCardProps}
+                />
               ))}
             </Section>
             {disCt > 0 && (
