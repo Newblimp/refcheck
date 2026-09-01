@@ -677,14 +677,158 @@ describe('App (keyboard and accessibility)', () => {
   // Ctrl+F, the shortcut every other application uses for "find". The bare "/"
   // it replaced was suppressed while the editor held focus (which is nearly
   // always), so reaching the filter meant clicking away from the text first.
-  it('Ctrl+F focuses the sign filter, including from inside the editor', async () => {
+  // The two searches, and which key belongs to which. Ctrl+F searches the draft
+  // (what the key means everywhere else); Ctrl+Shift+F filters the findings
+  // listed beside it, which is a different question and used to own Ctrl+F.
+  it('Ctrl+F opens the find bar from inside the editor', async () => {
+    const { container } = render(<App />);
+    typeInto(CONFLICT);
+    await sidebar(container).findByText('12');
+    expect(maybe(container, '.find-bar')).toBeFalsy();
+
+    fireEvent.keyDown(editor(), { key: 'f', ctrlKey: true, target: editor() });
+    await waitFor(() => expect(maybe(container, '.find-in')).toBeTruthy());
+    expect(document.activeElement).toBe(maybe(container, '.find-in'));
+  });
+
+  // The find bar itself: Ctrl+F searches the draft, highlights every hit, and
+  // steps through them without taking the cursor out of the search box.
+  describe('find in text (Ctrl+F)', () => {
+    const DOC = 'The housing 12 is here.\nThe housing 12 is there.\nA cover 14 sits on it.';
+    const findIn = (c: ParentNode) => q<HTMLInputElement>(c, '.find-in');
+    const openFind = async (c: ParentNode) => {
+      fireEvent.keyDown(editor(), { key: 'f', ctrlKey: true });
+      await waitFor(() => expect(maybe(c, '.find-in')).toBeTruthy());
+      return findIn(c);
+    };
+    const type = (el: HTMLInputElement, v: string) => fireEvent.input(el, { target: { value: v } });
+
+    it('highlights every match and selects the first one', async () => {
+      const { container } = render(<App />);
+      typeInto(DOC);
+      await sidebar(container).findByText('12');
+      type(await openFind(container), 'housing');
+
+      await waitFor(() => expect(container.querySelectorAll('mark.h-find').length).toBe(2));
+      expect(container.querySelectorAll('mark.h-find-cur').length).toBe(1);
+      const ed = editor();
+      expect(ed.selectionStart).toBe(DOC.indexOf('housing'));
+      expect(q(container, '.find-count').textContent).toMatch(/1 \/ 2/);
+    });
+
+    it('keeps focus in the search box while the editor moves under it', async () => {
+      // Stepping matches must not steal the cursor back: scrollTo focuses the
+      // editor for every other jump in the app, and doing it here would empty
+      // the search box out from under the drafter mid-word.
+      const { container } = render(<App />);
+      typeInto(DOC);
+      await sidebar(container).findByText('12');
+      const input = await openFind(container);
+      type(input, 'housing');
+      await waitFor(() => expect(container.querySelectorAll('mark.h-find').length).toBe(2));
+      expect(document.activeElement).toBe(input);
+    });
+
+    it('steps to the next match on Enter and wraps round', async () => {
+      const { container } = render(<App />);
+      typeInto(DOC);
+      await sidebar(container).findByText('12');
+      const input = await openFind(container);
+      type(input, 'housing');
+      const ed = editor();
+      await waitFor(() => expect(ed.selectionStart).toBe(DOC.indexOf('housing')));
+
+      fireEvent.keyDown(input, { key: 'Enter' });
+      await waitFor(() => expect(ed.selectionStart).toBe(DOC.lastIndexOf('housing')));
+      expect(q(container, '.find-count').textContent).toMatch(/2 \/ 2/);
+
+      fireEvent.keyDown(input, { key: 'Enter' }); // past the last → back to the first
+      await waitFor(() => expect(ed.selectionStart).toBe(DOC.indexOf('housing')));
+      // …and Shift+Enter walks back the other way.
+      fireEvent.keyDown(input, { key: 'Enter', shiftKey: true });
+      await waitFor(() => expect(ed.selectionStart).toBe(DOC.lastIndexOf('housing')));
+    });
+
+    it('searches from the caret, not from the top of the document', async () => {
+      const { container } = render(<App />);
+      typeInto(DOC);
+      await sidebar(container).findByText('12');
+      const ed = editor();
+      // Put the caret past the first "housing" before opening the bar.
+      ed.setSelectionRange(DOC.indexOf('there'), DOC.indexOf('there'));
+      type(await openFind(container), 'housing');
+      // Nothing at or after the caret, so it wraps to the first match…
+      await waitFor(() => expect(ed.selectionStart).toBe(DOC.indexOf('housing')));
+
+      ed.setSelectionRange(20, 20);
+      fireEvent.keyDown(editor(), { key: 'f', ctrlKey: true });
+      type(findIn(container), 'housing');
+      // …and from offset 20 the second occurrence is the one at or after it.
+      await waitFor(() => expect(ed.selectionStart).toBe(DOC.lastIndexOf('housing')));
+    });
+
+    it('says so when nothing matches, and highlights nothing', async () => {
+      const { container } = render(<App />);
+      typeInto(DOC);
+      await sidebar(container).findByText('12');
+      type(await openFind(container), 'zzzz');
+      await waitFor(() => expect(q(container, '.find-count').textContent).toMatch(/No matches/));
+      expect(container.querySelectorAll('mark.h-find').length).toBe(0);
+    });
+
+    it('closes on Escape, dropping the highlights and returning focus to the editor', async () => {
+      const { container } = render(<App />);
+      typeInto(DOC);
+      await sidebar(container).findByText('12');
+      const input = await openFind(container);
+      type(input, 'housing');
+      await waitFor(() => expect(container.querySelectorAll('mark.h-find').length).toBe(2));
+
+      fireEvent.keyDown(input, { key: 'Escape' });
+      await waitFor(() => expect(maybe(container, '.find-bar')).toBeFalsy());
+      expect(container.querySelectorAll('mark.h-find').length).toBe(0);
+      expect(document.activeElement).toBe(editor());
+      // The caret stayed on the match that was showing.
+      expect(editor().selectionStart).toBe(DOC.indexOf('housing'));
+    });
+
+    it('reopens with the previous query, selected so it can be typed over', async () => {
+      const { container } = render(<App />);
+      typeInto(DOC);
+      await sidebar(container).findByText('12');
+      const input = await openFind(container);
+      type(input, 'housing');
+      fireEvent.keyDown(input, { key: 'Escape' });
+      await waitFor(() => expect(maybe(container, '.find-bar')).toBeFalsy());
+
+      const again = await openFind(container);
+      expect(again.value).toBe('housing');
+      expect(again.selectionStart).toBe(0);
+      expect(again.selectionEnd).toBe('housing'.length);
+    });
+
+    it('finds text no sign or term is attached to', async () => {
+      // The point of the feature: the sidebar filter can only reach what the
+      // checker found, and a drafter searching their own prose is not.
+      const { container } = render(<App />);
+      typeInto(DOC);
+      await sidebar(container).findByText('12');
+      type(await openFind(container), 'sits on');
+      await waitFor(() => expect(container.querySelectorAll('mark.h-find').length).toBe(1));
+      expect(editor().selectionStart).toBe(DOC.indexOf('sits on'));
+    });
+  });
+
+  it('Ctrl+Shift+F focuses the sign filter, including from inside the editor', async () => {
     const { container } = render(<App />);
     typeInto(CONFLICT);
     await sidebar(container).findByText('12');
     const search = maybe(container, '.search-in');
 
-    fireEvent.keyDown(editor(), { key: 'f', ctrlKey: true, target: editor() });
+    fireEvent.keyDown(editor(), { key: 'F', ctrlKey: true, shiftKey: true, target: editor() });
     await waitFor(() => expect(document.activeElement).toBe(search));
+    // …and it did not open the find bar instead.
+    expect(maybe(container, '.find-bar')).toBeFalsy();
   });
 
   it('no longer binds a bare "/", which typed a slash and stole focus', async () => {
@@ -947,12 +1091,12 @@ describe('App (keyboard shortcuts and help)', () => {
     await waitFor(() => expect(label.textContent).toMatch(/1 \/ 2/));
   });
 
-  it('focuses the sign filter with Ctrl+F, which the browser find would take', async () => {
+  it('opens the find bar with Ctrl+F, which the browser find would take', async () => {
     const { container } = render(<App />);
     typeInto('The housing 12 is fixed.');
     await sidebar(container).findByText('12');
     fireEvent.keyDown(editor(), { key: 'f', ctrlKey: true });
-    await waitFor(() => expect(document.activeElement).toBe(maybe(container, '.search-in')));
+    await waitFor(() => expect(maybe(container, '.find-in')).toBeTruthy());
   });
 
   it('toggles each side pane, and remembers the choice', async () => {

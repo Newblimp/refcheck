@@ -4,6 +4,7 @@ import type { ExtractResult } from './extract.ts';
 import type { Mode } from './constants.ts';
 import { extractData } from './extract.ts';
 import { buildHtml, esc, findAtPos } from './buildHtml.ts';
+import { findText } from './findText.ts';
 
 const EMPTY: ExtractResult = {
   signData: {},
@@ -159,5 +160,72 @@ describe('findAtPos', () => {
   it('returns null when nothing is at the position', () => {
     const r = extractData('The housing 12 is large.', 'en');
     expect(findAtPos(999, r.signData, r.artErrors)).toBeNull();
+  });
+});
+
+// ── Ctrl+F match highlighting ───────────────────────────────────────────────
+// The find bar hands buildHtml its matches so they render on the same layer as
+// everything else — there is only one backdrop, and a second overlay would need
+// its own scroll sync.
+describe('buildHtml with find matches', () => {
+  const withFind = (text: string, query: string, current = 0, isClaims = false) => {
+    const matches = findText(text, query);
+    const res = extractData(text, 'en', {}, true, isClaims);
+    return {
+      matches,
+      html: buildHtml(text, res, isClaims ? 'claims' : 'description', new Set(), null, {
+        matches,
+        current,
+      }),
+    };
+  };
+
+  it('marks every match and singles out the current one', () => {
+    const { html } = withFind('The bolt 30 meets the bolt 30 again.', 'bolt', 1);
+    // Matched on the class attribute, since "h-find" is also a prefix of
+    // "h-find-cur" and a bare substring count would see three.
+    expect(html.match(/class="h-find[ "]/g)?.length).toBe(2);
+    expect(html.match(/h-find-cur/g)?.length).toBe(1);
+    // The current class lands on the SECOND match, not the first.
+    expect(html.indexOf('h-find-cur')).toBeGreaterThan(html.indexOf('class="h-find"'));
+  });
+
+  it('highlights a match that starts inside an error mark', () => {
+    // "using" begins in the middle of a highlighted "housing". The greedy
+    // non-overlap pass would drop it, because the error span already claimed
+    // that offset — a search that quietly loses its own hits is the bug this
+    // guards.
+    const { html } = withFind('The housing 12 is the casing 12.', 'using');
+    expect(html).toContain('h-find');
+    expect(html).toContain('>using<');
+  });
+
+  it('keeps the error highlights that no match sits on', () => {
+    const { html } = withFind('The housing 12 is the casing 12. A bolt 30 is here.', 'bolt');
+    expect(html).toContain('h-warn');
+    expect(html).toContain('data-sign="12"');
+  });
+
+  it('holds the alignment invariant with matches on top of every category', () => {
+    const stripMarks = (h: string) => h.replace(/<\/?mark[^>]*>/g, '');
+    const samples: [string, string, boolean][] = [
+      ['The housing 12 is the casing 12. The housing is here.', 'housing', false],
+      ['The housing 12 is the casing 12. The housing is here.', 'the', false],
+      ["a <b> & housing 12 — the arm 10' and the arm 10\u2032.", '&', false],
+      ['1. A device (10).\n3. The device (10) of claim 9.', 'device', true],
+    ];
+    for (const [text, query, isClaims] of samples) {
+      const { html } = withFind(text, query, 0, isClaims);
+      expect(stripMarks(html), query).toBe(esc(text) + '\n');
+    }
+  });
+
+  it('changes nothing when the query has no matches', () => {
+    const text = 'The housing 12 is the casing 12.';
+    const res = extractData(text, 'en', {}, true, false);
+    const plain = buildHtml(text, res, 'description', new Set(), null);
+    expect(buildHtml(text, res, 'description', new Set(), null, { matches: [], current: 0 })).toBe(
+      plain
+    );
   });
 });

@@ -5,6 +5,7 @@ import { extractData, classify } from '../logic/extract.ts';
 import { getAllErrors, errorGroup } from '../logic/errorSpans.ts';
 import { ERROR_KINDS, KIND_BY_ID, kindItems, sameFocus } from '../logic/errorKinds.ts';
 import { buildHtml, findAtPos } from '../logic/buildHtml.ts';
+import { findText, matchFrom, MAX_MATCHES } from '../logic/findText.ts';
 import { computeCrossRef } from '../logic/crossref.ts';
 import { reconcileRefList } from '../logic/reconcile.ts';
 import { listTermIndex, appliedListTerms } from '../logic/listTerms.ts';
@@ -26,12 +27,14 @@ import { DropOverlay } from './DropOverlay.tsx';
 import { ImportBanner } from './ImportBanner.tsx';
 import { TopBar } from './TopBar.tsx';
 import { StatusBar } from './StatusBar.tsx';
+import { FindBar } from './FindBar.tsx';
 import { LazyBee } from './LazyBee.tsx';
 import type { ErrorKindId, ErrorRecord, Focus } from '../logic/errorKinds.ts';
 import type { CtxAction, CtxActionData, CtxMenu as CtxMenuData } from '../logic/ctxMenuItems.ts';
 import type { BareTerm, ExtractResult, SignEntry, SignPosition } from '../logic/extract.ts';
 import type { ErrorEntry } from '../logic/errorSpans.ts';
 import type { Lang, Mode } from '../logic/constants.ts';
+import type { FindHighlight } from '../logic/buildHtml.ts';
 import type { IOBuffers } from '../hooks/useDocumentIO.ts';
 
 /** Which single pane a narrow screen is showing. */
@@ -122,6 +125,17 @@ export function App() {
   // (key = sign string for signs, char position for everything else).
   const [focus, setFocus] = useState<Focus | null>(null);
   const [search, setSearch] = useState('');
+  // Ctrl+F: find text in the editor. Separate from `search`, which filters the
+  // sidebar's cards — the two answer different questions (see FindBar.tsx).
+  const [find, setFind] = useState<{ open: boolean; query: string; idx: number; token: number }>({
+    open: false,
+    query: '',
+    idx: 0,
+    token: 0,
+  });
+  // Where the caret was when the bar was opened, so a search starts from what
+  // the drafter is reading rather than from the top of the document.
+  const findAnchor = useRef(0);
   const [navIdx, setNavIdx] = useState(0);
   const [ctx, setCtx] = useState<OpenCtxMenu | null>(null);
   // Occurrence cursor for click-to-cycle on the sidebar error cards: which
@@ -201,9 +215,20 @@ export function App() {
   }, [lang]);
 
   const focusSign = focus?.type === 'sign' ? focus.key : null;
+  // Matched against the DEBOUNCED buffer, which is the text the backdrop is
+  // built from — the offsets become <mark> spans, so they have to describe the
+  // same string the marks are placed in.
+  const matches = useMemo(
+    () => (find.open ? findText(debText, find.query) : []),
+    [find.open, find.query, debText]
+  );
+  const findHl = useMemo<FindHighlight | null>(
+    () => (matches.length ? { matches, current: find.idx } : null),
+    [matches, find.idx]
+  );
   const html = useMemo(
-    () => buildHtml(debText, res, mode, dis, focusSign),
-    [debText, res, mode, dis, focusSign]
+    () => buildHtml(debText, res, mode, dis, focusSign, findHl),
+    [debText, res, mode, dis, focusSign, findHl]
   );
 
   // Everything imperative about the editor's two layers: scroll mirroring, the
@@ -219,6 +244,67 @@ export function App() {
     onEditorHover,
     setCaretAfterCommit,
   } = useEditorSync({ html, text });
+
+  // ── Find in text (Ctrl+F) ─────────────────────────────────────────────────
+  // The matches and the index live in `find`; everything below is the plumbing
+  // that keeps the editor showing the one the drafter is on.
+  //
+  // The index is clamped rather than trusted: the match list is rebuilt from the
+  // buffer, so an edit (or a .docx import) can leave the stored cursor past the
+  // end of a shorter list.
+  const findIdx = matches.length ? Math.min(find.idx, matches.length - 1) : 0;
+  const findRef = useRef(find);
+  findRef.current = find;
+  const matchesRef = useRef(matches);
+  matchesRef.current = matches;
+  const findIdxRef = useRef(findIdx);
+  findIdxRef.current = findIdx;
+
+  const openFind = useCallback(() => {
+    // A search starts from where the drafter is reading. Only re-anchored on
+    // open, so typing into the box does not drag the anchor along behind it.
+    findAnchor.current = taRef.current?.selectionStart ?? 0;
+    setFind((f) => ({ ...f, open: true, token: f.token + 1 }));
+  }, [taRef]);
+
+  const closeFind = useCallback(() => {
+    if (!findRef.current.open) return;
+    setFind((f) => ({ ...f, open: false }));
+    // Back to the editor, with the caret on the match that was showing —
+    // scrollTo already set the selection, it just did not take focus.
+    taRef.current?.focus();
+  }, [taRef]);
+
+  const setFindQuery = useCallback((query: string) => setFind((f) => ({ ...f, query })), []);
+
+  const stepFind = useCallback((delta: number) => {
+    const n = matchesRef.current.length;
+    if (!n) return;
+    const next = (((findIdxRef.current + delta) % n) + n) % n;
+    // Stepping moves the anchor with it, so refining the query afterwards
+    // carries on from here rather than jumping back to where Ctrl+F was pressed.
+    const m = matchesRef.current[next];
+    if (m) findAnchor.current = m[0];
+    setFind((f) => ({ ...f, idx: next }));
+  }, []);
+
+  // A new query (or a fresh Ctrl+F) lands on the match nearest the anchor.
+  // Deliberately NOT re-run when the buffer changes: the drafter typing in the
+  // editor with the bar open should not be yanked to a match.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (!findRef.current.open) return;
+    const i = matchFrom(matchesRef.current, findAnchor.current);
+    setFind((f) => (f.idx === i ? f : { ...f, idx: i }));
+  }, [find.open, find.query, find.token]);
+
+  // Whatever moved the cursor — a new query, Enter, the arrows — shows it.
+  // `false` keeps focus in the search box while the editor scrolls under it.
+  useEffect(() => {
+    if (!find.open) return;
+    const m = matchesRef.current[findIdx];
+    if (m) scrollTo(m[0], m[1], false);
+  }, [find.open, find.query, findIdx, scrollTo]);
 
   // ── Search-filtered card lists (also drive the status-bar chips) ──
   const { errSigns, okSigns } = useMemo(() => {
@@ -456,7 +542,9 @@ export function App() {
     'mod+ArrowUp': () => navigate(-1),
     'mod+shift+ArrowDown': () => navigateTerm(1),
     'mod+shift+ArrowUp': () => navigateTerm(-1),
-    'mod+f': () => searchRef.current?.focus(),
+    // Ctrl+F searches the DRAFT; Ctrl+Shift+F filters the findings beside it.
+    'mod+f': openFind,
+    'mod+shift+f': () => searchRef.current?.focus(),
     'mod+m': toggleMode,
     'mod+b': () => setPanes((p) => ({ ...p, left: !p.left })),
     'mod+shift+b': () => setPanes((p) => ({ ...p, right: !p.right })),
@@ -468,7 +556,10 @@ export function App() {
     // honour. The help screen documents the arrows.
     'mod+[': () => navigate(-1),
     'mod+]': () => navigate(1),
-    Escape: () => setCtx(null),
+    Escape: () => {
+      setCtx(null);
+      closeFind();
+    },
   });
 
   const toggleDis = useCallback(
@@ -690,6 +781,19 @@ export function App() {
               {t.charCount(text.length)}
             </span>
           </div>
+          {find.open && (
+            <FindBar
+              t={t}
+              query={find.query}
+              onQuery={setFindQuery}
+              count={matches.length}
+              index={findIdx}
+              capped={matches.length >= MAX_MATCHES}
+              onStep={stepFind}
+              onClose={closeFind}
+              focusToken={find.token}
+            />
+          )}
           <div
             className="editor-wrap"
             onMouseMove={onEditorHover}

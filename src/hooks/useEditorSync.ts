@@ -210,12 +210,19 @@ export function useEditorSync({ html, text }: { html: string; text: string }) {
     hoveredMarks.current = next;
   }, [hoverSign, html]);
 
-  /** Select [start, end] and scroll it to the middle of the editor. */
+  /**
+   * Select [start, end] and scroll it to the middle of the editor.
+   *
+   * `focus` is false for the find bar, which steps through matches while the
+   * drafter is still typing the query: taking focus back to the editor on every
+   * keystroke would empty the search box's cursor out from under them. The
+   * selection is still set, so closing the bar leaves the caret on the match.
+   */
   const scrollTo = useCallback(
-    (start: number, end: number) => {
+    (start: number, end: number, focus = true) => {
       const ta = taRef.current;
       if (!ta) return;
-      ta.focus();
+      if (focus) ta.focus();
       ta.setSelectionRange(start, end);
       // Where the span actually is, measured on the backdrop — the one layer
       // that has a DOM to measure. A <textarea> offers no way to ask where a

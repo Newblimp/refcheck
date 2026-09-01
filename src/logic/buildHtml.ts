@@ -2,6 +2,7 @@ import { eachErrorSpan } from './errorSpans.ts';
 import { escapeMarkup } from './escape.ts';
 import { ERROR_KINDS } from './errorKinds.ts';
 import type { Mode } from './constants.ts';
+import type { Match } from './findText.ts';
 import type { ArtError, BareTerm, ExtractResult, SignEntry, SignPosition } from './extract.ts';
 
 // ── HTML BUILDER ────────────────────────────────────────────────────────────
@@ -14,14 +15,67 @@ import type { ArtError, BareTerm, ExtractResult, SignEntry, SignPosition } from 
 // The sign severities are listed here because signs are not an ERROR_KINDS row
 // (see errorKinds.js); the four error categories bring their own class along, so
 // adding a category cannot forget to add its highlight.
+// Spelled out as constants as well as HL entries: mergeFind builds a class
+// string from them, and HL is a Record<string, string> whose reads are
+// `string | undefined` under noUncheckedIndexedAccess.
+const FIND = 'h-find';
+const FIND_CUR = 'h-find-cur';
+
 export const HL: Record<string, string> = {
   warn: 'h-warn', // a sign with an inconsistency
   dis: 'h-dis', // a sign whose errors were dismissed
   ok: 'h-ok', // a consistent sign
   signTerm: 'h-wt', // the term attached to a warned sign
   focus: 'h-focus', // added to the sign the sidebar currently focuses
+  find: FIND, // a Ctrl+F match
+  findCur: FIND_CUR, // added to the one match the find bar is sitting on
   ...Object.fromEntries(ERROR_KINDS.map((k) => [k.id, k.hl])),
 };
+
+/** What the find bar wants highlighted: every match, and which one is current. */
+export interface FindHighlight {
+  matches: Match[];
+  current: number;
+}
+
+/** A span as buildHtml emits it. */
+interface Span {
+  start: number;
+  end: number;
+  cls: string;
+  sign?: string;
+}
+
+/**
+ * Merge the find matches into the error spans, with the matches winning.
+ *
+ * They have to win outright rather than take their turn in the greedy
+ * non-overlap pass below: a match that starts INSIDE an error mark ("using" in
+ * a highlighted "housing") begins after that mark and so would be dropped by
+ * it, and a search that silently fails to highlight some of its own hits is
+ * worse than one that briefly hides an error colour. The error mark comes back
+ * the moment the find bar closes.
+ *
+ * Both lists arrive sorted and internally non-overlapping, so the intersection
+ * test is a single walk rather than a lookup per span.
+ */
+function mergeFind(spans: Span[], find: FindHighlight): Span[] {
+  const { matches, current } = find;
+  if (!matches.length) return spans;
+  const out: Span[] = [];
+  let j = 0;
+  for (const e of spans) {
+    // Matches that end before this span starts can never meet it, nor any span
+    // after it — the spans are in document order too.
+    let m = matches[j];
+    while (m && m[1] <= e.start) m = matches[++j];
+    if (!m || m[0] >= e.end) out.push(e);
+  }
+  for (const [i, m] of matches.entries())
+    out.push({ start: m[0], end: m[1], cls: i === current ? `${FIND} ${FIND_CUR}` : FIND });
+  out.sort((a, b) => a.start - b.start);
+  return out;
+}
 
 // Re-exported under its historical name; the implementation is shared with the
 // .docx writer now.
@@ -33,16 +87,18 @@ export const esc = escapeMarkup;
  * misaligns with the textarea (guarded by a test).
  * @param dis       Dismissal keys
  * @param focusSign Sign to mark with h-focus
+ * @param find      Ctrl+F matches to highlight, and which one is current
  */
 export function buildHtml(
   text: string,
   res: ExtractResult,
   mode: Mode,
   dis: Set<string>,
-  focusSign: string | null
+  focusSign: string | null,
+  find: FindHighlight | null = null
 ): string {
   if (!text) return '';
-  const spans: { start: number; end: number; cls: string; sign?: string }[] = [];
+  const spans: Span[] = [];
   eachErrorSpan(res, mode, dis, (sp) => {
     if (sp.kind === 'sign') {
       const cls = HL[sp.sev] ?? '';
@@ -57,7 +113,7 @@ export function buildHtml(
     }
   });
   spans.sort((a, b) => a.start - b.start || a.end - b.end);
-  const clean: typeof spans = [];
+  const clean: Span[] = [];
   let cur = 0;
   for (const sp of spans) {
     if (sp.start >= cur) {
@@ -65,9 +121,10 @@ export function buildHtml(
       cur = sp.end;
     }
   }
+  const marks = find ? mergeFind(clean, find) : clean;
   let html = '',
     pos = 0;
-  for (const sp of clean) {
+  for (const sp of marks) {
     if (sp.start > pos) html += esc(text.slice(pos, sp.start));
     const ds = sp.sign ? ` data-sign="${sp.sign}"` : '';
     html += `<mark class="${sp.cls}"${ds}>${esc(text.slice(sp.start, sp.end))}</mark>`;

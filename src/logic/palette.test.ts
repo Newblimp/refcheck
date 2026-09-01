@@ -65,10 +65,16 @@ const FOREGROUNDS = [
   '--num',
   '--dep',
   '--info',
+  '--find',
 ];
 // Pairs where the background is a coloured fill, not a surface. `where` names
 // the rule so a failure points at the CSS rather than at a token.
-const COLOURED_FILLS = [{ fg: '--on-accent', bg: '--accent', where: '.lang-toggle button.active' }];
+const COLOURED_FILLS = [
+  { fg: '--on-accent', bg: '--accent', where: '.lang-toggle button.active' },
+  // The Ctrl+F match the find bar is sitting on is a filled pill, so its text
+  // lands on --find rather than on any surface.
+  { fg: '--on-accent', bg: '--find', where: 'mark.h-find-cur' },
+];
 const AA = 4.5;
 
 describe.each(['dark', 'light'])('%s theme contrast', (theme) => {

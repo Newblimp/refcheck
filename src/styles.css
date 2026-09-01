@@ -71,6 +71,12 @@
   --dep-u: rgba(221, 151, 169, 0.75);
   /* Informational, not a problem: the claim-set panel. */
   --info: #8fbfe0;
+  /* Ctrl+F matches. Deliberately a hue no error category uses — a search hit is
+     not a finding, and the two must not be read for each other. --on-accent is
+     the text on the filled current match (7.09:1); palette.test.js checks it. */
+  --find: #c3a6f5;
+  --find-bg: rgba(195, 166, 245, 0.16);
+  --find-u: rgba(195, 166, 245, 0.7);
 }
 /* LIGHT THEME — high contrast */
 :root[data-theme='light'] {
@@ -109,6 +115,9 @@
   --dep-u: #9d2450;
   /* Informational, not a problem: the claim-set panel. */
   --info: #1d5878;
+  --find: #5b3fb0;
+  --find-bg: rgba(91, 63, 176, 0.13);
+  --find-u: #5b3fb0;
 }
 html,
 body,
@@ -630,6 +639,19 @@ mark.h-dis {
   color: var(--text-dim) !important;
   border-bottom: 1px dotted var(--text-dim);
 }
+/* A Ctrl+F match, and the one the find bar is sitting on. The current match is
+   filled rather than merely outlined: with a hundred matches on screen, "which
+   one am I on" has to be answerable at a glance and from across the editor. */
+mark.h-find {
+  background: var(--find-bg);
+  color: var(--find) !important;
+  border-radius: 3px;
+  border-bottom: 2px solid var(--find-u);
+}
+mark.h-find-cur {
+  background: var(--find);
+  color: var(--on-accent) !important;
+}
 mark.h-focus {
   outline: 1.5px solid var(--accent);
   border-radius: 3px;
@@ -727,6 +749,48 @@ mark.h-hover {
 }
 
 /* STATUS BAR */
+/* FIND BAR (Ctrl+F) — between the editor's header and the editor itself, so it
+   never covers the text it is searching. */
+.find-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 9px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+  flex-shrink: 0;
+}
+.find-in {
+  flex: 1;
+  min-width: 0;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  padding: 5px 10px;
+  font-family: var(--font-ui);
+  font-size: 12.5px;
+  color: var(--text);
+  outline: none;
+  transition: border-color 0.15s;
+}
+.find-in:focus {
+  border-color: var(--find);
+}
+.find-count {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  min-width: 44px;
+  text-align: right;
+}
+.find-count.none {
+  color: var(--bare);
+}
+.find-bar .nav-btn:disabled {
+  cursor: default;
+}
+
 .statusbar {
   display: flex;
   align-items: center;
