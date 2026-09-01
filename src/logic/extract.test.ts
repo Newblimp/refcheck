@@ -894,6 +894,15 @@ describe('extractData — sign ranges (endpoints only)', () => {
       []
     );
   });
+  it('does NOT register "jeweils"/"jeweilige" as terms, and a later bare "jeweils" is not a missing-sign error (German, excluded)', () => {
+    expect(Object.keys(extractData('Der Winkel beträgt jeweils 90°.', 'de').signData)).toEqual([]);
+    const res = extractData(
+      'Die erste Welle 10 und die zweite Welle 20 sind um jeweils 90° versetzt. ' +
+        'Die Wellen sind jeweils aus Stahl gefertigt.',
+      'de'
+    );
+    expect(res.bareTerms.some((bt) => bt.termStem === 'jeweil')).toBe(false);
+  });
 
   it('registers all elements of a 3+ element comma list with a conjunction', () => {
     expect(endpointsOnly('The screws 18, 20 and 22 hold the plate.')).toEqual(['18', '20', '22']);

@@ -169,6 +169,11 @@ export const EXCL = new Set([
   'bzw',
   'beziehungsweise',
   'usw',
+  'jeweils',
+  'jeweilige',
+  'jeweiligen',
+  'jeweiliger',
+  'jeweiliges',
 ]);
 
 export const EN_ART = new Set(['a', 'an', 'the']);
