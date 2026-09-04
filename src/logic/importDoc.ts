@@ -1,6 +1,6 @@
 // ── IMPORT / EXPORT ORCHESTRATION ────────────────────────────────────────────
 // Thin, format-agnostic seam between the UI and the readers/writers. Keeping it
-// here (rather than in App.jsx) means the whole import pipeline stays testable
+// here (rather than in App.tsx) means the whole import pipeline stays testable
 // under the node environment.
 
 import { readDocx, DocxError } from './docx/read.ts';
@@ -68,7 +68,7 @@ export function importPatentDoc(buf: ArrayBuffer | Uint8Array): ImportResult {
  * expected to tell the user which of the two it is getting.
  *
  * A round-trip export is VERIFIED before it is handed back: the bytes are read
- * again and compared with the buffers (see docx/verify.js). The file is still
+ * again and compared with the buffers (see docx/verify.ts). The file is still
  * returned when they disagree — refusing to export would leave a drafter with
  * no way to get their work out — but `verified` is false and `diffs` says where,
  * so the UI can warn instead of letting a quietly wrong document through.

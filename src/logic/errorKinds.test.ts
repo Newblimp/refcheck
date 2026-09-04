@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import type { Lang } from './constants.ts';
 import { readFileSync } from 'node:fs';
-import { ERROR_KINDS, KIND_BY_ID, kindItems, sameFocus } from './errorKinds.ts';
+import { ERROR_KINDS, KIND_BY_ID, sameFocus } from './errorKinds.ts';
 import type { ErrorKind, ErrorKindId, ErrorRecord } from './errorKinds.ts';
 import { must } from '../test/helpers.ts';
 import { extractData } from './extract.ts';
@@ -18,7 +18,7 @@ const claimsRes = extractData(
 );
 const resFor = (id: ErrorKindId) => (id === 'num' || id === 'dep' ? claimsRes : descRes);
 const oneOf = (kind: ErrorKind<ErrorRecord>): ErrorRecord => {
-  const items = kindItems(resFor(kind.id), kind);
+  const items = kind.items(resFor(kind.id));
   expect(items.length, `no ${kind.id} error in the fixture`).toBeGreaterThan(0);
   return must(items[0], `${kind.id} error`);
 };
@@ -56,8 +56,7 @@ describe('ERROR_KINDS', () => {
   });
 
   it('names a field the extractor actually fills', () => {
-    for (const kind of ERROR_KINDS)
-      expect(Array.isArray(kindItems(resFor(kind.id), kind))).toBe(true);
+    for (const kind of ERROR_KINDS) expect(Array.isArray(kind.items(resFor(kind.id)))).toBe(true);
   });
 
   it('reports a well-formed span for every kind', () => {

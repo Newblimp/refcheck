@@ -13,7 +13,7 @@
 //     ordinary <w:t> and are kept, giving an "all changes accepted" view
 //
 // Parsing is a hand-rolled tag scanner rather than DOMParser: the logic tests run
-// under the fast `node` environment (vite.config.js), which has no DOM, and the
+// under the fast `node` environment (vite.config.ts), which has no DOM, and the
 // subset of OOXML we care about is tiny.
 
 import { unzipSync, strFromU8 } from 'fflate';
@@ -297,7 +297,7 @@ export function docxXmlToParagraphs(xml: string): Para[] {
       // used to glue the halves of a hyphenated term together in the buffer
       // ("cross‑section" arrived as "crosssection"), which both breaks term
       // matching and — the moment that paragraph is edited — silently deletes
-      // the hyphen from the exported file. docx/write.js maps the characters
+      // the hyphen from the exported file. docx/write.ts maps the characters
       // back to the elements, so the pair round-trips.
       case 'w:noBreakHyphen':
         if (chunks && runDepth > 0) chunks.push('\u2011');

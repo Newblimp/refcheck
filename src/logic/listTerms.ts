@@ -27,7 +27,7 @@ import type { Lang } from './constants.ts';
 // O(candidates with the same base noun) and touches only memoized stems.
 
 // Longest listed phrase that can extend a term. Matches MAX_TERM_WORDS in
-// extract.js: the backward walk never collects more than that, so a longer
+// extract.ts: the backward walk never collects more than that, so a longer
 // listed phrase could never match anything anyway.
 export const MAX_LIST_TERM_WORDS = 5;
 
@@ -118,7 +118,7 @@ export function listTermIndex(listText: string, lang: Lang): ListTermIndex {
 /**
  * How many extra words the list says this term takes, beyond its base noun.
  *
- * `toks` are the term tokens collected in front of a sign (extract.js's
+ * `toks` are the term tokens collected in front of a sign (extract.ts's
  * collectTermToks), base noun last. Returns 0 when the list says nothing about
  * this term, so the caller can fall back to its own detection.
  *

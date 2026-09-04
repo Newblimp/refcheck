@@ -1,6 +1,6 @@
 import { classify } from './extract.ts';
 import { disKey } from './constants.ts';
-import { ERROR_KINDS, KIND_BY_ID, kindItems } from './errorKinds.ts';
+import { ERROR_KINDS, KIND_BY_ID } from './errorKinds.ts';
 import type { ErrorKindId, ErrorRecord } from './errorKinds.ts';
 import type { DepError } from './claims.ts';
 import type { Mode } from './constants.ts';
@@ -14,11 +14,8 @@ import type { ArtError, BareTerm, ExtractResult, NumError, Severity } from './ex
 //   • buildHtml   — turns spans into <mark> elements for the backdrop
 //   • getAllErrors — turns them into a document-ordered navigation list
 //
-// Both used to walk the same five categories with the same dismissal rules in
-// their own copy of the loop. Keeping the categories in one place means adding a
-// sixth error type touches one function rather than two that must be kept in
-// step — and it stops the highlighter and the error navigator from silently
-// disagreeing about what counts as an error.
+// One walk, so the highlighter and the error navigator cannot silently
+// disagree about what counts as an error.
 
 // The span is a discriminated union on `kind` rather than one shape with four
 // optional fields. That is not decoration: `sev` is present exactly when the
@@ -140,7 +137,7 @@ export function eachErrorSpan(
   // The four non-sign categories differ only in the accessors ERROR_KINDS
   // already names, so they are one loop rather than four copies of it.
   for (const kind of ERROR_KINDS) {
-    for (const item of kindItems(res, kind)) {
+    for (const item of kind.items(res)) {
       if (dis.has(kind.disKey(item))) continue;
       visit({
         kind: kind.id,

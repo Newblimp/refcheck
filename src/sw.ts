@@ -1,7 +1,7 @@
 // Offline cache for the RefSign Checker app shell.
 //
 // The three constants below are substituted at build time by the
-// refcheck-sw-precache plugin (build/swPrecache.js); the placeholder text is
+// refcheck-sw-precache plugin (build/swPrecache.ts); the placeholder text is
 // what ships in the repo and is never what runs. The plugin throws if it cannot
 // find them, so a rename here cannot silently ship a worker that caches nothing.
 // Ambient declarations for the three build-time constants. They are `declare`

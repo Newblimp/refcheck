@@ -7,9 +7,9 @@
 // word/document.xml — {xmlStart, xmlEnd, xml} — which are then applied
 // back-to-front so earlier offsets stay valid. Three neighbours do the thinking:
 //
-//   lineDiff.js        which old line became which new line
-//   claimNumbering.js  where a claim's number belongs in the exported file
-//   xmlText.js         what may legally be written inside a <w:t>
+//   lineDiff.ts        which old line became which new line
+//   claimNumbering.ts  where a claim's number belongs in the exported file
+//   xmlText.ts         what may legally be written inside a <w:t>
 //
 // The honest limitation: import flattens runs to plain text, so a rewritten
 // paragraph collapses to a single run carrying the first original run's
@@ -61,7 +61,7 @@ export interface NewSection {
 
 // Word expresses a line break, a tab and the two special hyphens structurally
 // rather than as characters, so those characters in the buffer have to become
-// elements again. This is the exact inverse of what read.js does for <w:br/>,
+// elements again. This is the exact inverse of what read.ts does for <w:br/>,
 // <w:tab/>, <w:noBreakHyphen/> and <w:softHyphen/> — the two sides must stay in
 // step, or a paragraph changes shape merely by being edited.
 const NBHYPHEN = '\u2011'; // non-breaking hyphen
@@ -276,7 +276,7 @@ export function planEdits(
  *
  * Anything still overlapping after that is a bug upstream (most likely two
  * buffers claiming the same paragraphs — see the section clipping in
- * docSplit.js), and a silently mangled patent application is far worse than a
+ * docSplit.ts), and a silently mangled patent application is far worse than a
  * failed export, so it throws.
  *
  * @param xmlLength Length of the document the offsets refer to

@@ -1,5 +1,5 @@
 import { memo, useEffect, useRef } from 'react';
-import { ChevronLeftIcon, ChevronRightIcon } from './icons.tsx';
+import { ChevronIcon } from './icons.tsx';
 import type { Strings } from '../i18n.ts';
 
 // ── FIND BAR ────────────────────────────────────────────────────────────────
@@ -93,7 +93,7 @@ function FindBarImpl({
         aria-label={t.findPrev}
         title={t.findPrev}
       >
-        <ChevronLeftIcon />
+        <ChevronIcon left />
       </button>
       <button
         className="nav-btn"
@@ -102,7 +102,7 @@ function FindBarImpl({
         aria-label={t.findNext}
         title={t.findNext}
       >
-        <ChevronRightIcon />
+        <ChevronIcon />
       </button>
       <button className="imp-x" onClick={onClose} aria-label={t.findClose} title={t.findClose}>
         ×

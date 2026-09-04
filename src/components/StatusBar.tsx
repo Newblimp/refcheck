@@ -1,7 +1,6 @@
 import { memo } from 'react';
 import { ERROR_KINDS } from '../logic/errorKinds.ts';
-import { ChevronLeftIcon, ChevronRightIcon } from './icons.tsx';
-import type { JSX } from 'preact';
+import { ChevronIcon } from './icons.tsx';
 import type { ErrorKindId, ErrorRecord } from '../logic/errorKinds.ts';
 import type { Mode } from '../logic/constants.ts';
 import type { Strings } from '../i18n.ts';
@@ -13,19 +12,12 @@ import type { Strings } from '../i18n.ts';
 // One chip per error category, produced from ERROR_KINDS — so a new category
 // appears here for free.
 
-interface ChipProps {
-  count: number;
-  /** CSS token base: `var(--<color>)`. */
-  color: string;
-  label: string;
-  style?: JSX.CSSProperties;
-}
-
-const Chip = ({ count, color, label, style }: ChipProps) =>
-  count > 0 && (
-    <div className="s-chip" style={{ color: `var(--${color})`, ...style }}>
+/** One coloured count in the bar; a chip with no count is a plain statement. */
+const Chip = ({ count, color, label }: { count?: number; color: string; label: string }) =>
+  count !== 0 && (
+    <div className="s-chip" style={{ color: `var(--${color})` }}>
       <span className="s-dot" style={{ background: `var(--${color})` }} />
-      {count} {label}
+      {count === undefined ? label : `${count} ${label}`}
     </div>
   );
 
@@ -66,12 +58,7 @@ function StatusBarImpl({
         <Chip key={k.id} count={errorLists[k.id].length} color={k.color} label={t[k.chipLbl]} />
       ))}
       {/* Only worth saying once there are signs to be consistent about. */}
-      {totalSigns > 0 && !anyActive && (
-        <div className="s-chip" style={{ color: 'var(--ok)' }}>
-          <span className="s-dot" style={{ background: 'var(--ok)' }} />
-          {t.allConsistent}
-        </div>
-      )}
+      {totalSigns > 0 && !anyActive && <Chip color="ok" label={t.allConsistent} />}
       {errorCount > 0 && (
         <div className="err-nav" style={{ marginLeft: 'auto' }}>
           <button
@@ -80,7 +67,7 @@ function StatusBarImpl({
             aria-label={t.navPrev}
             title={t.navPrev}
           >
-            <ChevronLeftIcon />
+            <ChevronIcon left />
           </button>
           <span className="nav-lbl">{t.navLabel(navIdx + 1, errorCount)}</span>
           <button
@@ -89,7 +76,7 @@ function StatusBarImpl({
             aria-label={t.navNext}
             title={t.navNext}
           >
-            <ChevronRightIcon />
+            <ChevronIcon />
           </button>
         </div>
       )}

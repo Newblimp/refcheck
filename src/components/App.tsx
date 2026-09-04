@@ -3,7 +3,7 @@ import type { JSX } from 'preact';
 import { T } from '../i18n.ts';
 import { extractData, classify } from '../logic/extract.ts';
 import { getAllErrors, errorGroup } from '../logic/errorSpans.ts';
-import { ERROR_KINDS, KIND_BY_ID, kindItems, sameFocus } from '../logic/errorKinds.ts';
+import { ERROR_KINDS, KIND_BY_ID, sameFocus } from '../logic/errorKinds.ts';
 import { buildHtml, findAtPos } from '../logic/buildHtml.ts';
 import { findText, matchFrom, MAX_MATCHES } from '../logic/findText.ts';
 import { computeCrossRef } from '../logic/crossref.ts';
@@ -35,7 +35,7 @@ import type { BareTerm, ExtractResult, SignEntry, SignPosition } from '../logic/
 import type { ErrorEntry } from '../logic/errorSpans.ts';
 import type { Lang, Mode } from '../logic/constants.ts';
 import type { FindHighlight } from '../logic/buildHtml.ts';
-import type { IOBuffers } from '../hooks/useDocumentIO.ts';
+import type { IOBuffers, IOReport } from '../hooks/useDocumentIO.ts';
 
 /** Which single pane a narrow screen is showing. */
 type MobilePane = 'ref' | 'editor' | 'signs';
@@ -74,11 +74,13 @@ const EMPTY_RESULT: ExtractResult = {
 // straight after typing keeps the text.
 const SAVE_MS = 400;
 
+// Storage failures used to be swallowed, so a user pasting an oversized patent
+// lost their work at the next refresh with no warning at all.
+const STORAGE_FULL: IOReport = { kind: 'error', messageKey: 'storageFull' };
+
 // ── APP ─────────────────────────────────────────────────────────────────────
-// State and wiring. The three things App used to do itself and no longer does:
-// the imperative editor/backdrop plumbing (hooks/useEditorSync.js), the .docx
-// round trip (hooks/useDocumentIO.js), and ~150 lines of chrome markup
-// (TopBar.jsx, StatusBar.jsx, icons.jsx).
+// State and wiring. The imperative editor plumbing lives in useEditorSync, the
+// .docx round trip in useDocumentIO, and the chrome in TopBar/StatusBar.
 export function App() {
   // Persisted preferences and buffers (all survive a refresh; see CLAUDE.md for keys)
   const [lang, setLang] = usePersistentState('rsc_lang', 'en', oneOf(['en', 'de'], 'en'));
@@ -91,11 +93,7 @@ export function App() {
   // ones that need a debounce (an undebounced write serialised the whole buffer
   // on every keystroke) and the only ones that can realistically hit the quota.
   const [storageFull, setStorageFull] = useState(false);
-  const onStorageError = useCallback(() => setStorageFull(true), []);
-  const textOpts = useMemo(
-    () => ({ debounce: SAVE_MS, onError: onStorageError }),
-    [onStorageError]
-  );
+  const textOpts = { debounce: SAVE_MS, onError: () => setStorageFull(true) };
   const [descText, setDescText] = usePersistentState('rsc_desc', '', undefined, textOpts);
   const [claimsText, setClaimsText] = usePersistentState('rsc_claims', '', undefined, textOpts);
   // The drafter's own reference-sign list, checked against the active buffer.
@@ -121,8 +119,8 @@ export function App() {
   const [theme, setTheme] = useTheme();
   // Transient UI state
   const text = mode === 'description' ? descText : claimsText;
-  // Currently highlighted error card: {type: 'sign'|'art'|'bare'|'num'|'dep', key}
-  // (key = sign string for signs, char position for everything else).
+  const setText = mode === 'description' ? setDescText : setClaimsText;
+  // The card the sidebar highlights — see Focus in logic/errorKinds.ts.
   const [focus, setFocus] = useState<Focus | null>(null);
   const [search, setSearch] = useState('');
   // Ctrl+F: find text in the editor. Separate from `search`, which filters the
@@ -253,12 +251,10 @@ export function App() {
   // buffer, so an edit (or a .docx import) can leave the stored cursor past the
   // end of a shorter list.
   const findIdx = matches.length ? Math.min(find.idx, matches.length - 1) : 0;
-  const findRef = useRef(find);
-  findRef.current = find;
-  const matchesRef = useRef(matches);
-  matchesRef.current = matches;
-  const findIdxRef = useRef(findIdx);
-  findIdxRef.current = findIdx;
+  // Live mirror, so the callbacks and effects below keep stable identities and
+  // deliberately narrow dependency lists.
+  const live = useRef({ find, matches, findIdx });
+  live.current = { find, matches, findIdx };
 
   const openFind = useCallback(() => {
     // A search starts from where the drafter is reading. Only re-anchored on
@@ -268,7 +264,7 @@ export function App() {
   }, [taRef]);
 
   const closeFind = useCallback(() => {
-    if (!findRef.current.open) return;
+    if (!live.current.find.open) return;
     setFind((f) => ({ ...f, open: false }));
     // Back to the editor, with the caret on the match that was showing —
     // scrollTo already set the selection, it just did not take focus.
@@ -278,12 +274,13 @@ export function App() {
   const setFindQuery = useCallback((query: string) => setFind((f) => ({ ...f, query })), []);
 
   const stepFind = useCallback((delta: number) => {
-    const n = matchesRef.current.length;
+    const { matches, findIdx } = live.current;
+    const n = matches.length;
     if (!n) return;
-    const next = (((findIdxRef.current + delta) % n) + n) % n;
+    const next = (((findIdx + delta) % n) + n) % n;
     // Stepping moves the anchor with it, so refining the query afterwards
     // carries on from here rather than jumping back to where Ctrl+F was pressed.
-    const m = matchesRef.current[next];
+    const m = matches[next];
     if (m) findAnchor.current = m[0];
     setFind((f) => ({ ...f, idx: next }));
   }, []);
@@ -293,8 +290,8 @@ export function App() {
   // editor with the bar open should not be yanked to a match.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
-    if (!findRef.current.open) return;
-    const i = matchFrom(matchesRef.current, findAnchor.current);
+    if (!live.current.find.open) return;
+    const i = matchFrom(live.current.matches, findAnchor.current);
     setFind((f) => (f.idx === i ? f : { ...f, idx: i }));
   }, [find.open, find.query, find.token]);
 
@@ -302,55 +299,56 @@ export function App() {
   // `false` keeps focus in the search box while the editor scrolls under it.
   useEffect(() => {
     if (!find.open) return;
-    const m = matchesRef.current[findIdx];
+    const m = live.current.matches[findIdx];
     if (m) scrollTo(m[0], m[1], false);
   }, [find.open, find.query, findIdx, scrollTo]);
 
   // ── Search-filtered card lists (also drive the status-bar chips) ──
-  const { errSigns, okSigns } = useMemo(() => {
+  // Signs by state, and the four non-sign categories by ERROR_KINDS row — each
+  // list search-filtered, the error lists dismissal-filtered too. They stay
+  // memoized because they feed Sidebar and every card under it: a fresh array
+  // identity per render would defeat the React.memo on each of them and
+  // re-render the whole sidebar on every hover, keystroke and bee frame.
+  const { errSignsActive, errSignsDismissed, okSigns } = useMemo(() => {
     const q = search.toLowerCase();
-    const err: [string, SignEntry][] = [];
+    const active: [string, SignEntry][] = [];
+    const dismissed: [string, SignEntry][] = [];
     const ok: [string, SignEntry][] = [];
     for (const [sign, sData] of Object.entries(signData)) {
-      if (q && !sign.toLowerCase().includes(q)) {
-        const termMatch = Object.keys(sData.terms).some((ts) =>
+      if (
+        q &&
+        !sign.toLowerCase().includes(q) &&
+        !Object.keys(sData.terms).some((ts) =>
           [...(termData[ts]?.rawTerms ?? [])].some((r) => r.includes(q))
-        );
-        if (!termMatch) continue;
-      }
-      (classify(sData, termData, mode) === 'warn' ? err : ok).push([sign, sData]);
+        )
+      )
+        continue;
+      const list =
+        classify(sData, termData, mode) !== 'warn'
+          ? ok
+          : dis.has(disKey.sign(sign))
+            ? dismissed
+            : active;
+      list.push([sign, sData]);
     }
-    const byN = ([a]: [string, SignEntry], [b]: [string, SignEntry]) => compareSigns(a, b);
-    return { errSigns: err.sort(byN), okSigns: ok.sort(byN) };
-  }, [signData, termData, mode, search]);
+    const byN = (a: [string, SignEntry], b: [string, SignEntry]) => compareSigns(a[0], b[0]);
+    return {
+      errSignsActive: active.sort(byN),
+      errSignsDismissed: dismissed.sort(byN),
+      okSigns: ok.sort(byN),
+    };
+  }, [signData, termData, mode, search, dis]);
 
-  // Search + dismissal filtering for the four non-sign categories, in one pass
-  // over ERROR_KINDS. This was four hand-written memo PAIRS, each re-deriving
-  // the lowercased query and each naming its own disKey.
-  //
-  // It stays memoized for the same reason the pairs were: the lists feed Sidebar
-  // and every card under it, so recomputing them per render would hand down
-  // fresh array identities on every hover, every search keystroke and every bee
-  // frame — which is what made memoizing the card components pointless before.
-  // Cheap on their own; the identity is the point.
   const errorLists = useMemo(() => {
     const q = search.toLowerCase();
     const out = {} as Record<ErrorKindId, ErrorRecord[]>;
     for (const kind of ERROR_KINDS)
-      out[kind.id] = kindItems(res, kind).filter(
-        (e) => (!q || kind.matches(e, q, termData)) && !dis.has(kind.disKey(e))
-      );
+      out[kind.id] = kind
+        .items(res)
+        .filter((e) => (!q || kind.matches(e, q, termData)) && !dis.has(kind.disKey(e)));
     return out;
   }, [res, termData, search, dis]);
 
-  const errSignsActive = useMemo(
-    () => errSigns.filter(([s]) => !dis.has(disKey.sign(s))),
-    [errSigns, dis]
-  );
-  const errSignsDismissed = useMemo(
-    () => errSigns.filter(([s]) => dis.has(disKey.sign(s))),
-    [errSigns, dis]
-  );
   const disCt = dis.size;
   const totalSigns = Object.keys(signData).length;
   const anyActive =
@@ -398,31 +396,22 @@ export function App() {
     },
     [scrollTo]
   );
+  // Click a sign card: cycle every occurrence of the sign. Click one of its
+  // term chips: cycle only the occurrences written with THAT term, selecting
+  // the term together with its sign ("shaft 22", not a bare number) — which is
+  // what a sign-to-term conflict needs: "shaft 22 and axle 22" is one card with
+  // two chips, and cycling the card alone walked both spellings with no way to
+  // ask for the shaft ones.
   const onFocusSign = useCallback(
-    (sign: string) => {
-      const occs: [number, number][] = (signDataRef.current[sign]?.positions ?? [])
-        .map((p): [number, number] => [p.signStart, p.signEnd])
+    (sign: string, term?: string) => {
+      const occs = (signDataRef.current[sign]?.positions ?? [])
+        .filter((p) => !term || p.termStem === term)
+        .map((p): [number, number] => [
+          term ? Math.min(p.termStart, p.signStart) : p.signStart,
+          p.signEnd,
+        ])
         .sort((a, b) => a[0] - b[0]);
-      focusCycle({ type: 'sign', key: sign }, occs);
-    },
-    [focusCycle]
-  );
-  // Click a term chip on a sign card: cycle the occurrences written with THAT
-  // term, rather than every occurrence of the sign.
-  //
-  // This is what a sign-to-term conflict actually needs. "Shaft 22 and axle 22"
-  // is one card carrying both terms, and cycling the card stepped through both
-  // occurrences in document order with no way to ask for the shaft ones — the
-  // card said the two spellings existed and then made the drafter find each of
-  // them by eye. The whole term is selected along with its sign, so what lands
-  // in the middle of the editor is "shaft 22", not a bare number.
-  const onFocusTerm = useCallback(
-    (sign: string, termStem: string) => {
-      const occs: [number, number][] = (signDataRef.current[sign]?.positions ?? [])
-        .filter((p) => p.termStem === termStem)
-        .map((p): [number, number] => [Math.min(p.termStart, p.signStart), p.signEnd])
-        .sort((a, b) => a[0] - b[0]);
-      focusCycle({ type: 'sign', key: sign, term: termStem }, occs);
+      focusCycle({ type: 'sign', key: sign, term }, occs);
     },
     [focusCycle]
   );
@@ -577,7 +566,7 @@ export function App() {
     const k = new Set<string>();
     Object.keys(signData).forEach((s) => k.add(disKey.sign(s)));
     // Every category, including ones added after this was written.
-    for (const kind of ERROR_KINDS) for (const e of kindItems(res, kind)) k.add(kind.disKey(e));
+    for (const kind of ERROR_KINDS) for (const e of kind.items(res)) k.add(kind.disKey(e));
     setDis(k);
   }
   const restoreAll = useCallback(() => setDis(new Set()), [setDis]);
@@ -587,7 +576,7 @@ export function App() {
     const pos = taRef.current?.selectionStart ?? 0;
     // findAtPos names artErrors/bareTerms directly rather than going through
     // ERROR_KINDS: the menu is genuinely per-category, so there is no uniform
-    // behaviour for a registry to drive. See logic/ctxMenuItems.js.
+    // behaviour for a registry to drive. See logic/ctxMenuItems.ts.
     const menu = ctxMenuItems(findAtPos(pos, signData, res.artErrors, res.bareTerms), {
       t,
       lang,
@@ -599,38 +588,33 @@ export function App() {
   }
 
   /**
-   * Write a bare term's reference sign into the text, right after the term.
-   * Claims mode brackets it, because a bare sign there is an error of its own.
+   * Replace [start, end) of the active buffer on the drafter's behalf and leave
+   * the caret after what was written, so they carry on where they were reading.
    */
-  function insertSign(bt: BareTerm, sign: string) {
-    // The spans come from the (debounced) extraction, so the buffer may have
-    // moved on. Check the term is still where it was said to be rather than
-    // splicing a sign into the middle of some other word.
-    const at = text.slice(bt.termStart, bt.termEnd).toLowerCase().replace(/\s+/g, ' ');
-    if (at !== bt.term) return;
-    const ins = mode === 'claims' ? ` (${sign})` : ` ${sign}`;
-    const next = text.slice(0, bt.termEnd) + ins + text.slice(bt.termEnd);
-    (mode === 'description' ? setDescText : setClaimsText)(next);
+  function spliceText(start: number, end: number, replacement: string) {
+    setText(text.slice(0, start) + replacement + text.slice(end));
     setFocus(null);
-    // Leave the caret after what was just written, so the drafter carries on
-    // where they were reading. Applied once the new value has been committed.
-    setCaretAfterCommit(bt.termEnd + ins.length);
+    setCaretAfterCommit(start + replacement.length);
   }
 
   /**
-   * Replace a mistyped reference sign with the one its term usually carries.
+   * Write a bare term's reference sign into the text, right after the term.
+   * Claims mode brackets it, because a bare sign there is an error of its own.
    *
-   * Only the sign's own characters are rewritten, so a claims-mode "(2)" keeps
-   * its brackets and the surrounding sentence is untouched.
+   * The spans come from the (debounced) extraction, so the buffer may have
+   * moved on: both edits re-check that the text is still what was offered
+   * before splicing into the middle of some other word.
    */
+  function insertSign(bt: BareTerm, sign: string) {
+    const at = text.slice(bt.termStart, bt.termEnd).toLowerCase().replace(/\s+/g, ' ');
+    if (at === bt.term)
+      spliceText(bt.termEnd, bt.termEnd, mode === 'claims' ? ` (${sign})` : ` ${sign}`);
+  }
+
+  /** Replace a mistyped sign with the one its term usually carries — only the
+   *  sign's own characters, so a claims-mode "(2)" keeps its brackets. */
   function fixSign(p: SignPosition, from: string, to: string) {
-    // Same guard as insertSign: the span comes from the (debounced) extraction,
-    // so make sure the sign is still the one that was offered before splicing.
-    if (text.slice(p.signStart, p.signEnd) !== from) return;
-    const next = text.slice(0, p.signStart) + to + text.slice(p.signEnd);
-    (mode === 'description' ? setDescText : setClaimsText)(next);
-    setFocus(null);
-    setCaretAfterCommit(p.signStart + to.length);
+    if (text.slice(p.signStart, p.signEnd) === from) spliceText(p.signStart, p.signEnd, to);
   }
 
   function handleCtxAction(a: CtxAction, d: CtxActionData) {
@@ -706,20 +690,11 @@ export function App() {
         onDismiss={() => setReport(null)}
       />
 
-      {/* Storage failures used to be swallowed, so a user pasting an oversized
-          patent lost their work at the next refresh with no warning at all. */}
-      {storageFull && (
-        <div className="imp-banner imp-error" role="alert">
-          <span className="imp-main">
-            <strong>{t.storageFull}</strong>
-          </span>
-          <span className="imp-actions">
-            <button className="imp-x" onClick={() => setStorageFull(false)} aria-label={t.dismiss}>
-              ×
-            </button>
-          </span>
-        </div>
-      )}
+      <ImportBanner
+        report={storageFull ? STORAGE_FULL : null}
+        t={t}
+        onDismiss={() => setStorageFull(false)}
+      />
 
       {/* Mobile shows one pane at a time — three columns do not fit a phone,
           and stacking them buries the reference list under a long scroll. */}
@@ -812,9 +787,7 @@ export function App() {
               value={text}
               placeholder={mode === 'description' ? t.placeholder_desc : t.placeholder_claims}
               onChange={(e) => {
-                const next = e.currentTarget.value;
-                if (mode === 'description') setDescText(next);
-                else setClaimsText(next);
+                setText(e.currentTarget.value);
                 setFocus(null);
               }}
               onScroll={syncScroll}
@@ -858,7 +831,6 @@ export function App() {
           hoverSign={hoverSign}
           onHover={setHoverSign}
           onFocusSign={onFocusSign}
-          onFocusTerm={onFocusTerm}
           onFocusError={onFocusError}
           onDismiss={toggleDis}
           onRestoreAll={restoreAll}

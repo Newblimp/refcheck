@@ -161,7 +161,7 @@ export function beeGone(b: Bee, w: number, h: number): boolean {
   return b.x < -GONE_MARGIN || b.x > w + GONE_MARGIN || b.y < -GONE_MARGIN || b.y > h + GONE_MARGIN;
 }
 
-// countBees lives in beeCount.js, not here: useBee imports it on every settled
+// countBees lives in beeCount.ts, not here: useBee imports it on every settled
 // keystroke, and this module is otherwise reached only through the lazily
 // imported Bee component. Sharing a file made the eager side pull in the whole
 // motion model. Do not move it back.

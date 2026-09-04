@@ -12,6 +12,8 @@ export interface SectionProps {
   /** Stay visible at count 0 — for the sections that host an input. */
   alwaysShow?: boolean;
   defaultOpen?: boolean;
+  /** A control beside the header — the reference list's Copy button. */
+  action?: ComponentChildren;
 }
 
 // A collapsible card-list section, styled like RefList's own header. Hides
@@ -19,8 +21,7 @@ export interface SectionProps {
 // caller, so its open/closed state survives the count dropping to 0 and
 // back up (e.g. while the user is mid-edit).
 //
-// Shared by both side panes: the reference pane needs the same header the
-// sidebar sections have, and RefListCheck renders none of its own.
+// Shared by both side panes — every collapsible list in the app is one of these.
 export function Section({
   icon,
   label,
@@ -29,6 +30,7 @@ export function Section({
   children,
   alwaysShow = false,
   defaultOpen = true,
+  action,
 }: SectionProps) {
   const [open, setOpen] = useState(defaultOpen);
   // Most sections hide themselves at zero; the two that host an input the user
@@ -37,15 +39,18 @@ export function Section({
   if (!count && !alwaysShow) return null;
   return (
     <div className="sidebar-section">
-      <button
-        type="button"
-        className="sec-lbl sec-lbl-toggle"
-        style={{ color }}
-        onClick={() => setOpen((o) => !o)}
-        aria-expanded={open}
-      >
-        {open ? '▾' : '▸'} {icon} {label} ({count})
-      </button>
+      <div className="sec-hdr">
+        <button
+          type="button"
+          className="sec-lbl"
+          style={{ color }}
+          onClick={() => setOpen((o) => !o)}
+          aria-expanded={open}
+        >
+          {open ? '▾' : '▸'} {icon} {label} ({count})
+        </button>
+        {action}
+      </div>
       {open && children}
     </div>
   );

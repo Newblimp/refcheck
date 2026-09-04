@@ -146,13 +146,13 @@ const isBracketed = (text: string, tok: Token): boolean =>
 // Scanning regexes live at module scope: none of them depend on an argument, and
 // extractData runs twice per debounced keystroke, so rebuilding them per call was
 // pure waste. They carry the /g flag and are driven by exec loops, so every user
-// MUST reset lastIndex before looping (same contract as TOKEN_RE in tokenize.js).
+// MUST reset lastIndex before looping (same contract as TOKEN_RE in tokenize.ts).
 
 // A "(…)" with no nested parens — candidate parenthesised sign group.
 const GROUP_RE = /\(([^()]*)\)/g;
 // Separator inside a sign range/list: "18 to 22", "18, 20 and 22", "18–22".
 // The connector vocabulary is shared with the claim-reference parser — see
-// CONNECTOR_ALT in constants.js.
+// CONNECTOR_ALT in constants.ts.
 const SEP = `\\s*(?:[,;]\\s*(?:${CONNECTOR_ALT})?|${CONNECTOR_ALT}|${RANGE_DASHES})\\s*`;
 // A run of 2+ signs joined by SEP, each separator sitting directly between two
 // numbers (that adjacency is what keeps "a housing 12 and a cover 14" out).
@@ -173,6 +173,27 @@ const MAX_TERM_WORDS = 5;
 
 // Multiplier for packing a [start, end] character span into one number.
 const SPAN_KEY_STRIDE = 67108864; // 2^26
+
+/**
+ * Index of the last element of ascending `keys` that is <= `pos`, or -1.
+ *
+ * The three "which range holds this position" lookups below — sign-term spans,
+ * parenthesised sign groups and claim spans — are all this one search over a
+ * sorted list of starts; each used to carry its own copy of it.
+ */
+function lastAtOrBefore(keys: number[], pos: number): number {
+  let lo = 0,
+    hi = keys.length - 1,
+    idx = -1;
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1;
+    if ((keys[mid] ?? Infinity) <= pos) {
+      idx = mid;
+      lo = mid + 1;
+    } else hi = mid - 1;
+  }
+  return idx;
+}
 
 /**
  * One sign occurrence with its term already resolved, before the extraction
@@ -357,7 +378,7 @@ function findBareTerms({
  *
  * The lookup used to scan every sign-attached term span (thousands on a real
  * document) for every bare-term candidate, which is the O(occurrences²) cost
- * perf.test.js was written to watch. Sorting by start and carrying a prefix
+ * perf.test.ts was written to watch. Sorting by start and carrying a prefix
  * maximum of the end offsets turns it into a binary search: "is there a range
  * starting at or before tStart whose end reaches tEnd?" is exactly
  * `maxEndUpTo[idx] >= tEnd`.
@@ -381,16 +402,7 @@ function buildKnownRangeIndex(
     maxEndUpTo.push(running);
   }
   return (tStart, tEnd) => {
-    let lo = 0,
-      hi = rangeStarts.length - 1,
-      idx = -1;
-    while (lo <= hi) {
-      const mid = (lo + hi) >> 1;
-      if ((rangeStarts[mid] ?? Infinity) <= tStart) {
-        idx = mid;
-        lo = mid + 1;
-      } else hi = mid - 1;
-    }
+    const idx = lastAtOrBefore(rangeStarts, tStart);
     return idx >= 0 && (maxEndUpTo[idx] ?? -1) >= tEnd;
   };
 }
@@ -539,33 +551,25 @@ function addGenderConflicts(occs: ArtOccurrence[], artErrors: ArtError[]): void 
  *
  */
 function findSignGroups(text: string): (start: number, end: number) => boolean {
-  const groups: { start: number; end: number }[] = [];
+  const starts: number[] = [];
+  const ends: number[] = [];
   GROUP_RE.lastIndex = 0;
   let m: RegExpExecArray | null;
   while ((m = GROUP_RE.exec(text)) !== null) {
     // Group 1 is the bracket interior and cannot be absent when exec matched.
     const parts = (m[1] ?? '').split(GROUP_SPLIT_RE).filter(Boolean);
-    if (parts.length && parts.every(isSignToken))
-      groups.push({ start: m.index, end: m.index + m[0].length });
+    if (parts.length && parts.every(isSignToken)) {
+      starts.push(m.index);
+      ends.push(m.index + m[0].length);
+    }
   }
   // Groups are found in ascending `start` order and cannot nest (the pattern
   // excludes inner parens), so the only candidate containing [s,e) is the last
-  // group starting before s — binary-search for it rather than scanning all of
-  // them. In claims mode nearly every sign sits in a group, which made the
-  // linear form effectively O(signs²).
+  // group starting before s. In claims mode nearly every sign sits in a group,
+  // which made a linear scan effectively O(signs²).
   return (s, e) => {
-    let lo = 0,
-      hi = groups.length - 1,
-      cand: { start: number; end: number } | null = null;
-    while (lo <= hi) {
-      const mid = (lo + hi) >> 1;
-      const g = groups[mid];
-      if (g && g.start < s) {
-        cand = g;
-        lo = mid + 1;
-      } else hi = mid - 1;
-    }
-    return cand !== null && e < cand.end;
+    const i = lastAtOrBefore(starts, s);
+    return i >= 0 && e < (ends[i] ?? -1);
   };
 }
 
@@ -814,23 +818,11 @@ export function extractData(
   // checking below. Null in description mode or when no claim numbers exist.
   const claimGraph = isClaims ? computeClaimGraph(text, claimNums) : null;
   const depErrors = claimGraph ? claimGraph.depErrors : [];
-  // Claim spans are in document order → binary search by position.
-  const claimAt = (pos: number): ClaimSpan | null => {
-    if (!claimGraph) return null;
-    const spans = claimGraph.claims;
-    let lo = 0,
-      hi = spans.length - 1,
-      found: ClaimSpan | null = null;
-    while (lo <= hi) {
-      const mid = (lo + hi) >> 1;
-      const span = spans[mid];
-      if (span && span.start <= pos) {
-        found = span;
-        lo = mid + 1;
-      } else hi = mid - 1;
-    }
-    return found; // null → before the first claim (preamble)
-  };
+  // Claim spans are in document order → binary search by position; null means
+  // before the first claim (the preamble).
+  const claimStarts = claimGraph ? claimGraph.claims.map((c) => c.start) : [];
+  const claimAt = (pos: number): ClaimSpan | null =>
+    claimGraph?.claims[lastAtOrBefore(claimStarts, pos)] ?? null;
 
   const artErrors = computeArticleErrors({
     artByTerm,

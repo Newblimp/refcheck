@@ -40,32 +40,35 @@ export function computeCrossRef(
   if (!descResult || !claimsResult) return null;
   const dS = new Set(Object.keys(descResult.signData));
   const cS = new Set(Object.keys(claimsResult.signData));
-  const descNoTerm = descResult.noTermSigns || new Set();
+  const descNoTerm = descResult.noTermSigns ?? new Set<string>();
 
-  // Partition claims signs absent from the description's termful set into two
-  // mutually-exclusive buckets:
-  //   • missingInDesc       — absent entirely (never seen in the description)
-  //   • notIntroducedInDesc — seen, but only ever bare (no associated term)
-  const missingInDesc = [...cS].filter((s) => !dS.has(s) && !descNoTerm.has(s)).sort(compareSigns);
-  const notIntroducedInDesc = [...cS]
-    .filter((s) => !dS.has(s) && descNoTerm.has(s))
-    .sort(compareSigns);
-  const missingInClaims = [...dS].filter((s) => !cS.has(s)).sort(compareSigns);
-
-  // Same sign, different term across buffers
+  // A claims sign absent from the description's termful signs is either
+  // missing entirely or seen there only bare (never introduced with a term).
+  const missingInDesc: string[] = [];
+  const notIntroducedInDesc: string[] = [];
   const signConflicts: SignConflict[] = [];
-  for (const sign of [...dS].filter((s) => cS.has(s))) {
+  const raws = (r: ExtractResult, stems: string[]) => [
+    ...new Set(stems.flatMap((ts) => [...(r.termData[ts]?.rawTerms ?? [])])),
+  ];
+  for (const sign of cS) {
+    if (!dS.has(sign)) {
+      (descNoTerm.has(sign) ? notIntroducedInDesc : missingInDesc).push(sign);
+      continue;
+    }
+    // Same sign, different term across buffers
     const dT = Object.keys(descResult.signData[sign]?.terms ?? {});
     const cT = Object.keys(claimsResult.signData[sign]?.terms ?? {});
-    if (!dT.some((t) => cT.includes(t))) {
-      const dRaw = [...new Set(dT.flatMap((ts) => [...(descResult.termData[ts]?.rawTerms ?? [])]))];
-      const cRaw = [
-        ...new Set(cT.flatMap((ts) => [...(claimsResult.termData[ts]?.rawTerms ?? [])])),
-      ];
-      signConflicts.push({ sign, descTerms: dRaw, claimsTerms: cRaw });
-    }
+    if (!dT.some((t) => cT.includes(t)))
+      signConflicts.push({
+        sign,
+        descTerms: raws(descResult, dT),
+        claimsTerms: raws(claimsResult, cT),
+      });
   }
+  missingInDesc.sort(compareSigns);
+  notIntroducedInDesc.sort(compareSigns);
   signConflicts.sort((a, b) => compareSigns(a.sign, b.sign));
+  const missingInClaims = [...dS].filter((s) => !cS.has(s)).sort(compareSigns);
 
   // Same term, different sign across buffers
   const termConflicts: TermConflict[] = [];

@@ -40,7 +40,7 @@ export function buildId(names: string[]): string {
  * populated.
  *
  * @param base     Vite base path, e.g. "/refcheck/"
- * @param emitted  Bundle-relative filenames, e.g. "assets/index-ab12.js"
+ * @param emitted  Bundle-relative filenames, e.g. "assets/index-ab12.ts"
  * @returns absolute URLs, deduplicated, in stable order
  */
 export function precacheUrls(base: string, emitted: string[]): string[] {

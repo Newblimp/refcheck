@@ -13,7 +13,7 @@ import type { ArtError, BareTerm, ExtractResult, SignEntry, SignPosition } from 
 // every class here is defined in styles.css.
 //
 // The sign severities are listed here because signs are not an ERROR_KINDS row
-// (see errorKinds.js); the four error categories bring their own class along, so
+// (see errorKinds.ts); the four error categories bring their own class along, so
 // adding a category cannot forget to add its highlight.
 // Spelled out as constants as well as HL entries: mergeFind builds a class
 // string from them, and HL is a Record<string, string> whose reads are
@@ -77,13 +77,9 @@ function mergeFind(spans: Span[], find: FindHighlight): Span[] {
   return out;
 }
 
-// Re-exported under its historical name; the implementation is shared with the
-// .docx writer now.
-export const esc = escapeMarkup;
-
 /**
  * Build the highlighted HTML for the backdrop overlay. Invariant: stripping the
- * <mark> tags from the output must reproduce esc(text) exactly, or the backdrop
+ * <mark> tags from the output must reproduce escapeMarkup(text) exactly, or the backdrop
  * misaligns with the textarea (guarded by a test).
  * @param dis       Dismissal keys
  * @param focusSign Sign to mark with h-focus
@@ -125,12 +121,12 @@ export function buildHtml(
   let html = '',
     pos = 0;
   for (const sp of marks) {
-    if (sp.start > pos) html += esc(text.slice(pos, sp.start));
+    if (sp.start > pos) html += escapeMarkup(text.slice(pos, sp.start));
     const ds = sp.sign ? ` data-sign="${sp.sign}"` : '';
-    html += `<mark class="${sp.cls}"${ds}>${esc(text.slice(sp.start, sp.end))}</mark>`;
+    html += `<mark class="${sp.cls}"${ds}>${escapeMarkup(text.slice(sp.start, sp.end))}</mark>`;
     pos = sp.end;
   }
-  if (pos < text.length) html += esc(text.slice(pos));
+  if (pos < text.length) html += escapeMarkup(text.slice(pos));
   // Vertical-alignment sentinel. A <textarea> reserves an empty line box for a
   // trailing "\n", but a white-space:pre-wrap div drops its final one — so a
   // buffer ending in a newline leaves the backdrop one line shorter than the

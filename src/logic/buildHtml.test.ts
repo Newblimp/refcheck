@@ -3,7 +3,8 @@ import { must } from '../test/helpers.ts';
 import type { ExtractResult } from './extract.ts';
 import type { Mode } from './constants.ts';
 import { extractData } from './extract.ts';
-import { buildHtml, esc, findAtPos } from './buildHtml.ts';
+import { buildHtml, findAtPos } from './buildHtml.ts';
+import { escapeMarkup as esc } from './escape.ts';
 import { findText } from './findText.ts';
 
 const EMPTY: ExtractResult = {

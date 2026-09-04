@@ -3,12 +3,12 @@ import type { Lang } from './constants.ts';
 // ── BEE TRIGGER ──────────────────────────────────────────────────────────────
 // Six lines, in a module of their own, for a loading reason: useBee runs this on
 // every settled keystroke and so must be eager, while the flight model it used
-// to sit beside (beeFlight.js) is only reached through the lazily-imported Bee
+// to sit beside (beeFlight.ts) is only reached through the lazily-imported Bee
 // component. One import of this function from the eager side was enough to pull
 // the whole 1.5 KB motion model onto the critical path for an easter egg most
 // sessions never trigger.
 //
-// So: keep them apart, and do not re-export this from beeFlight.js — a
+// So: keep them apart, and do not re-export this from beeFlight.ts — a
 // convenience re-export would restore exactly the edge that cost the bytes.
 
 /**

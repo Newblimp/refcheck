@@ -17,8 +17,8 @@ export interface SignCardProps {
   focusedTerm: string | null;
   t: Strings;
   dis: Set<string>;
-  onFocus: (sign: string) => void;
-  onFocusTerm: (sign: string, termStem: string) => void;
+  /** Jump to the sign's occurrences — or, with a term, only those written with it. */
+  onFocus: (sign: string, termStem?: string) => void;
   onDismiss: (key: string) => void;
   hoverSign: string | null;
   onHover?: (sign: string | null) => void;
@@ -35,7 +35,6 @@ function SignCardImpl({
   t,
   dis,
   onFocus,
-  onFocusTerm,
   onDismiss,
   hoverSign,
   onHover,
@@ -43,6 +42,10 @@ function SignCardImpl({
   const isDis = dis.has(disKey.sign(sign));
   const sev = isDis ? 'dim' : classify(sData, termData, mode);
   const terms = Object.keys(sData.terms);
+  const rawsOf = (ts: string) => [...(termData[ts]?.rawTerms ?? [])];
+  const rawOf = (ts: string) => rawsOf(ts)[0] ?? ts;
+  const otherSigns = (ts: string) =>
+    Object.keys(termData[ts]?.signs ?? {}).filter((s2) => s2 !== sign);
 
   const notes: string[] = [];
   if (!isDis) {
@@ -50,21 +53,12 @@ function SignCardImpl({
       const bad = sData.count - sData.inPC;
       if (bad > 0) notes.push(t.claimsBad(bad));
     } else {
-      if (terms.length > 1) {
-        const raws = terms
-          .flatMap((ts) => [...(termData[ts]?.rawTerms || new Set())])
-          .filter((v, i, a) => a.indexOf(v) === i);
-        notes.push(t.conflictST(raws.slice(0, 3)));
+      if (terms.length > 1)
+        notes.push(t.conflictST([...new Set(terms.flatMap(rawsOf))].slice(0, 3)));
+      for (const ts of terms) {
+        const others = otherSigns(ts);
+        if (others.length > 0) notes.push(t.conflictTS(rawOf(ts), others));
       }
-      terms.forEach((ts) => {
-        const td = termData[ts];
-        if (!td) return;
-        const others = Object.keys(td.signs).filter((s2) => s2 !== sign);
-        if (others.length > 0) {
-          const raw = [...(td.rawTerms || new Set())][0] || ts;
-          notes.push(t.conflictTS(raw, others));
-        }
-      });
     }
   }
   return (
@@ -79,10 +73,8 @@ function SignCardImpl({
         <span className="sc-main">
           <div className="term-chips">
             {terms.map((ts) => {
-              const isConf =
-                sev === 'warn' &&
-                (terms.length > 1 || (termData[ts] && Object.keys(termData[ts].signs).length > 1));
-              const raw = [...(termData[ts]?.rawTerms || new Set())][0] || ts;
+              const isConf = sev === 'warn' && (terms.length > 1 || otherSigns(ts).length > 0);
+              const raw = rawOf(ts);
               // Width comes from the term as recorded, per chip. Reading it back
               // out of `mwo` only knew about manual overrides, so a term widened
               // by the ordinal detector or by the reference list showed no badge
@@ -105,7 +97,7 @@ function SignCardImpl({
                   aria-label={t.jumpTerm(raw)}
                   onClick={(e) => {
                     e.stopPropagation();
-                    onFocusTerm(sign, ts);
+                    onFocus(sign, ts);
                   }}
                 >
                   {raw}

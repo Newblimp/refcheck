@@ -1,7 +1,5 @@
 // ── ICONS ───────────────────────────────────────────────────────────────────
 // The inline SVGs, kept together and out of the components that use them.
-// They were ~150 lines of path data sitting in the middle of App.tsx's JSX,
-// which made the actual layout hard to read.
 //
 // All of them are stroke icons on a 24×24 grid inheriting `currentColor`, so a
 // caller sets the colour with CSS and nothing here hardcodes a theme. The one
@@ -20,13 +18,25 @@ const stroke = {
   strokeLinejoin: 'round',
 } as const;
 
+/** The document outline shared by the logo and the drop overlay. */
+const DOC = 'M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z';
+
 /** The document mark in the top-left, drawn in the accent colour. */
 export const LogoIcon = () => (
   <svg width="20" height="20" viewBox="0 0 24 24" {...stroke} stroke="var(--accent)">
-    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+    <path d={DOC} />
     <polyline points="14 2 14 8 20 8" />
     <line x1="9" y1="13" x2="15" y2="13" />
     <line x1="9" y1="17" x2="12" y2="17" />
+  </svg>
+);
+
+/** The drop overlay's document with an upload arrow. Lighter stroke — it is 40px. */
+export const UploadIcon = () => (
+  <svg width="40" height="40" viewBox="0 0 24 24" {...stroke} strokeWidth="1.5">
+    <path d={DOC} />
+    <polyline points="14 2 14 8 20 8" />
+    <path d="M12 18v-6M9 15l3-3 3 3" />
   </svg>
 );
 
@@ -50,8 +60,8 @@ export const MoonIcon = () => (
   </svg>
 );
 
-/** Error-nav chevrons. Heavier stroke, and no caps — they are 10px wide. */
-export const ChevronLeftIcon = () => (
+/** Error-nav / find-bar chevron. Heavier stroke, and no caps — it is 10px wide. */
+export const ChevronIcon = ({ left = false }: { left?: boolean }) => (
   <svg
     width="10"
     height="10"
@@ -60,20 +70,7 @@ export const ChevronLeftIcon = () => (
     stroke="currentColor"
     strokeWidth="2.5"
   >
-    <polyline points="15 18 9 12 15 6" />
-  </svg>
-);
-
-export const ChevronRightIcon = () => (
-  <svg
-    width="10"
-    height="10"
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth="2.5"
-  >
-    <polyline points="9 18 15 12 9 6" />
+    <polyline points={left ? '15 18 9 12 15 6' : '9 18 15 12 9 6'} />
   </svg>
 );
 

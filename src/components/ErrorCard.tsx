@@ -17,7 +17,7 @@ export interface ErrorCardProps {
 
 // ── ERROR CARD ──────────────────────────────────────────────────────────────
 // One card for all four non-sign error categories, driven by its ERROR_KINDS
-// row (logic/errorKinds.js).
+// row (logic/errorKinds.ts).
 //
 // This replaces ArtCard, BareCard, NumCard and DepCard, which were the same
 // component four times over: same wrapper, same badge, same message line, same

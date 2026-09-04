@@ -1,6 +1,6 @@
 // Payload budget for the built app.
 //
-// perf.test.js guards how long extraction TAKES; nothing guarded how much the
+// perf.test.ts guards how long extraction TAKES; nothing guarded how much the
 // app SHIPS, and that turned out to be where the real cost was — 95.8 KB of web
 // font, more than React and the application code together, invisible to every
 // test in the suite. A budget is the only thing that keeps a payload win from
@@ -15,7 +15,7 @@ import { gzipSync } from 'node:zlib';
 
 /** One emitted file and what it costs on the wire. */
 export interface MeasuredFile {
-  /** Bundle-relative name, always forward-slashed ("assets/index-ab12.js"). */
+  /** Bundle-relative name, always forward-slashed ("assets/index-ab12.ts"). */
   name: string;
   /** Size in bytes after gzip. */
   gzip: number;

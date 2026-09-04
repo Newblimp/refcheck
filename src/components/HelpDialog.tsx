@@ -13,7 +13,7 @@ export interface HelpDialogProps {
 // discoverable shortcuts were the two named in the status-bar tooltips.
 //
 // Reached through LazyHelpDialog, so this module and its strings are a chunk of
-// their own. It therefore takes `lang` and reads helpText.js itself rather than
+// their own. It therefore takes `lang` and reads helpText.ts itself rather than
 // taking the resolved `t` — passing `t` in would have kept the strings on the
 // critical path, which is the entire point of the split.
 

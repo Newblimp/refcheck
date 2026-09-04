@@ -4,7 +4,7 @@ import type { Lang } from './logic/constants.ts';
 //
 // EN is the reference table and DE is declared against its type, so a missing
 // key, a spare key, or a formatter whose arity or parameter types have drifted
-// is a compile error rather than something i18n.test.js has to notice at run
+// is a compile error rather than something i18n.test.ts has to notice at run
 // time. (That test still runs — it also checks the value KINDS agree, and it
 // costs nothing.)
 
@@ -18,8 +18,6 @@ export interface ExportDiffSummary {
 }
 
 const en = {
-  appTitle: 'RefSign',
-  appSub: 'Checker',
   modeDesc: 'Description',
   modeClaims: 'Claims',
   editorLbl: 'INPUT TEXT',
@@ -56,7 +54,6 @@ const en = {
   artFD: (a: string) => `"${a}" — first mention should use "a"/"an"`,
   artRI: (a: string) => `"${a}" — later mention should use "the"`,
   artGender: (a: string, b: string) => `"${a}" conflicts with "${b}" (gender)`,
-  noTerm: 'standalone',
   navLabel: (i: number, n: number) => `${i} / ${n}`,
   disCt: (n: number) => `${n} dismissed`,
   restoreAll: 'Restore all',
@@ -115,7 +112,7 @@ const en = {
   impErrLegacy: 'Legacy .doc files cannot be read. Please save as .docx and try again.',
   impErrUnsupported: 'Only .docx and .docm files can be imported.',
   impErrRead: 'This file could not be read as a Word document.',
-  // The strings INSIDE the help screen live in helpText.js, so they load with
+  // The strings INSIDE the help screen live in helpText.ts, so they load with
   // the dialog rather than on the critical path. This one labels the top
   // bar's button, which paints immediately, so it stays here.
   helpBtn: 'Help and keyboard shortcuts',
@@ -130,7 +127,6 @@ const en = {
   expTitleRound:
     'Writes your edits back into the imported file; only changed paragraphs are rewritten',
   expTitleFresh: 'No imported file in this session — generates a new .docx from the two buffers',
-  expDone: 'Exported',
   expRefNoSection:
     'Exported — but your reference list was not written back: the imported file has no reference-sign section to update.',
   expRefAmbiguous:
@@ -183,8 +179,6 @@ const en = {
 export type Strings = typeof en;
 
 const de: Strings = {
-  appTitle: 'BezZeichen',
-  appSub: 'Prüfer',
   modeDesc: 'Beschreibung',
   modeClaims: 'Ansprüche',
   editorLbl: 'EINGABETEXT',
@@ -219,7 +213,6 @@ const de: Strings = {
   artFD: (a) => `„${a}" — Erstnennung: unbestimmter Artikel erforderlich`,
   artRI: (a) => `„${a}" — Folgeerwähnung: bestimmter Artikel erforderlich`,
   artGender: (a, b) => `„${a}" und „${b}" widersprüchlich (Genus)`,
-  noTerm: 'alleinstehend',
   navLabel: (i, n) => `${i} / ${n}`,
   disCt: (n) => `${n} ausgeblendet`,
   restoreAll: 'Alle wiederherstellen',
@@ -290,7 +283,6 @@ const de: Strings = {
     'Schreibt die Änderungen in die importierte Datei zurück; nur geänderte Absätze werden neu geschrieben',
   expTitleFresh:
     'Keine importierte Datei in dieser Sitzung — erzeugt eine neue .docx aus beiden Feldern',
-  expDone: 'Exportiert',
   expRefNoSection:
     'Exportiert — die Bezugszeichenliste wurde jedoch nicht zurückgeschrieben: die importierte Datei enthält keinen Bezugszeichen-Abschnitt.',
   expRefAmbiguous:

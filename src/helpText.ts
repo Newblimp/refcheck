@@ -1,17 +1,17 @@
 import type { Lang } from './logic/constants.ts';
 
 // ── i18n: the help screen ───────────────────────────────────────────────────
-// Split out of i18n.js, and the split is a loading decision rather than an
+// Split out of i18n.ts, and the split is a loading decision rather than an
 // organisational one: these strings are only ever read by HelpDialog, which is
 // reached by an explicit click, so shipping them in the eager chunk put ~2.7 KB
 // of text (both languages, as always) on the critical path for a screen most
 // sessions never open. They ride in the dialog's own chunk instead — the same
 // treatment the .docx pipeline and the bee get, precache obligation included.
 //
-// `helpBtn` deliberately stays in i18n.js: it labels the top bar's button, which
+// `helpBtn` deliberately stays in i18n.ts: it labels the top bar's button, which
 // renders on first paint. Everything here is inside the dialog.
 //
-// EN/DE key parity is asserted by i18n.test.js alongside T, because a help
+// EN/DE key parity is asserted by i18n.test.ts alongside T, because a help
 // screen with an untranslated row is exactly as broken as a missing UI string.
 
 const en = {

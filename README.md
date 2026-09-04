@@ -25,7 +25,7 @@ Served via GitHub Pages — just open the link, nothing to install:
 It runs entirely in the browser (no backend, no account) and works fully offline
 after the first visit — a service worker precaches the app shell at install time, the
 stylesheet is inlined into the page and there are no web fonts, so no network requests
-remain once it's loaded. The whole thing is **42.6 KB over the wire across 3 requests**.
+remain once it's loaded. The whole thing is **41.8 KB over the wire across 3 requests**.
 You can also install it (Add to Home Screen / desktop PWA install) for a standalone
 offline app.
 

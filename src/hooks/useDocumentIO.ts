@@ -9,10 +9,8 @@ import type { ExportDiffSummary, Strings } from '../i18n.ts';
 // The whole .docx round trip: picking or dropping a file, reading it into the
 // buffers, undoing that, and writing the buffers back out again.
 //
-// This was ~170 lines in the middle of App — and it is logic wearing a
-// component's clothes: nothing in it renders. Out here the import/export flow
-// can be reasoned about (and tested) without mounting the app, and App is left
-// holding state and wiring.
+// Nothing in it renders, so it lives apart from App: the flow can be reasoned
+// about without mounting the app, and App is left holding state and wiring.
 //
 // The hook does NOT own the buffers. It reads them through `buffers` and writes
 // through `apply`, so App keeps deciding what a load means for the rest of its
@@ -167,19 +165,17 @@ export function useDocumentIO({ t, lang, buffers, apply }: DocumentIOOpts) {
 
   const openPicker = useCallback(() => fileRef.current?.click(), []);
 
-  const undoImport = useCallback(() => {
-    const u = undoRef.current;
-    if (!u) return;
-    applyRef.current({
-      description: u.description,
-      claims: u.claims,
-      refList: u.refList ?? '',
-      lang: u.lang,
-    });
+  /** Forget the imported document — part of Reset all, and the tail of an undo. */
+  const clear = useCallback(() => {
     setImported(null);
     setReport(null);
     undoRef.current = null;
   }, []);
+
+  const undoImport = useCallback(() => {
+    if (undoRef.current) applyRef.current(undoRef.current);
+    clear();
+  }, [clear]);
 
   const doExport = useCallback(async () => {
     const { exportPatentDoc } = await loadDocIO();
@@ -227,13 +223,6 @@ export function useDocumentIO({ t, lang, buffers, apply }: DocumentIOOpts) {
     a.remove();
     setTimeout(() => URL.revokeObjectURL(url), 0);
   }, [imported]);
-
-  /** Forget the imported document — part of Reset all. */
-  const clear = useCallback(() => {
-    setImported(null);
-    setReport(null);
-    undoRef.current = null;
-  }, []);
 
   return {
     imported,

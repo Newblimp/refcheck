@@ -1,7 +1,8 @@
 import type { IOReport } from '../hooks/useDocumentIO.ts';
 import type { ExportDiffSummary, Strings } from '../i18n.ts';
 
-// Result line shown after an import.
+// Result line shown after an import or an export — and, with a bare messageKey,
+// any other one-line report App has to make (a full localStorage).
 //
 // The import fills both buffers without a confirm step, so this is what makes a
 // wrong guess visible and reversible: it states what was detected, warns when a
@@ -32,7 +33,7 @@ export function ImportBanner({ report, t, onUndo, onDismiss }: ImportBannerProps
   };
 
   return (
-    <div className={`imp-banner imp-${kind}`} role="status">
+    <div className={`imp-banner imp-${kind}`} role={kind === 'error' ? 'alert' : 'status'}>
       <span className="imp-main">
         {/* A message key means "this is a stated result" (an import that failed,
             an export that could not be verified). Only a report WITHOUT one is
@@ -65,7 +66,7 @@ export function ImportBanner({ report, t, onUndo, onDismiss }: ImportBannerProps
             ↩ {t.impUndo}
           </button>
         )}
-        <button className="imp-x" onClick={onDismiss} aria-label="Dismiss">
+        <button className="imp-x" onClick={onDismiss} aria-label={t.dismiss}>
           ×
         </button>
       </span>

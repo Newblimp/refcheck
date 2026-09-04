@@ -14,7 +14,7 @@ export default defineConfig({
   // asset) so the static shell paints from the first response; swPrecachePlugin
   // then injects the resulting asset list into dist/sw.js so the app shell is
   // cached at install time rather than opportunistically — see
-  // build/swPrecache.js for why that distinction decides whether the app is
+  // build/swPrecache.ts for why that distinction decides whether the app is
   // actually usable offline after one visit. The order matters: the precache
   // list must be built from the bundle the inliner has already pruned.
   // The app is written against the React API and stays that way; only the
@@ -56,7 +56,7 @@ export default defineConfig({
     // payload.
     //
     // Three compress passes rather than the default one: the later passes are
-    // what fold the constant-heavy tables in constants.js and errorKinds.js.
+    // what fold the constant-heavy tables in constants.ts and errorKinds.ts.
     // `mangle` is names-only — property mangling would rename the i18n keys and
     // the ERROR_KINDS accessors, which are looked up by string.
     minify: 'terser',
@@ -77,7 +77,7 @@ export default defineConfig({
   },
   test: {
     // Pure-logic tests run fast under node; only interactive component tests
-    // (*.ui.test.jsx) need a DOM, so jsdom is scoped to them.
+    // (*.ui.test.tsx) need a DOM, so jsdom is scoped to them.
     environment: 'node',
     include: ['{src,build}/**/*.test.{ts,tsx}'],
     environmentMatchGlobs: [['src/**/*.ui.test.tsx', 'jsdom']],

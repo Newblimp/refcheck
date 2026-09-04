@@ -10,7 +10,7 @@ export interface ClaimStatsProps {
 
 // ── CLAIM-SET STATISTICS ────────────────────────────────────────────────────
 // Claims mode only. Counts plus the fee/practice thresholds a drafter checks
-// before filing — see logic/claimStats.js for why these particular numbers.
+// before filing — see logic/claimStats.ts for why these particular numbers.
 function ClaimStatsImpl({ stats, t }: ClaimStatsProps) {
   if (!stats) return null;
 

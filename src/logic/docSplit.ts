@@ -1,7 +1,7 @@
 // ── PATENT DOCUMENT SPLITTER ─────────────────────────────────────────────────
 // Turns the format-agnostic paragraph model into the tool's two buffers.
 //
-// Boundaries come from dedicated heading lines (see headings.js) — never from
+// Boundaries come from dedicated heading lines (see headings.ts) — never from
 // guessing at surrounding prose. That makes the split deterministic and gives it
 // a clean failure mode: if no heading matches we do not invent a boundary, we
 // hand back the whole document and say so, which is far better than a
@@ -92,7 +92,7 @@ const nextOf = (
 /**
  * Word auto-numbering lives in numbering.xml, not in the text — so an
  * auto-numbered claim arrives as "A device comprising…" with no "1.".
- * isClaimNumber() (constants.js) needs a literal line-leading digit, so without
+ * isClaimNumber() (constants.ts) needs a literal line-leading digit, so without
  * this every claims-mode check silently goes dead.
  *
  * We synthesize "N. " for auto-numbered paragraphs that do not already start

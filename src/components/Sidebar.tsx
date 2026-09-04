@@ -37,9 +37,8 @@ export interface SidebarProps {
   disCt: number;
   hoverSign: string | null;
   onHover: (sign: string | null) => void;
-  onFocusSign: (sign: string) => void;
-  /** Jump to the occurrences written with one of a sign's terms. */
-  onFocusTerm: (sign: string, termStem: string) => void;
+  /** Jump to a sign's occurrences — or, with a term, only those written with it. */
+  onFocusSign: (sign: string, termStem?: string) => void;
   onFocusError: (id: ErrorKindId, item: ErrorRecord) => void;
   onDismiss: (key: string) => void;
   onRestoreAll: () => void;
@@ -61,9 +60,6 @@ function SidebarImpl({
   errSignsActive,
   errSignsDismissed,
   okSigns,
-  // { art: [...], bare: [...], num: [...], dep: [...] } — already search- and
-  // dismissal-filtered by App. One prop rather than one per category, so adding
-  // a category adds no plumbing here.
   errorLists,
   focus,
   dis,
@@ -71,7 +67,6 @@ function SidebarImpl({
   hoverSign,
   onHover,
   onFocusSign,
-  onFocusTerm,
   onFocusError,
   onDismiss,
   onRestoreAll,
@@ -83,12 +78,8 @@ function SidebarImpl({
   const totalSigns = Object.keys(signData).length;
   const totalErrs =
     errSignsActive.length + ERROR_KINDS.reduce((n, k) => n + errorLists[k.id].length, 0);
-  // The multi-word width now comes off the term itself (see SignCard), so the
-  // cards no longer need `mwo` or `lang` — one prop identity fewer that changed
-  // on every override edit.
-  // Which term chip the focus sits on, for a given card. A sign focus may name
-  // one of the sign's terms (the chips cycle that term alone), so the card needs
-  // both halves: is this my sign, and if so which chip.
+  // Which term chip the focus sits on, for a given card: a sign focus may name
+  // one of the sign's terms (the chips cycle that term alone).
   const chipFocus = (sign: string): string | null =>
     focus?.type === 'sign' && focus.key === sign ? (focus.term ?? null) : null;
   const signCardProps = {
@@ -97,11 +88,32 @@ function SidebarImpl({
     t,
     dis,
     onFocus: onFocusSign,
-    onFocusTerm,
     onDismiss,
     hoverSign,
     onHover,
   };
+  // The three sign sections differ only in their list and header — and a
+  // dismissed sign's card never shows as the focused one.
+  const signSection = (
+    icon: string,
+    label: string,
+    color: string,
+    list: [string, SignEntry][],
+    focusable = true
+  ) => (
+    <Section icon={icon} label={label} color={color} count={list.length}>
+      {list.map(([sign, sData]) => (
+        <SignCard
+          key={sign}
+          sign={sign}
+          sData={sData}
+          focused={focusable && focus?.type === 'sign' && focus.key === sign}
+          focusedTerm={chipFocus(sign)}
+          {...signCardProps}
+        />
+      ))}
+    </Section>
+  );
 
   return (
     <aside className="ov-pane" aria-label={t.ovLbl}>
@@ -157,21 +169,9 @@ function SidebarImpl({
           </div>
         ) : (
           <>
-            <Section icon="⚠" label={t.gErr} color="var(--warn)" count={errSignsActive.length}>
-              {errSignsActive.map(([sign, sData]) => (
-                <SignCard
-                  key={sign}
-                  sign={sign}
-                  sData={sData}
-                  focused={focus?.type === 'sign' && focus.key === sign}
-                  focusedTerm={chipFocus(sign)}
-                  {...signCardProps}
-                />
-              ))}
-            </Section>
+            {signSection('⚠', t.gErr, 'var(--warn)', errSignsActive)}
             {/* Article errors, missing signs, claim numbering, claim
-                dependencies — in ERROR_KINDS order, which is the order they
-                were written in by hand before. */}
+                dependencies — in ERROR_KINDS order. */}
             {ERROR_KINDS.map((kind) => (
               <Section
                 key={kind.id}
@@ -194,35 +194,8 @@ function SidebarImpl({
                 ))}
               </Section>
             ))}
-            <Section icon="✓" label={t.gOk} color="var(--ok)" count={okSigns.length}>
-              {okSigns.map(([sign, sData]) => (
-                <SignCard
-                  key={sign}
-                  sign={sign}
-                  sData={sData}
-                  focused={focus?.type === 'sign' && focus.key === sign}
-                  focusedTerm={chipFocus(sign)}
-                  {...signCardProps}
-                />
-              ))}
-            </Section>
-            <Section
-              icon="↩"
-              label={t.gDis}
-              color="var(--text-dim)"
-              count={errSignsDismissed.length}
-            >
-              {errSignsDismissed.map(([sign, sData]) => (
-                <SignCard
-                  key={sign}
-                  sign={sign}
-                  sData={sData}
-                  focused={false}
-                  focusedTerm={chipFocus(sign)}
-                  {...signCardProps}
-                />
-              ))}
-            </Section>
+            {signSection('✓', t.gOk, 'var(--ok)', okSigns)}
+            {signSection('↩', t.gDis, 'var(--text-dim)', errSignsDismissed, false)}
             {disCt > 0 && (
               <div className="dis-section">
                 <div className="dis-hdr">
@@ -238,13 +211,7 @@ function SidebarImpl({
                 icon="⇄"
                 label={t.crossRefLbl}
                 color="var(--text-muted)"
-                count={
-                  orphaned.signConflicts.length +
-                  orphaned.termConflicts.length +
-                  orphaned.missingInDesc.length +
-                  orphaned.missingInClaims.length +
-                  orphaned.notIntroducedInDesc.length
-                }
+                count={Object.values(orphaned).reduce((n, l) => n + l.length, 0)}
               >
                 {orphaned.signConflicts.map(({ sign, descTerms, claimsTerms }) => (
                   <OrphanCard key={'sc' + sign} label={sign}>
@@ -256,21 +223,19 @@ function SidebarImpl({
                     {t.crossTermConflict(descSigns.join('/'), claimsSigns.join('/'))}
                   </OrphanCard>
                 ))}
-                {orphaned.missingInDesc.map((s) => (
-                  <OrphanCard key={'od' + s} label={s}>
-                    {t.missingInDesc}
-                  </OrphanCard>
-                ))}
-                {orphaned.missingInClaims.map((s) => (
-                  <OrphanCard key={'oc' + s} label={s}>
-                    {t.missingInClaims}
-                  </OrphanCard>
-                ))}
-                {orphaned.notIntroducedInDesc.map((s) => (
-                  <OrphanCard key={'ni' + s} label={s}>
-                    {t.notIntroducedInDesc}
-                  </OrphanCard>
-                ))}
+                {(
+                  [
+                    ['od', orphaned.missingInDesc, t.missingInDesc],
+                    ['oc', orphaned.missingInClaims, t.missingInClaims],
+                    ['ni', orphaned.notIntroducedInDesc, t.notIntroducedInDesc],
+                  ] as const
+                ).map(([prefix, signs, msg]) =>
+                  signs.map((s) => (
+                    <OrphanCard key={prefix + s} label={s}>
+                      {msg}
+                    </OrphanCard>
+                  ))
+                )}
               </Section>
             )}
             {claimSetStats && (

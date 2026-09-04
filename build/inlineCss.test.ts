@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { inlineStylesheets } from './inlineCss.ts';
+import { inlineStylesheets, stripHtmlComments } from './inlineCss.ts';
 
 const HTML = `<!doctype html><html><head><title>x</title>
 <link rel="stylesheet" crossorigin href="/refcheck/assets/index-abc123.css">
@@ -46,5 +46,15 @@ describe('inlineStylesheets', () => {
   it('does not mistake a non-stylesheet link for one', () => {
     const icon = `<link rel="icon" href="/refcheck/assets/index-abc123.css">`;
     expect(inlineStylesheets(icon, lookup).html).toBe(icon);
+  });
+});
+
+describe('stripHtmlComments', () => {
+  it('removes comments and the blank lines they leave, keeping the doctype', () => {
+    const html =
+      '<!doctype html>\n<body>\n    <!-- for the\n         maintainer -->\n    <div id="root"></div>\n</body>';
+    expect(stripHtmlComments(html)).toBe(
+      '<!doctype html>\n<body>\n    <div id="root"></div>\n</body>'
+    );
   });
 });

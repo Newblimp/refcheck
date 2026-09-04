@@ -4,7 +4,7 @@ import type { BeeProps } from './Bee.tsx';
 
 type Loaded = FunctionComponent<BeeProps> | null;
 
-// The bee is an easter egg most users never trigger, but Bee.jsx, the flight
+// The bee is an easter egg most users never trigger, but Bee.tsx, the flight
 // model and the sprite URL all shipped on the critical path regardless. This
 // defers them to the moment a bee is actually summoned — the same treatment the
 // .docx pipeline gets, and for the same reason.

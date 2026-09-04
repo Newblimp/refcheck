@@ -177,11 +177,15 @@ describe('App (interactive)', () => {
   it('copies the reference list to the clipboard', async () => {
     const { container } = render(<App />);
     typeInto('The device 10 has a housing 12.');
-    await waitFor(() => expect(maybe(container, '.reflist-section')).toBeTruthy());
-    fireEvent.click(q(container, '.reflist-hdr')); // expand
-    fireEvent.click(q(container, '.reflist-section .restore-btn')); // copy
+    const pane = within(q(container, '.ref-pane'));
+    const header = await pane.findByRole('button', { name: /Reference list \(2\)/ });
+    // Collapsed by default; the table appears on expand.
+    expect(maybe(container, '.reflist-table')).toBeFalsy();
+    fireEvent.click(header);
+    expect(maybe(container, '.reflist-table')).toBeTruthy();
+    fireEvent.click(pane.getByText('Copy'));
     expect(navigator.clipboard.writeText).toHaveBeenCalledWith('10\tdevice\n12\thousing');
-    expect(await within(q(container, '.reflist-section')).findByText('Copied')).toBeInTheDocument();
+    expect(await pane.findByText('Copied')).toBeInTheDocument();
   });
 
   it('imports a dropped .docx into both buffers and sets the language', async () => {
@@ -668,7 +672,7 @@ describe('App (keyboard and accessibility)', () => {
     const { container } = render(<App />);
     typeInto(CONFLICT);
     await sidebar(container).findByText('12');
-    const header = q(container, '.sec-lbl-toggle');
+    const header = q(container, '.ov-pane .sec-lbl');
     expect(header).toHaveAttribute('aria-expanded', 'true');
     fireEvent.click(header);
     await waitFor(() => expect(header).toHaveAttribute('aria-expanded', 'false'));

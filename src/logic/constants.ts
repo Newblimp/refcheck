@@ -17,180 +17,35 @@ export type ArticleType = 'def' | 'indef';
 
 // ── CONSTANTS ──────────────────────────────────────────────────────────────
 // Words that, when they precede a number, should NOT be treated as the term for
-// that reference sign (articles, prepositions, cross-reference words, etc.).
-export const EXCL = new Set([
-  'figure',
-  'figures',
-  'fig',
-  'figs',
-  'claim',
-  'claims',
-  'paragraph',
-  'page',
-  'table',
-  'equation',
-  'reference',
-  'numeral',
-  'number',
-  'no',
-  'nr',
-  'see',
-  'note',
-  'wherein',
-  'whereby',
-  'comprising',
-  'having',
-  'including',
-  'being',
-  'said',
-  'respective',
-  'at',
-  'in',
-  'of',
-  'on',
-  'to',
-  'by',
-  'as',
-  'an',
-  'a',
-  'the',
-  'with',
-  'from',
-  'via',
-  'and',
-  'or',
-  'is',
-  'are',
-  'was',
-  'were',
-  'be',
-  'been',
-  'has',
-  'have',
-  'had',
-  'that',
-  'this',
-  'these',
-  'those',
-  'such',
-  'each',
-  'least',
-  'more',
-  'less',
-  'than',
-  'about',
-  'approximately',
-  'around',
-  'roughly',
-  'substantially',
-  'maximal',
-  'minimal',
-  'maximum',
-  'minimum',
-  'between',
-  'through',
-  'into',
-  'according',
-  'further',
-  'also',
-  'only',
-  'any',
-  'all',
-  'both',
-  // German. Words German shares with English ("in", "an", "maximal", "minimal")
-  // are already listed above — this is one Set, so a second copy is inert.
-  'figur',
-  'figuren',
-  'abbildung',
-  'abbildungen',
-  'abb',
-  'anspruch',
-  'ansprüche',
-  'ansprüchen',
-  'anspruchs',
-  'anspruches',
-  'seite',
-  'schritt',
-  'tabelle',
-  'bezugszeichen',
-  'ziffer',
-  'wobei',
-  'umfassend',
-  'aufweisend',
-  'gemäß',
-  'bei',
-  'nach',
-  'vor',
-  'über',
-  'unter',
-  'durch',
-  'für',
-  'von',
-  'mit',
-  'zu',
-  'am',
-  'bis',
-  'um',
-  'ca',
-  'circa',
-  'etwa',
-  'ungefähr',
-  'wesentlichen',
-  'im',
-  'der',
-  'die',
-  'das',
-  'dem',
-  'den',
-  'des',
-  'ein',
-  'eine',
-  'einen',
-  'einem',
-  'eines',
-  'einer',
-  'und',
-  'oder',
-  'ist',
-  'sind',
-  'war',
-  'waren',
-  'hat',
-  'haben',
-  'sich',
-  'auch',
-  'nur',
-  'noch',
-  'bereits',
-  'dabei',
-  'hierbei',
-  'hierdurch',
-  'hierzu',
-  'bzw',
-  'beziehungsweise',
-  'usw',
-  'jeweils',
-  'jeweilige',
-  'jeweiligen',
-  'jeweiliger',
-  'jeweiliges',
-]);
+// that reference sign (articles, prepositions, cross-reference words, etc.), EN
+// then DE. Words the two share ("in", "an", "maximal") are listed once.
+/** Split a whitespace-separated word list — the vocabulary tables below. */
+const words = (list: string): string[] => list.trim().split(/\s+/);
 
+export const EXCL = new Set(
+  words(`
+    figure figures fig figs claim claims paragraph page table equation reference
+    numeral number no nr see note wherein whereby comprising having including being
+    said respective at in of on to by as an a the with from via and or is are was
+    were be been has have had that this these those such each least more less than
+    about approximately around roughly substantially maximal minimal maximum minimum
+    between through into according further also only any all both
+    figur figuren abbildung abbildungen abb anspruch ansprüche ansprüchen anspruchs
+    anspruches seite schritt tabelle bezugszeichen ziffer wobei umfassend aufweisend
+    gemäß bei nach vor über unter durch für von mit zu am bis um ca circa etwa
+    ungefähr wesentlichen im der die das dem den des ein eine einen einem eines einer
+    und oder ist sind war waren hat haben sich auch nur noch bereits dabei hierbei
+    hierdurch hierzu bzw beziehungsweise usw jeweils jeweilige jeweiligen jeweiliger
+    jeweiliges
+  `)
+);
+
+const DE_DEF = ['der', 'die', 'das', 'des', 'dem', 'den'];
+const DE_INDEF = ['ein', 'eine', 'eines', 'einer', 'einem', 'einen'];
 export const EN_ART = new Set(['a', 'an', 'the']);
-export const DE_ART = new Set([
-  'der',
-  'die',
-  'das',
-  'des',
-  'dem',
-  'den',
-  'ein',
-  'eine',
-  'eines',
-  'einer',
-  'einem',
-  'einen',
-]);
+export const DE_ART = new Set([...DE_DEF, ...DE_INDEF]);
+// Indefinite articles, EN + DE — the article check's def/indef split.
+const INDEF_ARTS = new Set(['a', 'an', ...DE_INDEF]);
 // ── DISTINGUISHING MODIFIERS ─────────────────────────────────────────────────
 // The words that may stand between the article and the base noun to tell
 // siblings apart: numberings ("first" / "erste") and qualifiers ("upper" /
@@ -225,72 +80,20 @@ const DE_ADJ_ENDINGS = ['e', 'en', 'er', 'es', 'em'];
 const decline = (stems: string[]) => stems.flatMap((st) => DE_ADJ_ENDINGS.map((e) => st + e));
 
 /** Numberings: erste … zwölfte (the bare cardinal "acht" is not one). */
-const DE_NUM_STEMS = [
-  'erst',
-  'zweit',
-  'dritt',
-  'viert',
-  'fünft',
-  'sechst',
-  'siebt',
-  'siebent',
-  'acht',
-  'neunt',
-  'zehnt',
-  'elft',
-  'zwölft',
-];
+const DE_NUM_STEMS = words(
+  'erst zweit dritt viert fünft sechst siebt siebent acht neunt zehnt elft zwölft'
+);
 /** Qualifiers: position, rank and "another one of the same". */
-const DE_QUAL_STEMS = [
-  'weiter',
-  'zusätzlich',
-  'primär',
-  'sekundär',
-  'ober',
-  'unter',
-  'inner',
-  'äußer',
-  'vorder',
-  'hinter',
-  'link',
-  'recht',
-  'ander',
-];
-const EN_NUM = [
-  'first',
-  'second',
-  'third',
-  'fourth',
-  'fifth',
-  'sixth',
-  'seventh',
-  'eighth',
-  'ninth',
-  'tenth',
-  'eleventh',
-  'twelfth',
-];
-const EN_QUAL = [
-  'further',
-  'other',
-  'another',
-  'next',
-  'upper',
-  'lower',
-  'inner',
-  'outer',
-  'front',
-  'rear',
-  'left',
-  'right',
-  'top',
-  'bottom',
-  'primary',
-  'secondary',
-  'main',
-  'auxiliary',
-  'additional',
-];
+const DE_QUAL_STEMS = words(
+  'weiter zusätzlich primär sekundär ober unter inner äußer vorder hinter link recht ander'
+);
+const EN_NUM = words(
+  'first second third fourth fifth sixth seventh eighth ninth tenth eleventh twelfth'
+);
+const EN_QUAL = words(`
+  further other another next upper lower inner outer front rear left right top bottom
+  primary secondary main auxiliary additional
+`);
 export const EN_ORD = new Set([...EN_NUM, ...EN_QUAL]);
 export const DE_ORD = new Set([...decline(DE_NUM_STEMS), ...decline(DE_QUAL_STEMS)]);
 
@@ -298,9 +101,6 @@ export const isArt = (w: string, l: Lang) => (l === 'de' ? DE_ART : EN_ART).has(
 /** Is this word a distinguishing modifier — a numbering or a qualifier? */
 export const isOrd = (w: string, l: Lang) => (l === 'de' ? DE_ORD : EN_ORD).has(w.toLowerCase());
 
-// Indefinite articles, EN + DE. A module-level Set: artType runs once per
-// article occurrence, and the array literal was rebuilt on every call.
-const INDEF_ARTS = new Set(['a', 'an', 'ein', 'eine', 'einer', 'eines', 'einem', 'einen']);
 export const artType = (w: string): ArticleType =>
   INDEF_ARTS.has(w.toLowerCase()) ? 'indef' : 'def';
 export const likelySign = (s: string) => {
@@ -310,8 +110,8 @@ export const likelySign = (s: string) => {
 
 // ── LIST / RANGE CONNECTORS ──────────────────────────────────────────────────
 // The words and dashes that join two numbers into a list or range, EN + DE.
-// Shared by the sign-list scan (extract.js: "the bearings 18, 20 and 22") and the
-// claim-reference parser (claims.js: "any one of claims 1 to 4"). These were two
+// Shared by the sign-list scan (extract.ts: "the bearings 18, 20 and 22") and the
+// claim-reference parser (claims.ts: "any one of claims 1 to 4"). These were two
 // separate literals that had drifted apart — the sign scan was missing
 // "or"/"oder"/"through", so "the bearings 18 or 22" registered only the first.
 export const CONNECTOR_WORDS = ['and', 'und', 'or', 'oder', 'to', 'through', 'bis'];

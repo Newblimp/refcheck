@@ -3,7 +3,7 @@
 // German signal, and it is far more reliable than counting words. Stopword
 // scoring only runs when no heading matched at all.
 //
-// The German word list is reused from constants.js rather than duplicated — one
+// The German word list is reused from constants.ts rather than duplicated — one
 // place to extend when another language is added.
 
 import { DE_ART, EXCL } from './constants.ts';

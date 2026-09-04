@@ -1,4 +1,5 @@
-// Build-time inlining of the app's stylesheet into index.html.
+// Build-time shaping of index.html: the stylesheet is inlined and HTML comments
+// are stripped (see stripHtmlComments).
 //
 // Why: the stylesheet is render-blocking and was a separate request, so the
 // static shell in index.html could not paint until a second round trip had
@@ -16,6 +17,17 @@
 // plugins therefore have an ordering requirement (see swPrecachePlugin's note).
 
 import type { Plugin, ResolvedConfig, Rollup } from 'vite';
+
+/**
+ * Drop HTML comments and the blank lines they leave behind.
+ *
+ * Vite ships index.html's comments verbatim, and index.html is the one file on
+ * the critical path that is not minified — so a paragraph written for the next
+ * maintainer was ~0.5 KB gzipped on every first visit. Comments in the source
+ * stay; none of them reach the wire.
+ */
+export const stripHtmlComments = (html: string): string =>
+  html.replace(/<!--[\s\S]*?-->/g, '').replace(/^[ \t]*\n/gm, '');
 
 /** Matches the <link rel="stylesheet"> Vite injects for the bundled CSS. */
 const LINK_RE = /<link[^>]+rel="stylesheet"[^>]*>/g;
@@ -81,7 +93,7 @@ export function inlineCssPlugin(): Plugin {
         return asset.source;
       });
 
-      html.source = rewritten;
+      html.source = stripHtmlComments(rewritten);
       for (const href of inlined) {
         const key = href.startsWith(prefix) ? href.slice(prefix.length) : href.replace(/^\//, '');
         delete bundle[key];

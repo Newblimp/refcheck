@@ -11,7 +11,7 @@ import { OrphanCard } from './OrphanCard.tsx';
 //
 // The list is not only compared against the text: the multi-word terms it
 // spells out ("30 control unit") are matched in the text and applied there
-// automatically (see logic/listTerms.js). That is silent work on the drafter's
+// automatically (see logic/listTerms.ts). That is silent work on the drafter's
 // text, so the panel says what it did — and the note is information, not a
 // finding, so it borrows the claim-set panel's ⓘ rather than a warning.
 const MW_SHOWN = 6;

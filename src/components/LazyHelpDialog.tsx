@@ -17,7 +17,7 @@ type Loaded = FunctionComponent<HelpDialogProps> | null;
 //     derives from the emitted bundle, so the help screen still opens offline.
 //
 // Unlike the bee, this one is a response to a click, so it also imports on
-// hover/focus of the button — see App.jsx. By the time the click lands the
+// hover/focus of the button — see App.tsx. By the time the click lands the
 // chunk is usually already there, and after the first visit it is served from
 // the precache either way.
 

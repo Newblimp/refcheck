@@ -111,7 +111,7 @@ export function useEditorSync({ html, text }: { html: string; text: string }) {
   // position, so the text bounced while the highlights sat pinned to the edge.
   // styles.css turns the rubber-band off, and the overshoot the geometry still
   // reports (iOS Safari puts it in scrollTop) is applied as a translation,
-  // which the backdrop's scrollTop cannot express. See logic/scrollSync.js.
+  // which the backdrop's scrollTop cannot express. See logic/scrollSync.ts.
   // Whether the editor has ever scrolled. Every path into syncScroll implies it
   // has: the textarea's own onScroll event, scrollTo (which just moved it), and
   // the effect below, which is gated on this flag. See the effect for why the
@@ -161,11 +161,7 @@ export function useEditorSync({ html, text }: { html: string; text: string }) {
     hoverPending.current = true;
     const x = e.clientX,
       y = e.clientY;
-    const raf =
-      typeof requestAnimationFrame === 'function'
-        ? requestAnimationFrame
-        : (cb: FrameRequestCallback) => setTimeout(() => cb(performance.now()), 16);
-    raf(() => {
+    requestAnimationFrame(() => {
       hoverPending.current = false;
       const ta = taRef.current;
       if (!ta) return;

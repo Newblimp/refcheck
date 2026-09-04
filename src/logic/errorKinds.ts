@@ -6,15 +6,8 @@ import type { PlainStringKey, Strings } from '../i18n.ts';
 // ── ERROR KINDS ──────────────────────────────────────────────────────────────
 //
 // One row per error category, and the single place that knows a category
-// exists. Before this table the four categories were hand-written parallel code
-// in nine files: extract.js produced them, errorSpans.js visited them,
-// buildHtml.js named their highlight class, App.jsx filtered/dismissed/counted
-// them, Sidebar.jsx rendered them, four near-identical card components displayed
-// them, i18n.js labelled them and styles.css coloured them. Adding a fifth meant
-// finding all nine.
-//
-// errorSpans.js already unified the two *logic* consumers (buildHtml and
-// getAllErrors). This finishes the job on the UI side.
+// exists: extract.ts produces the records, and errorSpans, buildHtml, App,
+// Sidebar, StatusBar and ErrorCard all pick a category up by looping this table.
 //
 // The rows carry UI data (a glyph, a colour token name, i18n KEYS) as well as
 // logic. That is deliberate: they are plain strings and pure functions, so this
@@ -25,14 +18,14 @@ import type { PlainStringKey, Strings } from '../i18n.ts';
 //
 // ── What must NOT be "simplified" ────────────────────────────────────────────
 //
-// 1. The dismissal prefixes stay literal in `disKey` (constants.js) and are
+// 1. The dismissal prefixes stay literal in `disKey` (constants.ts) and are
 //    referenced here by name. They are a STORAGE FORMAT: 's:' 'a:' 'b:' 'n:'
 //    'd:' sit in users' localStorage under `rsc_dis`. They happen to be first
 //    letters, so deriving them from `id` would work today and silently discard
 //    every stored dismissal the first time a category is added whose initial
 //    collides with an existing one.
 // 2. `navProp` is the property name getAllErrors carries the raw record under
-//    ('ae', 'bt', 'ne', 'de'). App.jsx and the tests read those by name.
+//    ('ae', 'bt', 'ne', 'de'). The tests read those by name.
 // 3. Only these four kinds live here. Signs are NOT a row: they carry a
 //    severity, several occurrences, a term-conflict story and their own card, so
 //    every consumer special-cases them anyway. Forcing them into the table would
@@ -230,7 +223,7 @@ export const ERROR_KINDS = ROWS as unknown as readonly ErrorKind<ErrorRecord>[];
  * Rows by id, for the consumers that hold an id rather than a row.
  *
  * Total over ErrorKindId by construction — the table has exactly one row per id,
- * which errorKinds.test.js asserts — so consumers do not have to null-check a
+ * which errorKinds.test.ts asserts — so consumers do not have to null-check a
  * lookup that cannot miss.
  */
 export const KIND_BY_ID = Object.fromEntries(ERROR_KINDS.map((k) => [k.id, k])) as Record<
@@ -271,12 +264,4 @@ export function sameFocus(a: Focus | null, b: Focus | null): boolean {
   if (a.type === 'sign' || b.type === 'sign')
     return a.type === 'sign' && b.type === 'sign' && a.key === b.key && a.term === b.term;
   return a.type === b.type && a.key === b.key;
-}
-
-/** The records of one kind in an extraction result (never undefined). */
-export function kindItems<T extends ErrorRecord>(
-  res: ExtractResult | null | undefined,
-  kind: ErrorKind<T>
-): T[] {
-  return res ? kind.items(res) : [];
 }
