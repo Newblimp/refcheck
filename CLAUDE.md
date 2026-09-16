@@ -478,11 +478,24 @@ is reported.
   stacks; six `.woff2` files were 54% of the critical path. The two are not interchangeable:
   the textarea and the backdrop must share `--font-mono` or highlights slide off the text
 - Themes: light / dark / system (`rsc_theme`, applied to `<html data-theme>`; the inline
-  script in `index.html` sets it before the app mounts). **Both palettes clear WCAG AA on
-  every surface** (`palette.test.ts` also pins `text > text-muted > text-dim`, `--on-accent`
-  on `--accent`, and scans the stylesheet: no partial `opacity` on text, no literal colours)
-- `--info` marks informational content (claim-set panel, list note); `--find` is a hue no
-  error category uses
+  script in `index.html` sets it before the app mounts). **Both are monochrome**: black on
+  white, white on black, a grey for the muted tiers and low-alpha ink for fills. Nothing
+  carries a hue. **Both palettes clear WCAG AA on every surface** (`palette.test.ts` also
+  pins `text > text-muted > text-dim`, `--on-accent` on `--accent`, and scans the stylesheet:
+  no partial `opacity` on text, no literal colours)
+- **Brutalist chrome**: every edge is `--line` (2px) solid ink, no radii, no transitions, no
+  blurred shadows — what stands off the page takes a hard offset shadow (`3px 3px 0`).
+  Labels, buttons and headers are uppercase `--font-mono`; running text stays `--font-ui`
+- **Error categories are told apart by mark shape, not colour** (the category tokens all
+  resolve to the ink colour, but stay separate tokens because `ERROR_KINDS` and
+  `errorKinds.test.ts` read them by name): sign conflict = tint + solid rule, its terms =
+  dashed hairline, article = double rule, missing sign = wavy, claim number = box, claim
+  dependency = dotted rule, dismissed = dotted hairline in dim ink, find = dashed box with a
+  ring + heavy rule on the current match, focus = ring, hover = thin ring. **No mark may be
+  a filled block of ink**: the textarea draws its own text in `--text` over the backdrop,
+  so an inverted mark is ink on ink and the word vanishes (the marks' `color` never shows)
+- `--info` marks informational content (claim-set panel, list note); `--find` is a mark
+  shape no error category uses
 - Section headers (`.sec-lbl`) are real buttons reset to read as uppercase labels; the
   `Section` component is the one implementation for both panes
 
@@ -571,9 +584,9 @@ tokenize() ─▶ extractData(text, lang, mwo, autoMW, isClaims, listTermIndex()
 
 ## Payload
 
-`npm run budget` (CI, after the build) measures gzipped transfer: **critical path 41.8 KB /
-50 KB** (index.html with inline CSS 5.6, entry chunk 29.4, vendor 7.5), **whole precached
-shell 60.0 KB / 70 KB**. Ceilings, not targets.
+`npm run budget` (CI, after the build) measures gzipped transfer: **critical path 41.5 KB /
+50 KB** (index.html with inline CSS 5.3, entry chunk 29.4, vendor 7.5), **whole precached
+shell 59.8 KB / 70 KB**. Ceilings, not targets.
 
 What moves the critical path and what does not — all measured, do not re-spend the effort:
 
@@ -619,7 +632,7 @@ Native ES modules: run through the dev/preview server, not from disk.
 
 ## Testing
 
-`npm test` runs **818 tests** in ~13 s. Logic tests run under `node`; only `*.ui.test.tsx`
+`npm test` runs **820 tests** in ~13 s. Logic tests run under `node`; only `*.ui.test.tsx`
 runs under `jsdom` (`environmentMatchGlobs` in `vite.config.ts`; `src/test/setup.ts` adds
 jest-dom and `matchMedia`/`clipboard` stubs). `build/` is included, so the plugins are
 tested too.

@@ -14,9 +14,10 @@
    The two stacks are NOT interchangeable. --font-mono backs the editor, where
    the textarea and the highlight backdrop are two separately laid-out layers
    that must agree character for character: a proportional face there desyncs
-   the highlights from the text under them. --font-ui backs everything else and
-   is deliberately proportional, so nothing that was proportional becomes
-   monospace by inheriting the wrong variable.
+   the highlights from the text under them. --font-ui backs running text and
+   is deliberately proportional. Labels, buttons and headers use --font-mono
+   too — that is a look, not a layout requirement, and any of them may go back
+   to --font-ui without consequence. The editor may not.
 
    Each stack is ordered most-native-first and ends in the generic keyword, so
    every platform lands on the face it draws UI/code with rather than on a
@@ -30,94 +31,107 @@
   --font-mono:
     ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono', 'Courier New',
     monospace;
+  /* The one line weight. Every structural edge (bars, pane borders, cards,
+     buttons, inputs) is this thick; only table rows and the finest marks are
+     1px. */
+  --line: 2px;
 }
-/* DARK THEME — Gruvbox Dark */
+/* MONOCHROME PALETTE. Both themes are ink on paper, or paper on ink: one text
+   colour, one background, and a fill made of the text colour at low alpha.
+   Nothing carries a hue. The error categories are still separate tokens
+   (ERROR_KINDS and the cards read them by name, and errorKinds.test.ts counts
+   them per theme) but every one of them resolves to the ink colour: in the
+   editor a category is told apart by the SHAPE of its mark — solid, double,
+   wavy, dotted, boxed — not by colour, and in the panes by its glyph and its
+   label. That is deliberate: a category that only differed by hue would be
+   invisible to a colour-blind reader anyway.
+
+   DARK THEME — white on black */
 :root[data-theme='dark'] {
-  --bg: #282828;
-  --surface: #32302f;
-  --surface2: #3c3836;
-  --border: #504945;
-  --border2: #665c54;
-  --text: #f4e8cd;
-  --text-muted: #c6b89f;
-  --text-dim: #ada197;
-  --accent: #f59b4a;
-  /* Text drawn ON --accent, which is a fill rather than a surface: white over
-     this orange is 2.17:1. The token matrix below cannot derive this pair, so
-     palette.test.js checks it explicitly. */
-  --on-accent: #282828;
-  --accent-glow: rgba(245, 155, 74, 0.15);
-  --warn: #fabd2f;
-  --warn-bg: rgba(250, 189, 47, 0.13);
-  --warn-u: rgba(250, 189, 47, 0.75);
-  --art: #9ecb8b;
-  --art-bg: rgba(158, 203, 139, 0.12);
-  --art-u: rgba(158, 203, 139, 0.75);
-  --ok: #c3c637;
-  --ok-bg: rgba(195, 198, 55, 0.1);
-  --warn-border: rgba(250, 189, 47, 0.5);
-  --ok-border: rgba(195, 198, 55, 0.4);
-  --warn-wt-bg: rgba(250, 189, 47, 0.07);
-  --warn-wt: rgba(250, 189, 47, 0.85);
-  --warn-wt-bd: rgba(250, 189, 47, 0.5);
-  --bare: #fd8271;
-  --bare-bg: rgba(253, 130, 113, 0.13);
-  --bare-u: rgba(253, 130, 113, 0.75);
-  --num: #93b3a7;
-  --num-bg: rgba(147, 179, 167, 0.14);
-  --num-u: rgba(147, 179, 167, 0.75);
-  --dep: #dd97a9;
-  --dep-bg: rgba(221, 151, 169, 0.14);
-  --dep-u: rgba(221, 151, 169, 0.75);
+  --bg: #000000;
+  --surface: #000000;
+  --surface2: #1c1c1c;
+  --border: #ffffff;
+  --border2: #ffffff;
+  --text: #ffffff;
+  --text-muted: #d4d4d4;
+  --text-dim: #a1a1a1;
+  --accent: #ffffff;
+  /* Text drawn ON --accent, which is a fill rather than a surface. The token
+     matrix in palette.test.ts cannot derive this pair, so it checks it
+     explicitly. */
+  --on-accent: #000000;
+  --accent-glow: rgba(255, 255, 255, 0.12);
+  --warn: #ffffff;
+  --warn-bg: rgba(255, 255, 255, 0.16);
+  --warn-u: #ffffff;
+  --art: #ffffff;
+  --art-bg: rgba(255, 255, 255, 0.08);
+  --art-u: #ffffff;
+  --ok: #ffffff;
+  --ok-bg: rgba(255, 255, 255, 0);
+  --warn-border: #ffffff;
+  --ok-border: #ffffff;
+  --warn-wt-bg: rgba(255, 255, 255, 0);
+  --warn-wt: #d4d4d4;
+  --warn-wt-bd: #ffffff;
+  --bare: #ffffff;
+  --bare-bg: rgba(255, 255, 255, 0.08);
+  --bare-u: #ffffff;
+  --num: #ffffff;
+  --num-bg: rgba(255, 255, 255, 0.08);
+  --num-u: #ffffff;
+  --dep: #ffffff;
+  --dep-bg: rgba(255, 255, 255, 0.08);
+  --dep-u: #ffffff;
   /* Informational, not a problem: the claim-set panel. */
-  --info: #8fbfe0;
-  /* Ctrl+F matches. Deliberately a hue no error category uses — a search hit is
-     not a finding, and the two must not be read for each other. --on-accent is
-     the text on the filled current match (7.09:1); palette.test.js checks it. */
-  --find: #c3a6f5;
-  --find-bg: rgba(195, 166, 245, 0.16);
-  --find-u: rgba(195, 166, 245, 0.7);
+  --info: #ffffff;
+  /* Ctrl+F matches. A search hit is not a finding, so its mark is the one
+     shape no error category uses — a dashed box. */
+  --find: #ffffff;
+  --find-bg: rgba(255, 255, 255, 0.16);
+  --find-u: #ffffff;
 }
-/* LIGHT THEME — high contrast */
+/* LIGHT THEME — black on white */
 :root[data-theme='light'] {
-  --bg: #f9f7f5;
-  --surface: #edeae5;
-  --surface2: #e0ddd7;
-  --border: #c4bfb8;
-  --border2: #a8a49c;
-  --text: #17130f;
-  --text-muted: #332f2b;
-  --text-dim: #5e5854;
-  --accent: #8f4d03;
+  --bg: #ffffff;
+  --surface: #ffffff;
+  --surface2: #ececec;
+  --border: #000000;
+  --border2: #000000;
+  --text: #000000;
+  --text-muted: #2b2b2b;
+  --text-dim: #5c5c5c;
+  --accent: #000000;
   --on-accent: #ffffff;
-  --accent-glow: rgba(143, 77, 3, 0.15);
-  --warn: #8a3c0c;
-  --warn-bg: rgba(138, 60, 12, 0.13);
-  --warn-u: #8a3c0c;
-  --art: #145c2f;
-  --art-bg: rgba(20, 92, 47, 0.13);
-  --art-u: #145c2f;
-  --ok: #3a5a10;
-  --ok-bg: rgba(58, 90, 16, 0.11);
-  --warn-border: rgba(138, 60, 12, 0.45);
-  --ok-border: rgba(58, 90, 16, 0.4);
-  --warn-wt-bg: rgba(138, 60, 12, 0.08);
-  --warn-wt: rgba(138, 60, 12, 0.9);
-  --warn-wt-bd: rgba(146, 64, 14, 0.5);
-  --bare: #991b1b;
-  --bare-bg: rgba(153, 27, 27, 0.11);
-  --bare-u: #991b1b;
-  --num: #1e5e6e;
-  --num-bg: rgba(30, 94, 110, 0.12);
-  --num-u: #1e5e6e;
-  --dep: #9d2450;
-  --dep-bg: rgba(157, 36, 80, 0.11);
-  --dep-u: #9d2450;
+  --accent-glow: rgba(0, 0, 0, 0.08);
+  --warn: #000000;
+  --warn-bg: rgba(0, 0, 0, 0.14);
+  --warn-u: #000000;
+  --art: #000000;
+  --art-bg: rgba(0, 0, 0, 0.06);
+  --art-u: #000000;
+  --ok: #000000;
+  --ok-bg: rgba(0, 0, 0, 0);
+  --warn-border: #000000;
+  --ok-border: #000000;
+  --warn-wt-bg: rgba(0, 0, 0, 0);
+  --warn-wt: #2b2b2b;
+  --warn-wt-bd: #000000;
+  --bare: #000000;
+  --bare-bg: rgba(0, 0, 0, 0.06);
+  --bare-u: #000000;
+  --num: #000000;
+  --num-bg: rgba(0, 0, 0, 0.06);
+  --num-u: #000000;
+  --dep: #000000;
+  --dep-bg: rgba(0, 0, 0, 0.06);
+  --dep-u: #000000;
   /* Informational, not a problem: the claim-set panel. */
-  --info: #1d5878;
-  --find: #5b3fb0;
-  --find-bg: rgba(91, 63, 176, 0.13);
-  --find-u: #5b3fb0;
+  --info: #000000;
+  --find: #000000;
+  --find-bg: rgba(0, 0, 0, 0.14);
+  --find-u: #000000;
 }
 html,
 body,
@@ -134,16 +148,42 @@ body,
   flex-direction: column;
   overflow: hidden;
 }
+/* Every control is a hard-edged box. No radii anywhere, no soft shadows, no
+   transitions — where something needs to stand off the page it takes a solid
+   offset shadow in the ink colour. */
+button,
+input,
+textarea {
+  border-radius: 0;
+}
+/* The small uppercase monospace label that every bar, header, tab and button
+   is set in. */
+.topbar button,
+.file-btn,
+.pane-title,
+.sec-lbl,
+.pane-tabs button,
+.reflist-table th,
+.stat-l,
+.ctx-lbl,
+.help-sub,
+.restore-btn,
+.reset-btn,
+.ra-btn {
+  font-family: var(--font-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
 
 /* TOP BAR */
 .topbar {
   display: flex;
   align-items: center;
-  gap: 14px;
-  padding: 9px 18px;
+  gap: 12px;
+  padding: 8px 16px;
   min-height: 52px;
   background: var(--surface);
-  border-bottom: 1px solid var(--border);
+  border-bottom: var(--line) solid var(--border);
   flex-shrink: 0;
   flex-wrap: wrap;
 }
@@ -151,78 +191,78 @@ body,
   display: flex;
   align-items: center;
   gap: 9px;
-  font-weight: 700;
+  font-family: var(--font-mono);
+  font-weight: 800;
   font-size: 15px;
-  letter-spacing: -0.3px;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
 }
 .logo em {
-  color: var(--accent);
+  color: var(--text);
   font-style: normal;
+  font-weight: 400;
 }
 .spacer {
   flex: 1;
 }
 /* One container shape behind all three segmented toggles (mode, language,
-   theme). They were three byte-identical rules; only the buttons inside them
-   differ, and those rules stay separate below. */
+   theme): a box with a rule between each cell, the active cell inverted. */
 .pill-toggle,
 .lang-toggle,
 .theme-toggle {
   display: flex;
   background: var(--bg);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 3px;
-  gap: 2px;
+  border: var(--line) solid var(--border);
 }
 .pill-toggle button,
 .lang-toggle button,
 .theme-toggle button {
   background: none;
   border: none;
+  border-right: var(--line) solid var(--border);
   cursor: pointer;
-  font-family: var(--font-ui);
   color: var(--text-muted);
-  border-radius: 6px;
-  transition: all 0.15s;
+}
+.pill-toggle button:last-child,
+.lang-toggle button:last-child,
+.theme-toggle button:last-child {
+  border-right: none;
 }
 .pill-toggle button {
-  font-size: 12.5px;
-  font-weight: 500;
-  padding: 5px 13px;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 6px 12px;
   white-space: nowrap;
 }
 .pill-toggle button.active,
-.theme-toggle button.active {
-  background: var(--surface2);
-  color: var(--text);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+.theme-toggle button.active,
+.lang-toggle button.active {
+  background: var(--accent);
+  color: var(--on-accent);
 }
 .pill-toggle button:hover:not(.active),
-.theme-toggle button:hover:not(.active) {
+.theme-toggle button:hover:not(.active),
+.lang-toggle button:hover:not(.active) {
   color: var(--text);
+  background: var(--surface2);
 }
 /* Keeps the language toggle and the help button as one flex item in .topbar,
    so a wrap moves the pair together instead of splitting them across lines. */
 .lang-help {
   display: flex;
   align-items: center;
-  gap: 14px;
+  gap: 12px;
 }
 .lang-toggle button {
-  font-size: 12px;
-  font-weight: 600;
-  padding: 5px 10px;
-}
-.lang-toggle button.active {
-  background: var(--accent);
-  color: var(--on-accent);
+  font-size: 11px;
+  font-weight: 700;
+  padding: 6px 10px;
 }
 .theme-toggle button {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 6px;
+  padding: 6px 7px;
   line-height: 0;
 }
 
@@ -232,21 +272,18 @@ body,
   gap: 6px;
 }
 .file-btn {
-  font-family: var(--font-ui);
-  font-size: 12px;
-  font-weight: 500;
+  font-size: 11px;
+  font-weight: 700;
   background: var(--bg);
-  border: 1px solid var(--border);
-  border-radius: 7px;
-  color: var(--text-muted);
+  border: var(--line) solid var(--border);
+  color: var(--text);
   cursor: pointer;
   padding: 6px 11px;
-  transition: all 0.15s;
   white-space: nowrap;
 }
 .file-btn:hover {
-  border-color: var(--accent);
-  color: var(--accent);
+  background: var(--accent);
+  color: var(--on-accent);
 }
 
 /* Drop affordance. pointer-events:none is essential — the editor hit-tests with
@@ -258,8 +295,7 @@ body,
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(0, 0, 0, 0.45);
-  backdrop-filter: blur(2px);
+  background: rgba(0, 0, 0, 0.6);
   pointer-events: none;
 }
 .drop-card {
@@ -268,15 +304,16 @@ body,
   align-items: center;
   gap: 10px;
   padding: 34px 46px;
-  border-radius: 14px;
-  border: 2px dashed var(--accent);
+  border: 3px dashed var(--border);
   background: var(--surface);
   color: var(--text-muted);
   text-align: center;
-  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.4);
+  box-shadow: 8px 8px 0 var(--text);
 }
 .drop-card strong {
+  font-family: var(--font-mono);
   font-size: 15px;
+  text-transform: uppercase;
   color: var(--text);
 }
 .drop-card span {
@@ -285,7 +322,7 @@ body,
   line-height: 1.5;
 }
 .drop-card svg {
-  color: var(--accent);
+  color: var(--text);
 }
 
 .imp-banner {
@@ -296,23 +333,28 @@ body,
   padding: 8px 16px;
   font-size: 12px;
   background: var(--surface);
-  border-bottom: 1px solid var(--border);
+  border-bottom: var(--line) solid var(--border);
   color: var(--text-muted);
   flex-shrink: 0;
 }
 .imp-banner strong {
   color: var(--text);
-  font-weight: 600;
+  font-weight: 700;
 }
+/* A thick ink bar for a successful import; a problem inverts the bar's edge
+   into a dashed one and tints the banner, since the colour alone can no
+   longer say anything. */
 .imp-ok {
-  border-left: 3px solid var(--ok);
+  border-left: 8px solid var(--ok);
 }
 .imp-warn,
 .imp-error {
-  border-left: 3px solid var(--warn);
+  border-left: 8px double var(--warn);
+  background: var(--surface2);
 }
 .imp-error strong {
   color: var(--warn);
+  text-decoration: underline;
 }
 .imp-main {
   display: flex;
@@ -325,7 +367,7 @@ body,
 }
 .imp-lang {
   font-family: var(--font-mono);
-  font-weight: 600;
+  font-weight: 700;
   color: var(--accent);
 }
 .imp-warnings {
@@ -348,17 +390,16 @@ body,
   font-size: 16px;
   line-height: 1;
   padding: 2px 6px;
-  border-radius: 4px;
 }
 .imp-x:hover,
 .pane-collapse:hover {
-  color: var(--text);
-  background: var(--surface2);
+  color: var(--on-accent);
+  background: var(--accent);
 }
 
 /* BEE (easter egg). pointer-events:none throughout — the bee must never swallow
    a click or disturb the editor's elementFromPoint hover hit-testing, so hover
-   is detected geometrically in Bee.jsx instead. */
+   is detected geometrically in Bee.tsx instead. */
 .bee-wrap {
   position: fixed;
   top: 0;
@@ -384,13 +425,12 @@ body,
   white-space: nowrap;
   background: var(--surface);
   color: var(--text);
-  border: 1px solid var(--border2);
-  border-radius: 9px;
+  border: var(--line) solid var(--border);
   padding: 5px 10px;
   font-size: 11.5px;
-  font-weight: 600;
-  font-family: var(--font-ui);
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
+  font-weight: 700;
+  font-family: var(--font-mono);
+  box-shadow: 3px 3px 0 var(--text);
   opacity: 0;
   transition:
     opacity 0.13s,
@@ -408,7 +448,7 @@ body,
   left: 50%;
   margin-left: -5px;
   border: 5px solid transparent;
-  border-top-color: var(--border2);
+  border-top-color: var(--border);
 }
 
 /* LAYOUT */
@@ -440,7 +480,7 @@ body,
   background: var(--surface);
 }
 .ref-pane {
-  border-right: 1px solid var(--border);
+  border-right: var(--line) solid var(--border);
 }
 .ref-scroll,
 .ov-scroll {
@@ -448,14 +488,14 @@ body,
   overflow-y: auto;
   padding: 8px;
 }
-/* Every scroll container draws the same thin scrollbar; only the width differs. */
+/* Every scroll container draws the same square scrollbar; only the width differs. */
 .ref-scroll::-webkit-scrollbar,
 .ov-scroll::-webkit-scrollbar {
-  width: 5px;
+  width: 6px;
 }
 .editor-ta::-webkit-scrollbar,
 .backdrop::-webkit-scrollbar {
-  width: 6px;
+  width: 8px;
 }
 .ref-scroll::-webkit-scrollbar-track,
 .ov-scroll::-webkit-scrollbar-track,
@@ -467,8 +507,7 @@ body,
 .ov-scroll::-webkit-scrollbar-thumb,
 .editor-ta::-webkit-scrollbar-thumb,
 .backdrop::-webkit-scrollbar-thumb {
-  background: var(--border2);
-  border-radius: 3px;
+  background: var(--text);
 }
 /* A collapsed pane keeps only its header and its chevron. Hiding the body in
    CSS rather than unmounting it keeps one mechanism in charge: the mobile tab
@@ -493,12 +532,11 @@ body,
 .pane-collapse {
   background: none;
   border: none;
-  color: var(--text-dim);
+  color: var(--text);
   cursor: pointer;
   font-size: 14px;
   line-height: 1;
   padding: 2px 5px;
-  border-radius: 4px;
 }
 /* The tab bar only exists on narrow screens. */
 .pane-tabs {
@@ -509,7 +547,7 @@ body,
 .editor-pane {
   display: flex;
   flex-direction: column;
-  border-right: 1px solid var(--border);
+  border-right: var(--line) solid var(--border);
   overflow: hidden;
 }
 .pane-hdr {
@@ -517,16 +555,14 @@ body,
   align-items: center;
   justify-content: space-between;
   padding: 9px 16px;
-  border-bottom: 1px solid var(--border);
+  border-bottom: var(--line) solid var(--border);
   flex-shrink: 0;
   background: var(--surface);
 }
 .pane-title {
   font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--text-muted);
+  font-weight: 700;
+  color: var(--text);
 }
 .editor-wrap {
   position: relative;
@@ -550,7 +586,8 @@ body,
      scroll offset outside [0, scrollHeight - clientHeight] is exactly what the
      backdrop cannot be set to — so the text bounced and the highlights stayed
      pinned to the edge of the box. This also stops the gesture chaining out to
-     the page. See syncScroll in App.jsx for the residual-overshoot handling. */
+     the page. See backdropScroll in scrollSync.ts for the residual-overshoot
+     handling. */
   overscroll-behavior: none;
   tab-size: 2;
 }
@@ -570,43 +607,49 @@ body,
 .editor-ta::placeholder {
   color: var(--text-dim);
 }
+/* A jump selects the occurrence in the textarea; the UA's blue would be the
+   one hue on the page. */
+.editor-ta::selection {
+  background: var(--accent);
+  color: var(--on-accent);
+}
 
-/* MARKS */
+/* MARKS — one shape per category, since there is no colour to tell them
+   apart. Sign conflict: tinted + solid rule. Weak term of a conflicting sign:
+   dashed hairline. Article: double rule. Missing sign: wavy. Claim number:
+   boxed. Claim dependency: dotted rule. Dismissed: dotted hairline in dim ink.
+   Find: dashed box; the current match is the one filled mark. */
 mark.h-warn {
   background: var(--warn-bg);
   color: var(--warn) !important;
-  border-radius: 3px;
   border-bottom: 2px solid var(--warn-u);
 }
 mark.h-wt {
   background: var(--warn-wt-bg);
   color: var(--warn-wt) !important;
-  border-radius: 2px;
   border-bottom: 1px dashed var(--warn-wt-bd);
 }
 mark.h-art {
   background: var(--art-bg);
   color: var(--art) !important;
-  border-radius: 3px;
-  border-bottom: 2px solid var(--art-u);
+  border-bottom: 3px double var(--art-u);
 }
 mark.h-bare {
   background: var(--bare-bg);
   color: var(--bare) !important;
-  border-radius: 3px;
-  border-bottom: 2px solid var(--bare-u);
+  text-decoration: underline wavy var(--bare-u);
+  text-decoration-skip-ink: none;
 }
 mark.h-num {
   background: var(--num-bg);
   color: var(--num) !important;
-  border-radius: 3px;
-  border-bottom: 2px solid var(--num-u);
+  outline: 1px solid var(--num-u);
+  outline-offset: -1px;
 }
 mark.h-dep {
   background: var(--dep-bg);
   color: var(--dep) !important;
-  border-radius: 3px;
-  border-bottom: 2px solid var(--dep-u);
+  border-bottom: 2px dotted var(--dep-u);
 }
 mark.h-ok {
   background: transparent;
@@ -617,50 +660,63 @@ mark.h-dis {
   color: var(--text-dim) !important;
   border-bottom: 1px dotted var(--text-dim);
 }
-/* A Ctrl+F match, and the one the find bar is sitting on. The current match is
-   filled rather than merely outlined: with a hundred matches on screen, "which
-   one am I on" has to be answerable at a glance and from across the editor. */
+/* A Ctrl+F match, and the one the find bar is sitting on. With a hundred
+   matches on screen, "which one am I on" has to be answerable at a glance and
+   from across the editor, so the current match carries the heaviest ring and
+   rule in the editor.
+
+   NOTHING in the editor may be a filled block of ink. The textarea draws its
+   own text in --text on top of the backdrop, so an inverted mark is ink on
+   ink and the word disappears; the `color` on these marks never shows. Tints,
+   rules and rings only. */
 mark.h-find {
   background: var(--find-bg);
   color: var(--find) !important;
-  border-radius: 3px;
-  border-bottom: 2px solid var(--find-u);
+  outline: 1px dashed var(--find-u);
+  outline-offset: -1px;
 }
 mark.h-find-cur {
-  background: var(--find);
-  color: var(--on-accent) !important;
+  outline: none;
+  box-shadow: 0 0 0 2px var(--find-u);
+  border-bottom: 3px solid var(--find-u);
+}
+/* The occurrence a card click jumped to (thick ring) and the one under the
+   pointer (thin ring); both, a double ring. Rings sit outside the mark — an
+   inset frame swallowed a two-digit sign — and are box-shadows so they stack
+   on the boxed marks, which use outline. */
+mark.h-hover {
+  box-shadow: 0 0 0 1px var(--accent);
 }
 mark.h-focus {
-  outline: 1.5px solid var(--accent);
-  border-radius: 3px;
-}
-mark.h-hover {
   box-shadow: 0 0 0 2px var(--accent);
-  border-radius: 3px;
+}
+mark.h-focus.h-hover {
+  box-shadow:
+    0 0 0 2px var(--accent),
+    0 0 0 3px var(--bg),
+    0 0 0 4px var(--accent);
 }
 .buf-dot {
   display: inline-block;
-  width: 5px;
-  height: 5px;
-  border-radius: 50%;
+  width: 6px;
+  height: 6px;
   background: currentColor;
-  margin-left: 5px;
+  margin-left: 6px;
   vertical-align: middle;
-  opacity: 0.6;
 }
 .orphan-card {
   display: flex;
   align-items: center;
   gap: 8px;
   padding: 5px 8px;
-  border-radius: 6px;
-  margin-bottom: 3px;
+  border: 1px solid var(--border);
+  margin-bottom: 4px;
 }
 .orphan-sign {
   font-family: var(--font-mono);
   font-size: 13px;
-  font-weight: 600;
-  color: var(--text-muted);
+  font-weight: 700;
+  color: var(--text);
 }
 .orphan-msg {
   font-size: 11.5px;
@@ -677,12 +733,10 @@ mark.h-hover {
 .reflist-table th {
   text-align: left;
   font-size: 10px;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--text-dim);
-  font-weight: 600;
+  color: var(--text);
+  font-weight: 700;
   padding: 3px 6px;
-  border-bottom: 1px solid var(--border);
+  border-bottom: var(--line) solid var(--border);
 }
 /* The Count column's cells are right-aligned (.rl-count below), so its header
    has to be too — otherwise the label sits over the left edge of a column of
@@ -696,8 +750,8 @@ mark.h-hover {
 }
 .reflist-table .rl-sign {
   font-family: var(--font-mono);
-  font-weight: 600;
-  color: var(--text-muted);
+  font-weight: 700;
+  color: var(--text);
   white-space: nowrap;
 }
 .reflist-table .rl-term {
@@ -709,7 +763,6 @@ mark.h-hover {
   font-family: var(--font-mono);
 }
 
-/* STATUS BAR */
 /* FIND BAR (Ctrl+F) — between the editor's header and the editor itself, so it
    never covers the text it is searching. */
 .find-bar {
@@ -717,7 +770,7 @@ mark.h-hover {
   align-items: center;
   gap: 6px;
   padding: 6px 9px;
-  border-bottom: 1px solid var(--border);
+  border-bottom: var(--line) solid var(--border);
   background: var(--surface);
   flex-shrink: 0;
 }
@@ -725,17 +778,17 @@ mark.h-hover {
   flex: 1;
   min-width: 0;
   background: var(--bg);
-  border: 1px solid var(--border);
-  border-radius: 7px;
+  border: var(--line) solid var(--border);
   padding: 5px 10px;
-  font-family: var(--font-ui);
+  font-family: var(--font-mono);
   font-size: 12.5px;
   color: var(--text);
   outline: none;
-  transition: border-color 0.15s;
 }
-.find-in:focus {
-  border-color: var(--find);
+.find-in:focus,
+.search-in:focus,
+.rlc-in:focus {
+  box-shadow: 3px 3px 0 var(--accent);
 }
 .find-count {
   font-family: var(--font-mono);
@@ -747,17 +800,19 @@ mark.h-hover {
 }
 .find-count.none {
   color: var(--bare);
+  text-decoration: line-through;
 }
 .find-bar .nav-btn:disabled {
   cursor: default;
 }
 
+/* STATUS BAR */
 .statusbar {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
   padding: 6px 16px;
-  border-top: 1px solid var(--border);
+  border-top: var(--line) solid var(--border);
   background: var(--surface);
   flex-shrink: 0;
   min-height: 36px;
@@ -766,14 +821,14 @@ mark.h-hover {
 .s-chip {
   display: flex;
   align-items: center;
-  gap: 5px;
-  font-size: 12px;
-  font-weight: 500;
+  gap: 6px;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  font-weight: 700;
 }
 .s-dot {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
+  width: 8px;
+  height: 8px;
   flex-shrink: 0;
 }
 .err-nav {
@@ -795,58 +850,50 @@ mark.h-hover {
   justify-content: center;
   width: 24px;
   height: 24px;
-  background: var(--surface2);
-  border: 1px solid var(--border2);
-  border-radius: 5px;
+  background: var(--bg);
+  border: var(--line) solid var(--border);
   cursor: pointer;
-  color: var(--text-muted);
-  transition: all 0.12s;
-}
-.nav-btn:hover {
-  background: var(--border2);
   color: var(--text);
 }
+.nav-btn:hover {
+  background: var(--accent);
+  color: var(--on-accent);
+}
 .restore-btn {
-  font-size: 11px;
-  font-family: var(--font-ui);
+  font-size: 10px;
+  font-weight: 700;
   background: none;
-  border: 1px solid var(--border2);
-  border-radius: 5px;
-  color: var(--text-dim);
+  border: var(--line) solid var(--border);
+  color: var(--text);
   cursor: pointer;
   padding: 3px 8px;
-  transition: all 0.12s;
   white-space: nowrap;
 }
 .restore-btn:hover {
-  border-color: var(--warn);
-  color: var(--warn);
+  background: var(--accent);
+  color: var(--on-accent);
 }
 .reset-btn {
   position: fixed;
   bottom: 16px;
   right: 16px;
-  font-size: 11px;
-  font-family: var(--font-ui);
-  background: var(--surface2);
-  border: 1px solid var(--border2);
-  border-radius: 6px;
+  font-size: 10px;
+  font-weight: 700;
+  background: var(--bg);
+  border: var(--line) solid var(--border);
+  box-shadow: 3px 3px 0 var(--text);
   /* No opacity here. It used to be 0.7, which composited both the text and the
      surface under it against --bg and took this pair from 4.59:1 to 3.05:1 —
-     a WCAG AA failure that the token-vs-surface matrix in palette.test.js is
-     structurally unable to see. --text-dim is the muted look on its own. */
-  color: var(--text-dim);
+     a WCAG AA failure that the token-vs-surface matrix in palette.test.ts is
+     structurally unable to see. */
+  color: var(--text);
   cursor: pointer;
   padding: 5px 10px;
-  transition: all 0.15s;
   z-index: 100;
 }
 .reset-btn:hover {
-  /* --bare rather than a hardcoded #e05252, which failed AA in both themes
-     (3.04 dark / 2.82 light) and, not being a token, was invisible to the
-     palette guard. */
-  border-color: var(--bare);
-  color: var(--bare);
+  background: var(--accent);
+  color: var(--on-accent);
 }
 
 /* OVERVIEW */
@@ -875,7 +922,7 @@ mark.h-hover {
   grid-template-columns: repeat(3, 1fr);
   gap: 7px;
   padding: 9px;
-  border-bottom: 1px solid var(--border);
+  border-bottom: var(--line) solid var(--border);
   flex-shrink: 0;
 }
 .stat-cell {
@@ -885,46 +932,39 @@ mark.h-hover {
   gap: 2px;
   padding: 7px 4px;
   background: var(--bg);
-  border-radius: 7px;
-  border: 1px solid var(--border);
+  border: var(--line) solid var(--border);
 }
 .stat-n {
-  font-size: 19px;
-  font-weight: 700;
+  font-size: 22px;
+  font-weight: 800;
   font-family: var(--font-mono);
   line-height: 1;
 }
 .stat-l {
-  font-size: 10px;
-  font-weight: 500;
-  letter-spacing: 0.05em;
+  font-size: 9.5px;
+  font-weight: 700;
   color: var(--text-muted);
-  text-transform: uppercase;
 }
 
 /* SEARCH */
 .search-row {
   padding: 7px 9px;
-  border-bottom: 1px solid var(--border);
+  border-bottom: var(--line) solid var(--border);
   flex-shrink: 0;
 }
 .search-in {
   width: 100%;
   background: var(--bg);
-  border: 1px solid var(--border);
-  border-radius: 7px;
+  border: var(--line) solid var(--border);
   padding: 6px 10px 6px 30px;
-  font-family: var(--font-ui);
+  font-family: var(--font-mono);
   font-size: 12.5px;
   color: var(--text);
   outline: none;
-  transition: border-color 0.15s;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%234a5568' stroke-width='2'%3E%3Ccircle cx='11' cy='11' r='8'/%3E%3Cpath d='m21 21-4.35-4.35'/%3E%3C/svg%3E");
+  /* A mid grey stroke, legible on both the white and the black field. */
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%23808080' stroke-width='2.5'%3E%3Ccircle cx='11' cy='11' r='8'/%3E%3Cpath d='m21 21-4.35-4.35'/%3E%3C/svg%3E");
   background-repeat: no-repeat;
   background-position: 9px center;
-}
-.search-in:focus {
-  border-color: var(--accent);
 }
 .search-in::placeholder {
   color: var(--text-dim);
@@ -932,36 +972,43 @@ mark.h-hover {
 
 /* SECTION HEADERS — the toggle of every collapsible section, in both panes. A
    real button (keyboard-reachable, aria-expanded), reset to read as the plain
-   uppercase label it replaced; a Section's optional action sits beside it. */
+   uppercase label it replaced, ruled off underneath; a Section's optional
+   action sits beside it. */
 .sec-hdr {
   display: flex;
   align-items: center;
   gap: 8px;
+  border-bottom: var(--line) solid var(--border);
+  margin-bottom: 6px;
+}
+.sidebar-section + .sidebar-section .sec-hdr {
+  margin-top: 12px;
 }
 .sec-lbl {
   flex: 1;
   text-align: left;
   background: none;
   border: 0;
-  padding: 4px 0 0;
-  font: inherit;
+  padding: 6px 0 4px;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: inherit;
   color: inherit;
-  letter-spacing: 0.09em;
-  text-transform: uppercase;
   cursor: pointer;
   user-select: none;
 }
 
 /* CARDS — the frame shared by sign cards and the four error-category cards.
    An error card sets --kind inline from its ERROR_KINDS row (so a new category
-   needs no rule here); a sign card has no --kind and falls back to the accent. */
+   needs no rule here); a sign card has no --kind and falls back to the accent.
+   Resting cards are ruled with a hairline; hovering draws the full frame; the
+   focused card lifts off the page on a hard shadow, which is why the cards
+   keep a 4px margin (the scroll container's padding absorbs the rest). */
 .sign-card,
 .err-card {
-  border-radius: 8px;
-  border: 1px solid transparent;
+  border: 1px solid var(--border);
   cursor: pointer;
-  transition: all 0.12s;
-  margin-bottom: 3px;
+  margin-bottom: 4px;
 }
 .sign-card {
   overflow: hidden;
@@ -970,12 +1017,12 @@ mark.h-hover {
 .sign-card.hovered,
 .err-card:hover {
   background: var(--surface2);
-  border-color: var(--border);
 }
 .sign-card.focused,
 .err-card.focused {
   background: var(--surface2);
   border-color: var(--kind, var(--accent));
+  box-shadow: 3px 3px 0 var(--kind, var(--accent));
 }
 .sc-row {
   display: flex;
@@ -986,28 +1033,34 @@ mark.h-hover {
 .badge {
   font-family: var(--font-mono);
   font-size: 13px;
-  font-weight: 500;
+  font-weight: 700;
   min-width: 44px;
   text-align: center;
-  padding: 3px 6px;
-  border-radius: 5px;
+  padding: 2px 6px;
+  border: 1px solid transparent;
   flex-shrink: 0;
 }
+/* Severity by weight of ink: a conflicting sign is a solid block, an article
+   sign a tinted box, a consistent sign an empty frame. */
 .badge.warn {
-  background: var(--warn-bg);
-  color: var(--warn);
+  background: var(--warn);
+  color: var(--on-accent);
+  border-color: var(--warn);
 }
 .badge.art {
   background: var(--art-bg);
   color: var(--art);
+  border-color: var(--art);
 }
 .badge.ok {
   background: var(--ok-bg);
   color: var(--ok);
+  border-color: var(--ok-border);
 }
 .badge.dim {
   background: var(--surface2);
   color: var(--text-dim);
+  border-color: var(--text-dim);
 }
 .sc-main {
   flex: 1;
@@ -1028,8 +1081,7 @@ mark.h-hover {
   font-size: 11px;
   font-family: var(--font-mono);
   padding: 1px 6px;
-  border-radius: 4px;
-  border: 1px solid var(--border2);
+  border: 1px solid var(--border);
   color: var(--text-muted);
   background: var(--bg);
   max-width: 180px;
@@ -1041,15 +1093,13 @@ mark.h-hover {
   align-items: center;
   line-height: 1.5;
   text-align: left;
-  transition:
-    border-color 0.12s,
-    background 0.12s;
 }
 .tc:hover {
-  border-color: var(--accent);
+  background: var(--surface2);
+  color: var(--text);
 }
 .tc.err {
-  border-color: var(--warn-border);
+  border: 1px dashed var(--warn-border);
   color: var(--warn);
   background: var(--warn-bg);
 }
@@ -1058,25 +1108,24 @@ mark.h-hover {
   color: var(--ok);
   background: var(--ok-bg);
 }
-/* The chip the card is currently stepping through. Filled rather than outlined,
-   because an outline is one more border beside the chip's own and in the dark
-   theme --accent and --warn are near enough the same orange to say nothing at
-   all. It has to sit AFTER .tc.err and .tc.ok: all three are one class on .tc,
-   so source order is the only thing deciding which paints the chip. */
+/* The chip the card is currently stepping through: inverted. It has to sit
+   AFTER .tc.err and .tc.ok — all three are one class on .tc, so source order
+   is the only thing deciding which paints the chip. */
 .tc.focused {
-  border-color: var(--accent);
+  border: 1px solid var(--accent);
   background: var(--accent);
   color: var(--on-accent);
 }
 .tc.focused .mw-badge {
   background: var(--surface);
+  color: var(--text);
 }
 .mw-badge {
   font-size: 10px;
   background: var(--accent-glow);
   color: var(--accent);
-  border-radius: 3px;
-  padding: 1px 5px;
+  border: 1px solid var(--accent);
+  padding: 0 4px;
   font-family: var(--font-mono);
   margin-left: 4px;
 }
@@ -1094,8 +1143,8 @@ mark.h-hover {
   font-size: 11px;
   color: var(--text-dim);
   background: var(--bg);
-  border-radius: 4px;
-  padding: 2px 5px;
+  border: 1px solid var(--text-dim);
+  padding: 1px 5px;
   flex-shrink: 0;
 }
 .dis-btn {
@@ -1104,13 +1153,12 @@ mark.h-hover {
   cursor: pointer;
   color: var(--text-dim);
   padding: 2px 5px;
-  border-radius: 3px;
   font-size: 13px;
-  transition: color 0.12s;
   flex-shrink: 0;
 }
 .dis-btn:hover {
-  color: var(--warn);
+  color: var(--on-accent);
+  background: var(--accent);
 }
 
 /* ERROR CARD — article, missing sign, claim numbering, claim dependency. */
@@ -1121,10 +1169,12 @@ mark.h-hover {
   font-size: 12px;
   background: var(--kind-bg);
   color: var(--kind);
+  border-color: var(--kind);
 }
 .err-card.dis .badge {
   background: var(--surface2);
   color: var(--text-dim);
+  border-color: var(--text-dim);
 }
 .err-msg {
   font-size: 12px;
@@ -1138,13 +1188,12 @@ mark.h-hover {
   font-family: var(--font-mono);
 }
 
-/* DISMISSED */
+/* DISMISSED — a dashed frame, the same idiom the dismissed mark uses. */
 .dis-section {
-  margin-top: 8px;
+  margin-top: 12px;
   padding: 7px 10px;
   background: var(--bg);
-  border-radius: 8px;
-  border: 1px solid var(--border);
+  border: var(--line) dashed var(--border);
 }
 .dis-hdr {
   display: flex;
@@ -1154,35 +1203,36 @@ mark.h-hover {
   color: var(--text-dim);
 }
 .ra-btn {
-  font-size: 11px;
+  font-size: 10px;
+  font-weight: 700;
   background: none;
   border: none;
   cursor: pointer;
-  color: var(--text-muted);
+  color: var(--text);
   text-decoration: underline;
   padding: 0;
 }
 .ra-btn:hover {
-  color: var(--warn);
+  background: var(--accent);
+  color: var(--on-accent);
+  text-decoration: none;
 }
 
 /* CONTEXT MENU */
 .ctx {
   position: fixed;
   z-index: 999;
-  background: var(--surface2);
-  border: 1px solid var(--border2);
-  border-radius: 9px;
-  padding: 5px;
+  background: var(--surface);
+  border: var(--line) solid var(--border);
+  padding: 4px;
   min-width: 220px;
-  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.6);
+  box-shadow: 6px 6px 0 var(--text);
 }
 .ctx-lbl {
-  font-size: 10.5px;
+  font-size: 10px;
+  font-weight: 700;
   color: var(--text-dim);
-  padding: 5px 10px 2px;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
+  padding: 5px 10px 3px;
 }
 .ctx-item {
   display: block;
@@ -1193,22 +1243,23 @@ mark.h-hover {
   text-align: left;
   font-family: var(--font-ui);
   font-size: 13px;
-  color: var(--text-muted);
+  color: var(--text);
   padding: 7px 10px;
-  border-radius: 6px;
-  transition: all 0.1s;
   white-space: nowrap;
 }
 .ctx-item:hover {
-  background: var(--border);
-  color: var(--text);
+  background: var(--accent);
+  color: var(--on-accent);
+}
+.ctx-item.warn {
+  text-decoration: underline;
 }
 .ctx-item.warn:hover {
-  background: var(--warn-bg);
-  color: var(--warn);
+  background: var(--warn);
+  color: var(--on-accent);
 }
 .ctx-sep {
-  height: 1px;
+  height: var(--line);
   background: var(--border);
   margin: 4px 0;
 }
@@ -1242,29 +1293,27 @@ mark.h-hover {
   }
   .pane-tabs {
     display: flex;
-    gap: 2px;
-    padding: 5px 12px;
     background: var(--surface);
-    border-bottom: 1px solid var(--border);
+    border-bottom: var(--line) solid var(--border);
     flex-shrink: 0;
   }
   .pane-tabs button {
     flex: 1;
     background: none;
-    border: 1px solid transparent;
-    border-radius: 6px;
-    padding: 6px 8px;
-    font-family: var(--font-ui);
+    border: none;
+    border-right: var(--line) solid var(--border);
+    padding: 8px;
     font-size: 11px;
-    font-weight: 600;
-    letter-spacing: 0.06em;
-    color: var(--text-dim);
+    font-weight: 700;
+    color: var(--text-muted);
     cursor: pointer;
   }
+  .pane-tabs button:last-child {
+    border-right: none;
+  }
   .pane-tabs button.active {
-    color: var(--text);
-    background: var(--surface2);
-    border-color: var(--border2);
+    color: var(--on-accent);
+    background: var(--accent);
   }
   .main,
   .main.left-off,
@@ -1312,28 +1361,27 @@ mark.h-hover {
    outline — so a keyboard user had no idea where they were. :focus-visible
    keeps these off mouse clicks, which is why the outline can be this loud. */
 :where(button, [role='button'], input, textarea, a):focus-visible {
-  outline: 2px solid var(--accent);
+  outline: var(--line) solid var(--accent);
   outline-offset: 2px;
-  border-radius: 3px;
 }
 
 .editor-ta:focus-visible {
   /* The editor fills its pane, so an offset ring would be clipped. */
-  outline: 2px solid var(--accent);
+  outline: var(--line) solid var(--accent);
   outline-offset: -2px;
 }
 
 /* ── Reference-list check + claim-set statistics ───────────────────────────── */
 .rlc-body,
 .cs-body {
-  padding: 0 10px 8px;
+  padding: 0 0 8px;
 }
 
 /* Four figures, so 2x2 rather than the sign panel's 3-across (which would
    leave a lone cell on a second row). */
 .cs-body .stats-row {
   grid-template-columns: repeat(2, 1fr);
-  padding: 9px 0;
+  padding: 4px 0 9px;
   border-bottom: none;
 }
 
@@ -1343,13 +1391,13 @@ mark.h-hover {
   min-height: 64px;
   margin-bottom: 6px;
   padding: 6px 8px;
-  border: 1px solid var(--border);
-  border-radius: 4px;
+  border: var(--line) solid var(--border);
   background: var(--bg);
   color: var(--text);
   font-family: var(--font-mono);
   font-size: 11px;
   line-height: 1.6;
+  outline: none;
 }
 
 .rlc-in::placeholder {
@@ -1358,6 +1406,7 @@ mark.h-hover {
 
 .rlc-ok {
   color: var(--ok);
+  font-family: var(--font-mono);
   font-size: 11px;
   padding: 2px 0 4px;
 }
@@ -1391,22 +1440,20 @@ mark.h-hover {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 22px;
-  height: 22px;
-  border-radius: 50%;
-  border: 1px solid var(--border2);
+  width: 24px;
+  height: 24px;
+  border: var(--line) solid var(--border);
   background: none;
-  color: var(--text-muted);
-  font-family: var(--font-ui);
+  color: var(--text);
+  font-family: var(--font-mono);
   font-size: 12px;
-  font-weight: 600;
+  font-weight: 700;
   cursor: pointer;
   flex-shrink: 0;
 }
 .help-btn:hover {
-  color: var(--text);
-  border-color: var(--text-muted);
-  background: var(--surface2);
+  color: var(--on-accent);
+  background: var(--accent);
 }
 .help-scrim {
   position: fixed;
@@ -1416,35 +1463,36 @@ mark.h-hover {
   align-items: center;
   justify-content: center;
   padding: 20px;
-  background: rgba(0, 0, 0, 0.45);
+  background: rgba(0, 0, 0, 0.6);
 }
 .help-box {
   width: min(560px, 100%);
   max-height: 100%;
   overflow-y: auto;
   padding: 16px 20px 20px;
-  border-radius: 12px;
-  border: 1px solid var(--border2);
+  border: 3px solid var(--border);
   background: var(--surface);
-  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.4);
+  box-shadow: 10px 10px 0 var(--text);
 }
 .help-hdr {
   display: flex;
   align-items: center;
   justify-content: space-between;
   margin-bottom: 6px;
+  padding-bottom: 6px;
+  border-bottom: var(--line) solid var(--border);
 }
 .help-hdr strong {
+  font-family: var(--font-mono);
   font-size: 15px;
+  text-transform: uppercase;
   color: var(--text);
 }
 .help-sub {
   margin: 14px 0 6px;
-  font-size: 10.5px;
-  font-weight: 600;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--text-dim);
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--text);
 }
 .help-guide {
   margin: 0;
@@ -1464,6 +1512,7 @@ mark.h-hover {
   padding: 4px 0;
   vertical-align: top;
   color: var(--text-muted);
+  border-bottom: 1px solid var(--border);
 }
 .help-keys td:first-child {
   width: 42%;
@@ -1471,11 +1520,10 @@ mark.h-hover {
 }
 kbd {
   display: inline-block;
-  padding: 2px 6px;
-  border: 1px solid var(--border2);
-  border-bottom-width: 2px;
-  border-radius: 4px;
-  background: var(--surface2);
+  padding: 1px 6px;
+  border: 1px solid var(--border);
+  border-bottom-width: 3px;
+  background: var(--surface);
   color: var(--text);
   font-family: var(--font-mono);
   font-size: 11px;

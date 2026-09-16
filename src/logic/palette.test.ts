@@ -71,9 +71,10 @@ const FOREGROUNDS = [
 // the rule so a failure points at the CSS rather than at a token.
 const COLOURED_FILLS = [
   { fg: '--on-accent', bg: '--accent', where: '.lang-toggle button.active' },
-  // The Ctrl+F match the find bar is sitting on is a filled pill, so its text
-  // lands on --find rather than on any surface.
-  { fg: '--on-accent', bg: '--find', where: 'mark.h-find-cur' },
+  // A conflicting sign's badge is a solid block of the warn colour.
+  { fg: '--on-accent', bg: '--warn', where: '.badge.warn' },
+  // The editor's selection: the textarea's own text on the accent fill.
+  { fg: '--on-accent', bg: '--accent', where: '.editor-ta::selection' },
 ];
 const AA = 4.5;
 
