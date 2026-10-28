@@ -226,20 +226,23 @@ describe('buildClaimTree — references to a run of claims', () => {
     const { tree: t } = tree(PRECEDING);
     for (const e of t.edges.filter((e) => e.refs.length > 1)) {
       const x = t.lanes[e.lane];
-      const [tick, anchor, bar, target, sx, sy, , , , , ex, ey] = pathNums(e.d);
-      // The bar: a tick at the first claim of the run, down to the last.
+      const [open, anchor, bar, target, sx, sy, , , , , ex, ey] = pathNums(e.d);
+      // The bar: from the first claim of the run down to the last.
       expect([bar, anchor, target]).toEqual([
         x,
         rowY(t, e.refs[0]),
         rowY(t, e.refs[e.refs.length - 1]),
       ]);
-      expect(tick).toBeGreaterThan(x);
       // The stroke: from the claim to the arrow's base at the bar's near end.
       expect([sx, sy, ey]).toEqual([t.nodeX, rowY(t, e.claim), target]);
-      const [tip, ty, dx] = pathNums(e.head);
+      const [tip, ty, dx, , , tip2, ty2, dx2] = pathNums(e.head);
       expect([tip, ty]).toEqual([x + 1, target]);
       expect(dx).toBe(HEAD); // base to the right: the arrow points left, at the bar
       expect(ex).toBe(tip + dx);
+      // The far end turns level into the run's first claim, with the head an
+      // arc would put there: tip on the pill, pointing right.
+      expect([tip2, ty2, dx2]).toEqual([t.nodeX - 1, anchor, -HEAD]);
+      expect(open).toBe(tip2 + dx2);
     }
   });
 
@@ -253,7 +256,7 @@ describe('buildClaimTree — references to a run of claims', () => {
     const [e] = t.edges;
     expect(label(e)).toBe('4>2, 3');
     const [, anchor, , target, , sy] = pathNums(e.d);
-    // Tick at the far (lower) end, arrow at the near (upper) one.
+    // Into claim 3 at the far (lower) end, the claim's arrow at the near one.
     expect([target, anchor]).toEqual([rowY(t, 2), rowY(t, 3)]);
     expect(sy).toBeLessThan(target);
   });

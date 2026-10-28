@@ -18,7 +18,10 @@ import type { ClaimGraph } from './claims.ts';
 // and one arrow into it, not an arc per claim: a set of twenty claims each
 // "according to any one of the preceding claims" was 190 arcs, and read as a
 // smudge. Brackets that open on the same claim share their lane, so that set
-// draws as a single bar with an arrow from each claim to the point above it.
+// draws as a single bar with an arrow from each claim to the point above it,
+// and the bar turns at its top into an arrow on the claim the run opens with —
+// the path reads claim → bar → claim 1, and it ends in a head like every other
+// reference (a bare tick there left the bar's direction to guesswork).
 //
 // Pure geometry, no DOM: the component positions HTML rows at ROW pitch and
 // draws each edge's `d` and `head` in an SVG of `width` × `height` behind them.
@@ -30,8 +33,6 @@ export const MAX_BULGE = 48;
 /** Arrowhead length and half-width. */
 export const HEAD = 5;
 const HEAD_W = 3;
-/** The short stroke that marks where a bracket opens. */
-const TICK = 4;
 /** Spacing between bracket lanes. */
 export const LANE = 7;
 /** Opening words kept for an independent claim's label (CSS truncates). */
@@ -152,7 +153,8 @@ export function buildClaimTree(graph: ClaimGraph | null, text: string): ClaimTre
   }
 
   // Bracket lanes. A bracket is anchored at the end away from its claim (where
-  // its tick is) and takes the arrow at the end nearest it; brackets sharing an
+  // it turns into the claim the run opens with) and takes the claim's own arrow
+  // at the end nearest it; brackets sharing an
   // anchor share a lane, so "any one of the preceding claims" claim after claim
   // becomes one bar. Different anchors share a lane only with a free row between
   // them, or two bars would read as one. Greedy by start, longest first — the
@@ -214,14 +216,19 @@ export function buildClaimTree(graph: ClaimGraph | null, text: string): ClaimTre
     // An S from the claim to the bracket's near end, level at both ends so the
     // arrow meets the bar square on; its rise sits midway, clear of the lane.
     const m = r1((x + 1 + HEAD + nodeX) / 2);
+    // The far end runs level into the claim the run opens with, ending in the
+    // same head an arc puts there.
+    const tip = nodeX - 1;
     edges.push({
       claim: ref.claim,
       refs: ref.refs,
       lane,
       d:
-        `M${x + TICK} ${anchor}H${x}V${target}` +
+        `M${tip - HEAD} ${anchor}H${x}V${target}` +
         `M${nodeX} ${yc}C${m} ${yc} ${m} ${target} ${x + 1 + HEAD} ${target}`,
-      head: `M${x + 1} ${target}l${HEAD} ${-HEAD_W}v${2 * HEAD_W}z`,
+      head:
+        `M${x + 1} ${target}l${HEAD} ${-HEAD_W}v${2 * HEAD_W}z` +
+        `M${tip} ${anchor}l${-HEAD} ${-HEAD_W}v${2 * HEAD_W}z`,
     });
   }
 

@@ -107,9 +107,9 @@ function ClaimTreeImpl({ graph, text, t, onJump }: ClaimTreeProps) {
         {anyRun && (
           <span>
             {/* A bracket with its arrow, drawn as in the graph. */}
-            <svg className="ct-swatch-run" width="18" height="12">
-              <path d="M5 2H2V9M17 9H7" />
-              <path className="ah" d="M3 9l4-3v6z" />
+            <svg className="ct-swatch-run" width="20" height="14">
+              <path d="M14 3H2V11M19 11H7" />
+              <path className="ah" d="M3 11l4-3v6zM18 3l-4-3v6z" />
             </svg>
             {t.ctRun}
           </span>

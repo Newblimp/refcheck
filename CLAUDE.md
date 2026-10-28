@@ -306,8 +306,10 @@ deleted paragraph goes with it; table paragraphs import as flat lines.
   with every edge left of it cannot collide on any DAG
 - **A run of consecutive claims cited together is ONE bracket**, not an arc per claim: "any
   one of the preceding claims", "claims 1 to 4", "claim 1 or 2". A claim's parents split
-  into runs of adjacent ROWS; a run of two or more is a bar along the run (tick where it
-  opens, arrow at the end nearest the claim), a lone parent an arc. Twenty "preceding
+  into runs of adjacent ROWS; a run of two or more is a bar along the run (the claim's
+  arrow into its near end; the far end turns into an arrow on the claim the run opens with,
+  so the path reads claim → bar → claim 1 — a bare tick there left the direction unclear),
+  a lone parent an arc. Twenty "preceding
   claims" claims were 190 arcs. **Brackets opening on the same claim share a lane**, so that
   set is one bar with an arrow from each claim; different openings share a lane only with a
   free row between them (`LANE` apart otherwise, longest outermost). Arcs reach with √span
