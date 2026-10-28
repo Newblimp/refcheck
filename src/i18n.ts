@@ -169,6 +169,13 @@ const en = {
   csDpmaExcess: (n: number) => `${n} claims — DPMA claim fees apply from the 11th`,
   csEpoExcess: (n: number) => `${n} claims — EPO claim fees apply from the 16th`,
   csEpoHighExcess: (n: number) => `${n} claims — the higher EPO rate applies from the 51st`,
+  ctLbl: 'Claim tree',
+  ctNode: (n: number, parents: string) =>
+    parents ? `claim ${n}, depends on ${parents}` : `claim ${n}, independent`,
+  ctIndep: 'independent',
+  ctDep: 'dependent',
+  ctMulti: 'multiple dependency',
+  ctBad: 'invalid reference',
   beeSays: "§ 961 BGB! I'm free!!",
 };
 
@@ -325,6 +332,13 @@ const de: Strings = {
   csDpmaExcess: (n) => `${n} Ansprüche — DPMA-Anspruchsgebühren ab dem 11.`,
   csEpoExcess: (n) => `${n} Ansprüche — EPA-Anspruchsgebühren ab dem 16.`,
   csEpoHighExcess: (n) => `${n} Ansprüche — höherer EPA-Satz ab dem 51.`,
+  ctLbl: 'Anspruchsbaum',
+  ctNode: (n, parents) =>
+    parents ? `Anspruch ${n}, rückbezogen auf ${parents}` : `Anspruch ${n}, unabhängig`,
+  ctIndep: 'unabhängig',
+  ctDep: 'abhängig',
+  ctMulti: 'Mehrfachabhängigkeit',
+  ctBad: 'fehlerhafter Rückbezug',
   beeSays: '§ 961 BGB! Ich bin frei!!',
 };
 

@@ -49,8 +49,14 @@ describe('checkBudget', () => {
   it('keeps every on-demand chunk off the critical path', () => {
     // Deferring a chunk and forgetting to list it here reports the win as a
     // loss: the bytes leave the entry chunk and are counted again under their
-    // own name. Each of these is reached only by a user action.
-    for (const name of ['assets/importDoc-x.js', 'assets/Bee-x.js', 'assets/HelpDialog-x.js']) {
+    // own name. Each of these is reached only by a user action (the claim tree:
+    // switching to claims mode).
+    for (const name of [
+      'assets/importDoc-x.js',
+      'assets/Bee-x.js',
+      'assets/HelpDialog-x.js',
+      'assets/ClaimTree-x.js',
+    ]) {
       const { critical } = checkBudget([...files, { name, gzip: 9 * K }], BUDGETS);
       expect(critical, name).toBe(44 * K);
     }

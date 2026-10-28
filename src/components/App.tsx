@@ -838,6 +838,11 @@ export function App() {
           collapsed={!panes.right}
           onToggleCollapse={() => setPanes((p) => ({ ...p, right: !p.right }))}
           claimSetStats={claimSetStats}
+          // The claim tree is navigation into the claims text, so it is drawn
+          // only while that text is the one on screen — its spans index debText.
+          claimGraph={mode === 'claims' ? res.claimGraph : null}
+          claimText={debText}
+          onJumpClaim={scrollTo}
         />
       </main>
       <button className="reset-btn" onClick={doReset} title={t.resetAll}>

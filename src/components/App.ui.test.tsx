@@ -1021,6 +1021,56 @@ describe('App (reference-list check and claim statistics)', () => {
     expect(stats.getByText(/multiple dependency: claim 3/)).toBeInTheDocument();
   });
 
+  it('draws the claim tree, lights a claim’s chain and jumps to the claim', async () => {
+    const { container } = render(<App />);
+    fireEvent.click(screen.getByText('Claims'));
+    typeInto(
+      [
+        '1. A device (10) comprising a housing (12).',
+        '2. The device (10) of claim 1, wherein the housing (12) is metal.',
+        '3. The device (10) of claim 1, further comprising a cover (14).',
+        '4. The device (10) of claim 2 or 3, wherein the cover (14) is round.',
+      ].join('\n')
+    );
+    await waitFor(() => expect(maybe(container, '.ct-graph')).toBeInTheDocument());
+    const graph = q(container, '.ct-graph');
+    expect(graph.querySelectorAll('.ct-arcs path')).toHaveLength(4);
+    const row = (name: RegExp) => within(graph).getByRole('button', { name });
+    expect(row(/^claim 1, independent: A device \(10\)/)).toBeInTheDocument();
+    const four = row(/^claim 4, depends on 2, 3$/);
+    expect(q(four, '.ct-node')).toHaveClass('ct-multiple');
+
+    // Claim 2 rests on 1 and carries 4; its sibling 3 is not part of its chain.
+    fireEvent.mouseEnter(row(/^claim 2,/));
+    expect(graph).toHaveClass('hl');
+    const lit = [...graph.querySelectorAll('.ct-row.on .ct-node')].map((n) => n.textContent);
+    expect(lit).toEqual(['1', '2', '4']);
+    expect(graph.querySelectorAll('.ct-arcs path.on')).toHaveLength(2);
+    fireEvent.mouseLeave(graph);
+    expect(graph).not.toHaveClass('hl');
+
+    fireEvent.click(four);
+    const ed = editor();
+    expect(ed.value.slice(ed.selectionStart, ed.selectionEnd)).toBe('4');
+    expect(ed.value.slice(ed.selectionStart).startsWith('4. The device')).toBe(true);
+  });
+
+  it('does not draw a claim tree for claims without references, or in description mode', async () => {
+    const { container } = render(<App />);
+    fireEvent.click(screen.getByText('Claims'));
+    typeInto('1. A device (10).\n2. A method using a housing (12).');
+    await waitFor(() => expect(maybe(container, '.cs-body')).toBeInTheDocument());
+    expect(maybe(container, '.ct-graph')).not.toBeInTheDocument();
+
+    typeInto('1. A device (10).\n2. The device (10) of claim 1.');
+    await waitFor(() => expect(maybe(container, '.ct-graph')).toBeInTheDocument());
+    fireEvent.click(screen.getByText('Description'));
+    typeInto('A housing 12 is provided.');
+    // Twice: its sign card, and the cross-reference (not in the claims).
+    await sidebar(container).findAllByText('12');
+    expect(maybe(container, '.ct-graph')).not.toBeInTheDocument();
+  });
+
   it('does not show claim statistics in description mode', async () => {
     const { container } = render(<App />);
     typeInto('A housing 12 is provided.');

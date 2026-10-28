@@ -17,7 +17,8 @@ A patent draft must keep its reference signs (`10`, `12a`, `I.1`) and their term
 5. **Cross-reference** — signs in the description but not the claims, or vice versa
 6. **Claim numbering and dependencies** — gaps, references to nonexistent/later/own claims
 7. **Reference-list drift** — the draft's own list of signs disagreeing with the text
-8. **Claim-set structure** — counts, multiple dependency, DPMA/EPO fee thresholds (information, not errors)
+8. **Claim-set structure** — counts, multiple dependency, DPMA/EPO fee thresholds (information, not errors),
+   and the **claim tree**: the dependency graph drawn as an arc diagram
 
 What it must NOT report matters as much: a checker that cries wolf gets switched off. The
 clearest case is **Cumulative References** below ("erste Welle 10 … die Wellen 10, 20 und
@@ -71,6 +72,8 @@ src/
     cumulative.ts       canonicalCumulativeTerms — which shortened terms are back-references
     claims.ts           segmentClaims / parseClaimRefs / computeClaimGraph
     claimStats.ts       claimStats + THRESHOLDS (counts, not currency; European only)
+    claimTree.ts        buildClaimTree / claimChain / compactRanges — the claim tree's
+                        arc-diagram layout (lazy chunk only, via ClaimTree.tsx)
     crossref.ts         computeCrossRef over two already-computed extraction results
     reflist.ts          buildRefList / toPlainText (the derived numeral list)
     refListParse.ts     parseRefList — reads a drafter's reference-sign list
@@ -117,7 +120,7 @@ src/
     TopBar.tsx, StatusBar.tsx, FindBar.tsx, Sidebar.tsx, RefPane.tsx, RefListCheck.tsx,
     ClaimStats.tsx, ImportBanner.tsx (also carries the storage-full report),
     DropOverlay.tsx, CtxMenu.tsx, HelpDialog.tsx (lazy) / LazyHelpDialog.tsx,
-    Bee.tsx (lazy) / LazyBee.tsx
+    Bee.tsx (lazy) / LazyBee.tsx, ClaimTree.tsx (lazy) / LazyClaimTree.tsx
     Section.tsx         The collapsible ▾/▸ header every list in both panes uses; an
                         optional `action` sits beside it (the reference list's Copy)
     SignCard.tsx        A sign with its term chips — each chip is a BUTTON cycling that
@@ -145,6 +148,7 @@ src/
 | `ctxMenuItems()`                                                     | `logic/ctxMenuItems.ts`                               | The right-click menu for what `findAtPos` found                                                 |
 | `computeClaimGraph()`                                                | `logic/claims.ts`                                     | Claim spans, refs, transitive `ancestors`, `depErrors`, `direct` parents                        |
 | `claimStats()`                                                       | `logic/claimStats.ts`                                 | Counts, multiple dependency, DPMA/EPO thresholds                                                |
+| `buildClaimTree()` / `claimChain()`                                  | `logic/claimTree.ts`                                  | Arc-diagram layout of the claim graph; what lights up while a claim is pointed at               |
 | `computeCrossRef()`                                                  | `logic/crossref.ts`                                   | Description ↔ Claims comparison of two results                                                  |
 | `buildRefList()` / `parseRefList()` / `reconcileRefList()`           | `logic/reflist.ts`, `refListParse.ts`, `reconcile.ts` | Derived list; the drafter's list; the diff between them                                         |
 | `listTermIndex()` / `listExtra()` / `appliedListTerms()`             | `logic/listTerms.ts`                                  | Multi-word terms from the list (`sig` = content signature); how many extra words; which applied |
@@ -291,6 +295,25 @@ deleted paragraph goes with it; table paragraphs import as flat lines.
   reported independently). No USPTO thresholds — a test asserts none are emitted
 - `THRESHOLDS` are counts, not currency. A range (`claims 1 to 4`) is ONE multiply-dependent
   claim. **Nothing here is an error** — rendered as `ⓘ`/`--info`, never the warning triangle
+
+### Claim tree (claims mode)
+
+- A Section below the claim-set panel, drawn when at least one claim cites another. An **arc
+  diagram**: one row per claim number in document order, every direct dependency an arc in
+  a gutter left of the numbers (`buildClaimTree`). Not an indented tree on purpose: drawn in
+  document order, a parent's trunk runs through the claims between it and its child ("4. …
+  of claim 2" crosses claim 3); one node column with every arc left of it cannot collide on
+  any DAG. Arc reach grows with √span up to `MAX_BULGE`; the gutter is as wide as the widest
+  arc
+- Pills: independent = `--accent` fill, multiple dependency = `--info` ring, a claim with an
+  invalid reference = dashed `--dep` ring (wins over the fill — a claim whose only reference
+  is invalid has no parent). Independent claims carry their opening words as a label
+- Pointing at a row (hover or focus) lights its ancestors, its descendants and the arcs
+  between them (`claimChain`), dimming the rest by **token swaps, not opacity**; a click
+  selects the claim number in the editor. Rows are real buttons whose accessible name spells
+  out the parents (`compactRanges`: `1–4, 7`)
+- Lazy chunk (`LazyClaimTree`, in `budget.ts`'s `LAZY`): layout and component load only when
+  claims mode has something to draw
 
 ### Keyboard
 
@@ -571,15 +594,15 @@ tokenize() ─▶ extractData(text, lang, mwo, autoMW, isClaims, listTermIndex()
 
 ## Payload
 
-`npm run budget` (CI, after the build) measures gzipped transfer: **critical path 41.8 KB /
-50 KB** (index.html with inline CSS 5.6, entry chunk 29.4, vendor 7.5), **whole precached
-shell 60.0 KB / 70 KB**. Ceilings, not targets.
+`npm run budget` (CI, after the build) measures gzipped transfer: **critical path 42.5 KB /
+50 KB** (index.html with inline CSS 5.9, entry chunk 29.0, vendor 7.4), **whole precached
+shell 62.3 KB / 70 KB**. Ceilings, not targets.
 
 What moves the critical path and what does not — all measured, do not re-spend the effort:
 
 - Done: no web fonts (−95.8 KB), stylesheet inlined, Preact via compat (45 → 7.5 KB),
   framework/app split so the vendor chunk carries over between deploys, lazy `.docx` / bee
-  / help chunks, terser with three passes (−1.1 KB; `mangle` names-only — property
+  / help / claim-tree chunks, terser with three passes (−1.1 KB; `mangle` names-only — property
   mangling would break the i18n keys and the `ERROR_KINDS` accessors), HTML comments
   stripped from `index.html` (−0.5 KB — the one file that is not minified), dead i18n keys
   and duplicate component/logic code removed (−0.4 KB)
@@ -619,7 +642,7 @@ Native ES modules: run through the dev/preview server, not from disk.
 
 ## Testing
 
-`npm test` runs **818 tests** in ~13 s. Logic tests run under `node`; only `*.ui.test.tsx`
+`npm test` runs **837 tests** in ~13 s. Logic tests run under `node`; only `*.ui.test.tsx`
 runs under `jsdom` (`environmentMatchGlobs` in `vite.config.ts`; `src/test/setup.ts` adds
 jest-dom and `matchMedia`/`clipboard` stubs). `build/` is included, so the plugins are
 tested too.
@@ -650,6 +673,7 @@ Coverage by area (what each file pins that is easy to break):
 | `stem.test.ts`                                                                                                                                                       | Porter/Snowball steps, dispatch, cache transparency across eviction and per-language isolation                                                                                                                                                                                                                                                                                                                                                      |
 | `constants.test.ts`                                                                                                                                                  | `isClaimNumber` (Roman `I.` guard, CRLF), `isSignToken`, `romanToInt`/`signVal`, `compareSigns` grouping, the modifier vocabulary (two-way pin against the table above, all five DE inflections spelled out, no modifier in `EXCL` as a base-noun blocker), `disKey`                                                                                                                                                                                |
 | `extract.test.ts`                                                                                                                                                    | consistency/inconsistency, case-folded terms vs case-sensitive signs, parentheses, numbering keys, EN/DE articles + gender, ordinal widening + `mwo`, every DE qualifier inflection, excluded-word-as-modifier, bare terms, primes, Roman signs, ranges/lists (EN+DE, negatives), groups, `noTermSigns`, `[0012]`, antecedent basis, dependency errors, list-derived multi-word terms, cumulative references and every case that must stay an error |
+| `claimTree.test.ts`                                                                                                                                                  | rows in document order, kinds, number spans, labels on independent claims only, invalid references (flagged, no arc), one row per duplicated number, arc endpoints on their rows and reach exactly `bulge(span)` inside the drawing, upward arcs on out-of-order numbering, `claimChain` (siblings stay dark, every alternative of a multiple dependency lit), `compactRanges`                                                                      |
 | `claims.test.ts`                                                                                                                                                     | segmentation, refs (lists, ranges, DE, "preceding"), graph (transitive ancestors, error types, duplicate keys, acyclicity, full closure on a diamond)                                                                                                                                                                                                                                                                                               |
 | `cumulative.test.ts`                                                                                                                                                 | what folds, and — the half that matters — what refuses to (across signs, changed modifier, non-modifier first word, two modifiers, lost more than the modifier, different noun, wrong language)                                                                                                                                                                                                                                                     |
 | `crossref.test.ts`, `reflist.test.ts`, `reconcile.test.ts`, `listTerms.test.ts`, `claimStats.test.ts`, `signFix.test.ts`, `findText.test.ts`, `ctxMenuItems.test.ts` | each module's contract, including the numbered-form-wins list entry, the 300-entry list shape, no USPTO threshold, the refused sign corrections, the `MAX_MATCHES` cap and the length-shifting lowercase case                                                                                                                                                                                                                                       |
@@ -662,7 +686,7 @@ Coverage by area (what each file pins that is easy to break):
 | `palette.test.ts`                                                                                                                                                    | AA contrast of every token on every surface in both themes, ramp ordering, the stylesheet scans                                                                                                                                                                                                                                                                                                                                                     |
 | `beeFlight.test.ts`, `i18n.test.ts`, `swPrecache.test.ts`, `swInstall.test.ts`, `inlineCss.test.ts`, `budget.test.ts`                                                | the flight model, EN/DE key parity, the precache list and build id, the shipped install handler, stylesheet inlining + HTML comment stripping, the budget arithmetic                                                                                                                                                                                                                                                                                |
 | `use*.ui.test.tsx`                                                                                                                                                   | debouncing and the deferred first render; persistence (debounce, flush, quota, codecs); hotkeys; file drop counting; that `useEditorSync` reads no geometry at mount                                                                                                                                                                                                                                                                                |
-| `App.ui.test.tsx`                                                                                                                                                    | the app end to end in jsdom: cards, dismissal, cycling and term chips, the reference list copy, `.docx` import/undo/export, the context menu (extend, insert sign, fix sign), find bar, keyboard navigation, panes, landmarks, reference-list check, claim statistics, the bee                                                                                                                                                                      |
+| `App.ui.test.tsx`                                                                                                                                                    | the app end to end in jsdom: cards, dismissal, cycling and term chips, the reference list copy, `.docx` import/undo/export, the context menu (extend, insert sign, fix sign), find bar, keyboard navigation, panes, landmarks, reference-list check, claim statistics, the claim tree (chain lighting, jump), the bee                                                                                                                               |
 
 Manual smoke test — `npm run dev`, paste into Description mode:
 
