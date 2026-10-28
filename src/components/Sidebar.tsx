@@ -2,6 +2,7 @@ import { memo } from 'react';
 import { SignCard } from './SignCard.tsx';
 import { ErrorCard } from './ErrorCard.tsx';
 import { ClaimStats } from './ClaimStats.tsx';
+import { LazyClaimTree } from './LazyClaimTree.tsx';
 import { Section } from './Section.tsx';
 import { OrphanCard } from './OrphanCard.tsx';
 import { StatCell } from './StatCell.tsx';
@@ -12,6 +13,7 @@ import type { Mode } from '../logic/constants.ts';
 import type { SignEntry, TermEntry } from '../logic/extract.ts';
 import type { CrossRef } from '../logic/crossref.ts';
 import type { ClaimStats as ClaimStatsData } from '../logic/claimStats.ts';
+import type { ClaimGraph } from '../logic/claims.ts';
 import type { Ref } from 'preact';
 import type { Strings } from '../i18n.ts';
 
@@ -45,6 +47,12 @@ export interface SidebarProps {
   /** Description ↔ Claims comparison; null when there is nothing to report. */
   orphaned: CrossRef | null;
   claimSetStats: ClaimStatsData | null;
+  /** Claims mode only; null otherwise. */
+  claimGraph: ClaimGraph | null;
+  /** The buffer claimGraph was computed from. */
+  claimText: string;
+  /** Select a claim's number in the editor. */
+  onJumpClaim: (start: number, end: number) => void;
   collapsed: boolean;
   onToggleCollapse: () => void;
 }
@@ -72,10 +80,18 @@ function SidebarImpl({
   onRestoreAll,
   orphaned,
   claimSetStats,
+  claimGraph,
+  claimText,
+  onJumpClaim,
   collapsed,
   onToggleCollapse,
 }: SidebarProps) {
   const totalSigns = Object.keys(signData).length;
+  // The claim tree counts its claims (`direct` has one key per claim number),
+  // but draws nothing when no claim cites another: without a single arc it
+  // would say nothing the claim-set panel does not.
+  const treeClaims =
+    claimGraph && [...claimGraph.direct.values()].some((p) => p.size) ? claimGraph.direct.size : 0;
   const totalErrs =
     errSignsActive.length + ERROR_KINDS.reduce((n, k) => n + errorLists[k.id].length, 0);
   // Which term chip the focus sits on, for a given card: a sign focus may name
@@ -249,6 +265,14 @@ function SidebarImpl({
                 <ClaimStats stats={claimSetStats} t={t} />
               </Section>
             )}
+            {/* Mounted whenever the sidebar is, so its open/closed state
+                survives the last reference being deleted and retyped. A set
+                with no reference at all has no tree worth drawing. */}
+            <Section icon="↳" label={t.ctLbl} color="var(--text-muted)" count={treeClaims}>
+              {claimGraph && (
+                <LazyClaimTree graph={claimGraph} text={claimText} t={t} onJump={onJumpClaim} />
+              )}
+            </Section>
           </>
         )}
       </div>
