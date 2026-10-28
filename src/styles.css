@@ -1406,21 +1406,33 @@ mark.h-hover {
   left: 0;
   z-index: 1;
   pointer-events: none;
+}
+/* Each edge is a <g> of its line and its arrowhead, both painted in
+   currentColor, so a state is one `color` on the group. */
+.ct-arcs,
+.ct-swatch-run {
+  color: var(--border2);
   fill: none;
-  stroke: var(--border2);
+  stroke: currentColor;
   stroke-width: 1.25;
   stroke-linecap: round;
+  stroke-linejoin: round;
 }
-.ct-arcs path {
+.ct-arcs .ah,
+.ct-swatch-run .ah {
+  fill: currentColor;
+  stroke-width: 1;
+}
+.ct-arcs g {
   transition:
-    stroke 0.12s,
+    color 0.12s,
     stroke-width 0.12s;
 }
-.ct-graph.hl .ct-arcs path {
-  stroke: var(--border);
+.ct-graph.hl .ct-arcs {
+  color: var(--border);
 }
-.ct-graph.hl .ct-arcs path.on {
-  stroke: var(--accent);
+.ct-graph.hl .ct-arcs .on {
+  color: var(--accent);
   stroke-width: 1.75;
 }
 .ct-row {

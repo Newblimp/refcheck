@@ -1034,7 +1034,10 @@ describe('App (reference-list check and claim statistics)', () => {
     );
     await waitFor(() => expect(maybe(container, '.ct-graph')).toBeInTheDocument());
     const graph = q(container, '.ct-graph');
-    expect(graph.querySelectorAll('.ct-arcs path')).toHaveLength(4);
+    // 2→1 and 3→1 as arcs; 4's "claim 2 or 3" as one bracket along 2–3. Each
+    // edge is a line and an arrowhead.
+    expect(graph.querySelectorAll('.ct-arcs g')).toHaveLength(3);
+    expect(graph.querySelectorAll('.ct-arcs .ah')).toHaveLength(3);
     const row = (name: RegExp) => within(graph).getByRole('button', { name });
     expect(row(/^claim 1, independent: A device \(10\)/)).toBeInTheDocument();
     const four = row(/^claim 4, depends on 2, 3$/);
@@ -1045,7 +1048,7 @@ describe('App (reference-list check and claim statistics)', () => {
     expect(graph).toHaveClass('hl');
     const lit = [...graph.querySelectorAll('.ct-row.on .ct-node')].map((n) => n.textContent);
     expect(lit).toEqual(['1', '2', '4']);
-    expect(graph.querySelectorAll('.ct-arcs path.on')).toHaveLength(2);
+    expect(graph.querySelectorAll('.ct-arcs g.on')).toHaveLength(2);
     fireEvent.mouseLeave(graph);
     expect(graph).not.toHaveClass('hl');
 

@@ -3,7 +3,8 @@ import type { ClaimGraph } from './claims.ts';
 
 // ── CLAIM TREE (the dependency picture) ──────────────────────────────────────
 // Lays the claim graph out as an arc diagram: one row per claim in document
-// order, every dependency an arc in a gutter to the left of the claim numbers.
+// order, every back-reference drawn in a gutter to the left of the claim
+// numbers, with its arrowhead on what is referred to.
 //
 // Why arcs and not an indented tree: a claim set is a DAG ("according to claim
 // 1 or 2"), and an indented tree drawn in document order runs a parent's trunk
@@ -12,13 +13,27 @@ import type { ClaimGraph } from './claims.ts';
 // strictly left of it cannot collide, whatever the shape, and keeps the
 // document order the drafter reads in.
 //
+// A reference to a RUN of consecutive claims ("any one of the preceding
+// claims", "claims 1 to 4", "claim 1 or 2") is one bracket alongside the run
+// and one arrow into it, not an arc per claim: a set of twenty claims each
+// "according to any one of the preceding claims" was 190 arcs, and read as a
+// smudge. Brackets that open on the same claim share their lane, so that set
+// draws as a single bar with an arrow from each claim to the point above it.
+//
 // Pure geometry, no DOM: the component positions HTML rows at ROW pitch and
-// draws `edges[].d` in an SVG of `width` × `height` behind them.
+// draws each edge's `d` and `head` in an SVG of `width` × `height` behind them.
 
 /** Row pitch in px — the component sets each row's height from this. */
 export const ROW = 22;
 /** The widest an arc may bulge, in px; spans past ~26 rows all reach it. */
 export const MAX_BULGE = 48;
+/** Arrowhead length and half-width. */
+export const HEAD = 5;
+const HEAD_W = 3;
+/** The short stroke that marks where a bracket opens. */
+const TICK = 4;
+/** Spacing between bracket lanes. */
+export const LANE = 7;
 /** Opening words kept for an independent claim's label (CSS truncates). */
 const LABEL_CHARS = 80;
 
@@ -42,12 +57,17 @@ export interface ClaimNode {
 }
 
 export interface ClaimEdge {
-  /** Parent claim. */
-  from: number;
-  /** Dependent claim. */
-  to: number;
-  /** SVG path. */
+  /** The dependent claim, where the line starts. */
+  claim: number;
+  /** What it refers back to: one claim (an arc), or a run of consecutive rows
+   *  (a bracket). A claim's parents split into as many edges as they have runs. */
+  refs: number[];
+  /** Bracket lane, for a run; -1 for an arc. */
+  lane: number;
+  /** The line (for a run: the bracket, then the stroke from the claim to it). */
   d: string;
+  /** The arrowhead, filled, pointing at what is referred to. */
+  head: string;
 }
 
 export interface ClaimTree {
@@ -55,6 +75,8 @@ export interface ClaimTree {
   edges: ClaimEdge[];
   /** x of the node column's left edge; arcs leave and arrive here. */
   nodeX: number;
+  /** x of each bracket lane, left to right. */
+  lanes: number[];
   width: number;
   height: number;
 }
@@ -62,6 +84,19 @@ export interface ClaimTree {
 /** How far left an arc spanning `span` rows reaches. Square root, so short
  *  arcs stay apart from each other while long ones still fit the gutter. */
 export const bulge = (span: number) => Math.min(MAX_BULGE, 6 + 9 * Math.sqrt(span - 1));
+
+/** One decimal: enough for a pixel, and the path strings stay short. */
+const r1 = (v: number) => Math.round(v * 10) / 10;
+
+/** A reference before it is placed: the claim's row and the rows it targets. */
+interface Ref {
+  claim: number;
+  row: number;
+  /** First and last referenced row (equal for a single claim). */
+  lo: number;
+  hi: number;
+  refs: number[];
+}
 
 /**
  * Lay out the claim graph.
@@ -99,45 +134,115 @@ export function buildClaimTree(graph: ClaimGraph | null, text: string): ClaimTre
     });
   }
 
-  const pairs: [number, number, number][] = []; // [from, to, span]
-  let reach = 0;
-  for (const n of nodes)
-    for (const p of n.parents) {
-      const pr = rowOf.get(p);
-      if (pr === undefined) continue;
-      // Out-of-order numbering ("1, 3, 2") can put a parent below its child;
-      // the arc simply runs upwards, so span is a distance.
-      const span = Math.abs(n.row - pr);
-      pairs.push([p, n.num, span]);
-      reach = Math.max(reach, bulge(span));
+  // Split each claim's parents into runs of consecutive ROWS (rows, not
+  // numbers: under out-of-order numbering only rows are adjacent on screen).
+  const arcs: Ref[] = [];
+  const runs: Ref[] = [];
+  for (const n of nodes) {
+    const rows = n.parents.flatMap((p) => rowOf.get(p) ?? []).sort((a, b) => a - b);
+    for (let i = 0; i < rows.length;) {
+      let j = i;
+      while (j + 1 < rows.length && rows[j + 1] === (rows[j] ?? 0) + 1) j++;
+      const lo = rows[i] ?? 0;
+      const hi = rows[j] ?? 0;
+      const refs = rows.slice(i, j + 1).map((row) => nodes[row]?.num ?? 0);
+      (j > i ? runs : arcs).push({ claim: n.num, row: n.row, lo, hi, refs });
+      i = j + 1;
     }
+  }
 
-  // The gutter is only as wide as the widest arc needs, so a set of short
-  // references sits close to the left edge.
-  const nodeX = Math.ceil(reach) + 2;
+  // Bracket lanes. A bracket is anchored at the end away from its claim (where
+  // its tick is) and takes the arrow at the end nearest it; brackets sharing an
+  // anchor share a lane, so "any one of the preceding claims" claim after claim
+  // becomes one bar. Different anchors share a lane only with a free row between
+  // them, or two bars would read as one. Greedy by start, longest first — the
+  // long bars end up outermost, where the strokes to their claims cross least.
+  const groups = new Map<string, { start: number; end: number; refs: Ref[] }>();
+  for (const ref of runs) {
+    const key = ref.row > ref.hi ? `v${ref.lo}` : `^${ref.hi}`;
+    const g = groups.get(key) ?? { start: ref.lo, end: ref.hi, refs: [] };
+    g.start = Math.min(g.start, ref.lo);
+    g.end = Math.max(g.end, ref.hi);
+    g.refs.push(ref);
+    groups.set(key, g);
+  }
+  const laneEnds: number[] = [];
+  const laneOf = new Map<Ref, number>();
+  for (const g of [...groups.values()].sort((a, b) => a.start - b.start || b.end - a.end)) {
+    let lane = laneEnds.findIndex((end) => end < g.start - 1);
+    if (lane < 0) lane = laneEnds.length;
+    laneEnds[lane] = g.end;
+    for (const ref of g.refs) laneOf.set(ref, lane);
+  }
+  const lanes = laneEnds.map((_, i) => 2 + i * LANE);
+
+  // The gutter is only as wide as it needs to be: the lanes, then room for the
+  // widest arc (which never reaches back into the lanes), or for the strokes
+  // from the claims to the brackets when there is no arc.
+  const reach = Math.max(0, ...arcs.map((a) => bulge(Math.abs(a.row - a.lo))));
+  const lastLane = lanes[lanes.length - 1];
+  const nodeX = Math.ceil(
+    lastLane === undefined ? reach + 3 : Math.max(lastLane + 12 + reach + 1, lastLane + 24)
+  );
   const y = (row: number) => row * ROW + ROW / 2;
-  const edges = pairs.map(([from, to, span]): ClaimEdge => {
-    const y1 = y(rowOf.get(from) ?? 0);
-    const y2 = y(rowOf.get(to) ?? 0);
-    // Both control points at the same x: a cubic reaches 3/4 of the way to
-    // them, so this arc's leftmost point is exactly bulge(span) from nodeX.
-    const cx = nodeX - (bulge(span) * 4) / 3;
-    return { from, to, d: `M${nodeX} ${y1}C${cx} ${y1} ${cx} ${y2} ${nodeX} ${y2}` };
+
+  const edges: ClaimEdge[] = arcs.map((a) => {
+    // Out-of-order numbering ("1, 3, 2") can put a parent below its claim; the
+    // arc simply runs upwards, so the span is a distance.
+    const y1 = y(a.row);
+    const y2 = y(a.lo);
+    // Both control points at one x: the cubic reaches about 3/4 of the way
+    // there, so the arc's leftmost point is bulge(span) left of the column.
+    const cx = r1(nodeX - (bulge(Math.abs(a.row - a.lo)) * 4) / 3);
+    const tip = nodeX - 1;
+    return {
+      claim: a.claim,
+      refs: a.refs,
+      lane: -1,
+      d: `M${nodeX} ${y1}C${cx} ${y1} ${cx} ${y2} ${tip - HEAD} ${y2}`,
+      head: `M${tip} ${y2}l${-HEAD} ${-HEAD_W}v${2 * HEAD_W}z`,
+    };
   });
 
-  return { nodes, edges, nodeX, width: nodeX + 1, height: nodes.length * ROW };
+  for (const ref of runs) {
+    const lane = laneOf.get(ref) ?? 0;
+    const x = lanes[lane] ?? 0;
+    const below = ref.row > ref.hi;
+    const anchor = y(below ? ref.lo : ref.hi);
+    const target = y(below ? ref.hi : ref.lo);
+    const yc = y(ref.row);
+    // An S from the claim to the bracket's near end, level at both ends so the
+    // arrow meets the bar square on; its rise sits midway, clear of the lane.
+    const m = r1((x + 1 + HEAD + nodeX) / 2);
+    edges.push({
+      claim: ref.claim,
+      refs: ref.refs,
+      lane,
+      d:
+        `M${x + TICK} ${anchor}H${x}V${target}` +
+        `M${nodeX} ${yc}C${m} ${yc} ${m} ${target} ${x + 1 + HEAD} ${target}`,
+      head: `M${x + 1} ${target}l${HEAD} ${-HEAD_W}v${2 * HEAD_W}z`,
+    });
+  }
+
+  return { nodes, edges, nodeX, lanes, width: nodeX + 1, height: nodes.length * ROW };
 }
 
 /**
  * What lights up while one claim is pointed at: the claims it rests on
- * (transitively), the claims resting on it, and the arcs between them — the
+ * (transitively), the claims resting on it, and the edges between them — the
  * reading "which claims does this one need, and what falls with it".
  * @returns claim numbers and edge indices
  */
 export function claimChain(tree: ClaimTree, num: number) {
   const parentsOf = new Map(tree.nodes.map((n) => [n.num, n.parents]));
   const childrenOf = new Map<number, number[]>();
-  for (const e of tree.edges) childrenOf.set(e.from, [...(childrenOf.get(e.from) ?? []), e.to]);
+  for (const n of tree.nodes)
+    for (const p of n.parents) {
+      const list = childrenOf.get(p);
+      if (list) list.push(n.num);
+      else childrenOf.set(p, [n.num]);
+    }
 
   const walk = (start: number, next: Map<number, number[]>) => {
     const seen = new Set<number>([start]);
@@ -153,12 +258,13 @@ export function claimChain(tree: ClaimTree, num: number) {
   const up = walk(num, parentsOf);
   const down = walk(num, childrenOf);
 
-  // Every arc INTO the claim or one of its ancestors, and every arc OUT of the
-  // claim or one of its descendants. The other ends are in the chain by
-  // construction, so nothing outside it is ever lit.
+  // Every reference made BY the claim or one of its ancestors, and every
+  // reference made TO the claim or one of its descendants. A bracket lights
+  // whole: it is one reference to the run, even where the run holds claims
+  // outside the chain.
   const edges = new Set<number>();
   tree.edges.forEach((e, i) => {
-    if (up.has(e.to) || down.has(e.from)) edges.add(i);
+    if (up.has(e.claim) || e.refs.some((r) => down.has(r))) edges.add(i);
   });
   return { nodes: new Set([...up, ...down]), edges };
 }

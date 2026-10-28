@@ -176,6 +176,7 @@ const en = {
   ctDep: 'dependent',
   ctMulti: 'multiple dependency',
   ctBad: 'invalid reference',
+  ctRun: 'any one of a range',
   beeSays: "§ 961 BGB! I'm free!!",
 };
 
@@ -339,6 +340,7 @@ const de: Strings = {
   ctDep: 'abhängig',
   ctMulti: 'Mehrfachabhängigkeit',
   ctBad: 'fehlerhafter Rückbezug',
+  ctRun: 'einer aus einem Bereich',
   beeSays: '§ 961 BGB! Ich bin frei!!',
 };
 

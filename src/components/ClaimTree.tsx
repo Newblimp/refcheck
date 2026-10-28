@@ -16,9 +16,10 @@ export interface ClaimTreeProps {
 // ── CLAIM TREE ──────────────────────────────────────────────────────────────
 // Claims mode only. The dependency graph as an arc diagram (see
 // logic/claimTree.ts for why arcs): each claim a row in document order, each
-// reference an arc on the left. Pointing at a claim — mouse or keyboard —
-// lights the claims it rests on and the ones resting on it; clicking jumps to
-// it in the text.
+// back-reference an arrow on the left — an arc to one claim, a bracket along a
+// run of them ("any one of the preceding claims"). Pointing at a claim —
+// mouse or keyboard — lights the claims it rests on and the ones resting on
+// it; clicking jumps to it in the text.
 //
 // The rows are real buttons laid over the SVG, so the graph is reachable and
 // readable without it: each row's accessible name spells out its parents.
@@ -57,6 +58,7 @@ function ClaimTreeImpl({ graph, text, t, onJump }: ClaimTreeProps) {
   ];
   if (kinds.has('multiple')) key.push(['ct-multiple', t.ctMulti]);
   if (tree.nodes.some((n) => n.bad)) key.push(['ct-dependent bad', t.ctBad]);
+  const anyRun = tree.lanes.length > 0;
 
   return (
     <div className="ct-body">
@@ -67,7 +69,10 @@ function ClaimTreeImpl({ graph, text, t, onJump }: ClaimTreeProps) {
       >
         <svg className="ct-arcs" width={tree.width} height={tree.height} aria-hidden="true">
           {arcs.map(({ e, on }) => (
-            <path key={`${e.from}>${e.to}`} className={on ? 'on' : undefined} d={e.d} />
+            <g key={`${e.claim}>${e.refs[0]}`} className={on ? 'on' : undefined}>
+              <path d={e.d} />
+              <path className="ah" d={e.head} />
+            </g>
           ))}
         </svg>
         {tree.nodes.map((n) => {
@@ -99,6 +104,16 @@ function ClaimTreeImpl({ graph, text, t, onJump }: ClaimTreeProps) {
             {word}
           </span>
         ))}
+        {anyRun && (
+          <span>
+            {/* A bracket with its arrow, drawn as in the graph. */}
+            <svg className="ct-swatch-run" width="18" height="12">
+              <path d="M5 2H2V9M17 9H7" />
+              <path className="ah" d="M3 9l4-3v6z" />
+            </svg>
+            {t.ctRun}
+          </span>
+        )}
       </div>
     </div>
   );
